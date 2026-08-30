@@ -76,7 +76,7 @@ function Get-TextureLoadProfile {
     param([string] $LogPath)
 
     $profileLine = Select-String -LiteralPath $LogPath -Pattern (
-        '^\[RimWorldOptim\.Poc\] Texture loader profile: files=(?<files>[0-9]+); bytes=(?<bytes>[0-9]+); totalMs=(?<total>[0-9]+(?:\.[0-9]+)?); readMs=(?<read>[0-9]+(?:\.[0-9]+)?); processingMs=(?<processing>[0-9]+(?:\.[0-9]+)?)$'
+        '^\[FixWorld\] Texture loader profile: files=(?<files>[0-9]+); bytes=(?<bytes>[0-9]+); totalMs=(?<total>[0-9]+(?:\.[0-9]+)?); readMs=(?<read>[0-9]+(?:\.[0-9]+)?); processingMs=(?<processing>[0-9]+(?:\.[0-9]+)?)$'
     ) | Select-Object -Last 1
 
     if ($null -eq $profileLine) {
@@ -84,7 +84,7 @@ function Get-TextureLoadProfile {
     }
 
     $mainThreadLine = Select-String -LiteralPath $LogPath -Pattern (
-        '^\[RimWorldOptim\.Poc\] Texture main-thread profile: loadImageCalls=(?<loadImageCalls>[0-9]+); loadImageMs=(?<loadImage>[0-9]+(?:\.[0-9]+)?); applyCalls=(?<applyCalls>[0-9]+); applyMs=(?<apply>[0-9]+(?:\.[0-9]+)?); fastCompressCalls=(?<fastCompressCalls>[0-9]+); fastCompressMs=(?<fastCompress>[0-9]+(?:\.[0-9]+)?); otherMs=(?<other>[0-9]+(?:\.[0-9]+)?)$'
+        '^\[FixWorld\] Texture main-thread profile: loadImageCalls=(?<loadImageCalls>[0-9]+); loadImageMs=(?<loadImage>[0-9]+(?:\.[0-9]+)?); applyCalls=(?<applyCalls>[0-9]+); applyMs=(?<apply>[0-9]+(?:\.[0-9]+)?); fastCompressCalls=(?<fastCompressCalls>[0-9]+); fastCompressMs=(?<fastCompress>[0-9]+(?:\.[0-9]+)?); otherMs=(?<other>[0-9]+(?:\.[0-9]+)?)$'
     ) | Select-Object -Last 1
 
     if ($null -eq $mainThreadLine) {
@@ -92,7 +92,7 @@ function Get-TextureLoadProfile {
     }
 
     $ddsLine = Select-String -LiteralPath $LogPath -Pattern (
-        '^\[RimWorldOptim\.Poc\] DDS loader profile: files=(?<ddsFiles>[0-9]+); bytes=(?<ddsBytes>[0-9]+); totalMs=(?<dds>[0-9]+(?:\.[0-9]+)?)$'
+        '^\[FixWorld\] DDS loader profile: files=(?<ddsFiles>[0-9]+); bytes=(?<ddsBytes>[0-9]+); totalMs=(?<dds>[0-9]+(?:\.[0-9]+)?)$'
     ) | Select-Object -Last 1
 
     if ($null -eq $ddsLine) {
@@ -125,7 +125,7 @@ function Get-DdsCacheProfile {
     param([string] $LogPath)
 
     $profileLine = Select-String -LiteralPath $LogPath -Pattern (
-        '^\[RimWorldOptim\.Poc\] DDS cache profile: hits=(?<hits>[0-9]+); misses=(?<misses>[0-9]+)$'
+        '^\[FixWorld\] DDS cache profile: hits=(?<hits>[0-9]+); misses=(?<misses>[0-9]+)$'
     ) | Select-Object -Last 1
     if ($null -eq $profileLine) {
         throw "DDS cache profile was not found in the log: $LogPath"
@@ -133,7 +133,7 @@ function Get-DdsCacheProfile {
 
     $match = [regex]::Match($profileLine.Line, $profileLine.Pattern)
     $buildLine = Select-String -LiteralPath $LogPath -Pattern (
-        '^\[RimWorldOptim\.Poc\] DDS cache build: created=(?<created>[0-9]+); invalidated=(?<invalidated>[0-9]+); excluded=(?<excluded>[0-9]+); unsupported=(?<unsupported>[0-9]+); budgetSkipped=(?<budgetSkipped>[0-9]+); failed=(?<failed>[0-9]+); buildMs=(?<build>[0-9]+); cacheBytes=(?<cacheBytes>[0-9]+); maxCacheBytes=(?<maxCacheBytes>[0-9]+)$'
+        '^\[FixWorld\] DDS cache build: created=(?<created>[0-9]+); invalidated=(?<invalidated>[0-9]+); excluded=(?<excluded>[0-9]+); unsupported=(?<unsupported>[0-9]+); budgetSkipped=(?<budgetSkipped>[0-9]+); failed=(?<failed>[0-9]+); buildMs=(?<build>[0-9]+); cacheBytes=(?<cacheBytes>[0-9]+); maxCacheBytes=(?<maxCacheBytes>[0-9]+)$'
     ) | Select-Object -Last 1
     if ($null -eq $buildLine) {
         throw "DDS cache build profile was not found in the log: $LogPath"
@@ -159,7 +159,7 @@ function Get-TexturePathProfile {
     param([string] $LogPath)
 
     $profileLine = Select-String -LiteralPath $LogPath -Pattern (
-        '^\[RimWorldOptim\.Poc\] Texture path profile: unique=(?<unique>[0-9]+); duplicatePaths=(?<duplicates>[0-9]+); potentiallyShadowedFiles=(?<shadowed>[0-9]+); potentiallyShadowedBytes=(?<bytes>[0-9]+); topShadowedMods=(?<mods>.*)$'
+        '^\[FixWorld\] Texture path profile: unique=(?<unique>[0-9]+); duplicatePaths=(?<duplicates>[0-9]+); potentiallyShadowedFiles=(?<shadowed>[0-9]+); potentiallyShadowedBytes=(?<bytes>[0-9]+); topShadowedMods=(?<mods>.*)$'
     ) | Select-Object -Last 1
     if ($null -eq $profileLine) {
         throw "Texture path profile was not found in the log: $LogPath"
@@ -179,7 +179,7 @@ function Get-FileDiscoveryProfile {
     param([string] $LogPath)
 
     $profileLine = Select-String -LiteralPath $LogPath -Pattern (
-        '^\[RimWorldOptim\.Poc\] File discovery profile: calls=(?<calls>[0-9]+); files=(?<files>[0-9]+); totalMs=(?<total>[0-9]+(?:\.[0-9]+)?); textureCalls=(?<textureCalls>[0-9]+); textureFiles=(?<textureFiles>[0-9]+); textureMs=(?<texture>[0-9]+(?:\.[0-9]+)?)$'
+        '^\[FixWorld\] File discovery profile: calls=(?<calls>[0-9]+); files=(?<files>[0-9]+); totalMs=(?<total>[0-9]+(?:\.[0-9]+)?); textureCalls=(?<textureCalls>[0-9]+); textureFiles=(?<textureFiles>[0-9]+); textureMs=(?<texture>[0-9]+(?:\.[0-9]+)?)$'
     ) | Select-Object -Last 1
     if ($null -eq $profileLine) {
         throw "File discovery profile was not found in the log: $LogPath"
@@ -261,11 +261,11 @@ for ($run = 1; $run -le $Runs; $run++) {
         $windowStyle = if ($Minimized) { 'Minimized' } else { 'Maximized' }
         Write-Host "Loader benchmark $run/$Runs starts $($windowStyle.ToLowerInvariant()) on ${MonitorName}: $id"
         $environmentOverrides = [ordered]@{
-            RIMWORLDOPTIM_DDS_CACHE = if ($DdsCache) { '1' } else { '0' }
-            RIMWORLDOPTIM_PROFILE_TEXTURE_LOAD = if ($ProfileTextureLoad) { '1' } else { $null }
-            RIMWORLDOPTIM_DDS_CACHE_ROOT = if ($DdsCache) { $ddsCacheRoot } else { $null }
-            RIMWORLDOPTIM_PROFILE_TEXTURE_PATHS = if ($ProfileTexturePaths) { '1' } else { $null }
-            RIMWORLDOPTIM_PROFILE_FILE_DISCOVERY = if ($ProfileFileDiscovery) { '1' } else { $null }
+            FIXWORLD_DDS_CACHE = if ($DdsCache) { '1' } else { '0' }
+            FIXWORLD_PROFILE_TEXTURE_LOAD = if ($ProfileTextureLoad) { '1' } else { $null }
+            FIXWORLD_DDS_CACHE_ROOT = if ($DdsCache) { $ddsCacheRoot } else { $null }
+            FIXWORLD_PROFILE_TEXTURE_PATHS = if ($ProfileTexturePaths) { '1' } else { $null }
+            FIXWORLD_PROFILE_FILE_DISCOVERY = if ($ProfileFileDiscovery) { '1' } else { $null }
         }
         $previousEnvironment = @{}
 
@@ -304,7 +304,7 @@ for ($run = 1; $run -le $Runs; $run++) {
                     '1x Static constructor calls ->'
                 }
                 else {
-                    '[RimWorldOptim.Poc] Main menu ready.'
+                    '[FixWorld] Main menu ready.'
                 }
                 $completed = [bool](Select-String -LiteralPath $logPath `
                     -SimpleMatch $completionMarker -Quiet)
@@ -329,7 +329,7 @@ for ($run = 1; $run -le $Runs; $run++) {
         Start-Sleep -Seconds 1
         $process.Refresh()
         $actualMonitorAtCompletion = if ($process.MainWindowHandle -ne [IntPtr]::Zero) {
-            [RimWorldOptim.DisplayNative]::GetWindowMonitorDeviceName($process.MainWindowHandle)
+            [FixWorld.DisplayNative]::GetWindowMonitorDeviceName($process.MainWindowHandle)
         }
         else {
             $null

@@ -1,10 +1,10 @@
 using HarmonyLib;
 using RimWorld;
-using RimWorldOptim.Poc.Caching;
-using RimWorldOptim.Poc.Profiling;
+using FixWorld.Caching;
+using FixWorld.Profiling;
 using Verse;
 
-namespace RimWorldOptim.Poc.Patches
+namespace FixWorld.Patches
 {
     [HarmonyPatch(typeof(MainMenuDrawer), nameof(MainMenuDrawer.MainMenuOnGUI))]
     internal static class MainMenuReadyPatch
@@ -22,7 +22,7 @@ namespace RimWorldOptim.Poc.Patches
             reported = true;
             ProfilerRegistry.WriteSummaries();
             TextureDdsCache.WriteSummary();
-            Log.Message("[RimWorldOptim.Poc] Main menu ready.");
+            Log.Message("[FixWorld] Main menu ready.");
         }
     }
 }

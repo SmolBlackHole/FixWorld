@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ModMetaData>
-  <name>RimWorldOptim Harmony PoC</name>
-  <author>Local performance research</author>
-  <packageId>local.rimworldoptim.poc</packageId>
+  <name>FixWorld</name>
+  <author>SmolBlackHole</author>
+  <packageId>smolblackhole.fixworld</packageId>
   <supportedVersions>
     <li>1.6</li>
   </supportedVersions>
@@ -16,5 +16,6 @@
   <loadAfter>
     <li>brrainz.harmony</li>
   </loadAfter>
-  <description>Local, behavior-preserving proof of concept for the RimWorld performance research workspace.</description>
+  <description>Private RimWorld performance mod focused on faster loading and behavior-preserving
+    runtime optimizations.</description>
 </ModMetaData>

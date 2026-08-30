@@ -1,11 +1,11 @@
 using System.Collections.Generic;
 using System.IO;
 using HarmonyLib;
-using RimWorldOptim.Poc.Caching;
-using RimWorldOptim.Poc.Profiling;
+using FixWorld.Caching;
+using FixWorld.Profiling;
 using Verse;
 
-namespace RimWorldOptim.Poc.Patches
+namespace FixWorld.Patches
 {
     [HarmonyPatch(typeof(ModContentPack), nameof(ModContentPack.GetAllFilesForMod))]
     internal static class ModFileLoaderPatch

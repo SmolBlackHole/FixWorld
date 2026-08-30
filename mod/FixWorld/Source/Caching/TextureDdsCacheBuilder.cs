@@ -6,7 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
-namespace RimWorldOptim.Poc.Caching
+namespace FixWorld.Caching
 {
     internal sealed class TextureDdsCacheBuilder
     {
@@ -185,16 +185,25 @@ namespace RimWorldOptim.Poc.Caching
 
         private static string FindTexconv(string modRoot)
         {
-            string configuredPath = Environment.GetEnvironmentVariable("RIMWORLDOPTIM_TEXCONV_PATH");
+            string configuredPath = Environment.GetEnvironmentVariable("FIXWORLD_TEXCONV_PATH");
             if (File.Exists(configuredPath))
             {
                 return Path.GetFullPath(configuredPath);
             }
 
-            string bundledPath = Path.Combine(modRoot, "Tools", "texconv.exe");
-            if (File.Exists(bundledPath))
+            bool isWindows = IsWindows();
+            string executableName = isWindows ? "texconv.exe" : "texconv";
+            if (isWindows)
             {
-                return bundledPath;
+                string bundledPath = Path.Combine(
+                    modRoot,
+                    "Tools",
+                    "Windows-x64",
+                    executableName);
+                if (File.Exists(bundledPath))
+                {
+                    return bundledPath;
+                }
             }
 
             string path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
@@ -205,11 +214,16 @@ namespace RimWorldOptim.Poc.Caching
                     continue;
                 }
 
-                string candidate = Path.Combine(directory.Trim().Trim('"'), "texconv.exe");
+                string candidate = Path.Combine(directory.Trim().Trim('"'), executableName);
                 if (File.Exists(candidate))
                 {
                     return candidate;
                 }
+            }
+
+            if (!isWindows)
+            {
+                return null;
             }
 
             string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -234,6 +248,15 @@ namespace RimWorldOptim.Poc.Caching
             {
                 return null;
             }
+        }
+
+        private static bool IsWindows()
+        {
+            PlatformID platform = Environment.OSVersion.Platform;
+            return platform == PlatformID.Win32NT ||
+                   platform == PlatformID.Win32S ||
+                   platform == PlatformID.Win32Windows ||
+                   platform == PlatformID.WinCE;
         }
 
         private static void EnsureChildPath(string parent, string child)

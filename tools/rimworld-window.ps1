@@ -1,12 +1,12 @@
 Set-StrictMode -Version Latest
 
-if ($null -eq ('RimWorldOptim.DisplayNative' -as [type])) {
+if ($null -eq ('FixWorld.DisplayNative' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
-namespace RimWorldOptim
+namespace FixWorld
 {
     public sealed class DisplayDeviceInfo
     {
@@ -189,13 +189,13 @@ function Get-RimWorldDisplay {
 
     if ($requestedId) {
         $hardwarePrefix = 'MONITOR\' + $requestedId + '\'
-        $displayDevice = [RimWorldOptim.DisplayNative]::GetMonitors() |
+        $displayDevice = [FixWorld.DisplayNative]::GetMonitors() |
             Where-Object { $_.HardwareId.StartsWith($hardwarePrefix, [StringComparison]::OrdinalIgnoreCase) } |
             Select-Object -First 1
     }
 
     if ($null -eq $displayDevice) {
-        $displayDevice = [RimWorldOptim.DisplayNative]::GetMonitors() |
+        $displayDevice = [FixWorld.DisplayNative]::GetMonitors() |
             Where-Object { $_.Description -eq $FriendlyName } |
             Select-Object -First 1
     }
@@ -279,8 +279,8 @@ function Set-RimWorldWindowPlacement {
     $maximizeWindow = 3
     Start-Sleep -Milliseconds 250
     for ($attempt = 1; $attempt -le 3; $attempt++) {
-        $null = [RimWorldOptim.DisplayNative]::ShowWindow($window, $restoreWindow)
-        if (-not [RimWorldOptim.DisplayNative]::SetWindowPos(
+        $null = [FixWorld.DisplayNative]::ShowWindow($window, $restoreWindow)
+        if (-not [FixWorld.DisplayNative]::SetWindowPos(
             $window,
             [IntPtr]::Zero,
             $bounds.X,
@@ -292,11 +292,11 @@ function Set-RimWorldWindowPlacement {
         }
 
         if ($Maximize) {
-            $null = [RimWorldOptim.DisplayNative]::ShowWindow($window, $maximizeWindow)
+            $null = [FixWorld.DisplayNative]::ShowWindow($window, $maximizeWindow)
         }
 
         Start-Sleep -Milliseconds 100
-        $actualDeviceName = [RimWorldOptim.DisplayNative]::GetWindowMonitorDeviceName($window)
+        $actualDeviceName = [FixWorld.DisplayNative]::GetWindowMonitorDeviceName($window)
         if ($actualDeviceName -eq $Display.DeviceName) {
             return [pscustomobject]@{
                 WindowHandle = $window

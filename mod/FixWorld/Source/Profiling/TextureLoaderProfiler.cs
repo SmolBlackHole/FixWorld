@@ -10,11 +10,11 @@ using RimWorld.IO;
 using UnityEngine;
 using Verse;
 
-namespace RimWorldOptim.Poc.Profiling
+namespace FixWorld.Profiling
 {
     internal static class TextureLoaderProfiler
     {
-        private const string EnabledEnvironmentVariable = "RIMWORLDOPTIM_PROFILE_TEXTURE_LOAD";
+        private const string EnabledEnvironmentVariable = "FIXWORLD_PROFILE_TEXTURE_LOAD";
 
         private static readonly bool Enabled = ProfilerRegistry.IsEnabled(EnabledEnvironmentVariable);
 
@@ -147,7 +147,7 @@ namespace RimWorldOptim.Poc.Profiling
 
             Log.Message(string.Format(
                 CultureInfo.InvariantCulture,
-                "[RimWorldOptim.Poc] Texture loader profile: files={0}; bytes={1}; totalMs={2:0.###}; readMs={3:0.###}; processingMs={4:0.###}",
+                "[FixWorld] Texture loader profile: files={0}; bytes={1}; totalMs={2:0.###}; readMs={3:0.###}; processingMs={4:0.###}",
                 Interlocked.Read(ref fileCount),
                 Interlocked.Read(ref byteCount),
                 totalMilliseconds,
@@ -155,7 +155,7 @@ namespace RimWorldOptim.Poc.Profiling
                 processingMilliseconds));
             Log.Message(string.Format(
                 CultureInfo.InvariantCulture,
-                "[RimWorldOptim.Poc] Texture main-thread profile: loadImageCalls={0}; loadImageMs={1:0.###}; applyCalls={2}; applyMs={3:0.###}; fastCompressCalls={4}; fastCompressMs={5:0.###}; otherMs={6:0.###}",
+                "[FixWorld] Texture main-thread profile: loadImageCalls={0}; loadImageMs={1:0.###}; applyCalls={2}; applyMs={3:0.###}; fastCompressCalls={4}; fastCompressMs={5:0.###}; otherMs={6:0.###}",
                 Interlocked.Read(ref loadImageCount),
                 loadImageMilliseconds,
                 Interlocked.Read(ref applyCount),
@@ -165,7 +165,7 @@ namespace RimWorldOptim.Poc.Profiling
                 otherMilliseconds));
             Log.Message(string.Format(
                 CultureInfo.InvariantCulture,
-                "[RimWorldOptim.Poc] DDS loader profile: files={0}; bytes={1}; totalMs={2:0.###}",
+                "[FixWorld] DDS loader profile: files={0}; bytes={1}; totalMs={2:0.###}",
                 Interlocked.Read(ref ddsFileCount),
                 Interlocked.Read(ref ddsByteCount),
                 ProfilerRegistry.ToMilliseconds(Interlocked.Read(ref ddsLoadTicks))));

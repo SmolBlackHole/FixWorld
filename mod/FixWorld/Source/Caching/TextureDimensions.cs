@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace RimWorldOptim.Poc.Caching
+namespace FixWorld.Caching
 {
     internal readonly struct TextureDimensions
     {

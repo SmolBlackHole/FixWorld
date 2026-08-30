@@ -9,15 +9,15 @@ using System.Threading;
 using UnityEngine;
 using Verse;
 
-namespace RimWorldOptim.Poc.Caching
+namespace FixWorld.Caching
 {
     internal static class TextureDdsCache
     {
         private const string CacheIdentityVersion = "bc3-unorm-mips-v1";
-        private const string EnabledEnvironmentVariable = "RIMWORLDOPTIM_DDS_CACHE";
-        private const string CacheRootEnvironmentVariable = "RIMWORLDOPTIM_DDS_CACHE_ROOT";
-        private const string MaxCacheGiBEnvironmentVariable = "RIMWORLDOPTIM_DDS_CACHE_MAX_GIB";
-        private const string MinimumFreeGiBEnvironmentVariable = "RIMWORLDOPTIM_DDS_CACHE_MIN_FREE_GIB";
+        private const string EnabledEnvironmentVariable = "FIXWORLD_DDS_CACHE";
+        private const string CacheRootEnvironmentVariable = "FIXWORLD_DDS_CACHE_ROOT";
+        private const string MaxCacheGiBEnvironmentVariable = "FIXWORLD_DDS_CACHE_MAX_GIB";
+        private const string MinimumFreeGiBEnvironmentVariable = "FIXWORLD_DDS_CACHE_MIN_FREE_GIB";
         private const long DefaultMaxCacheBytes = 4L * 1024L * 1024L * 1024L;
         private const long DefaultMinimumFreeBytes = 5L * 1024L * 1024L * 1024L;
 
@@ -54,7 +54,7 @@ namespace RimWorldOptim.Poc.Caching
                 StringComparison.Ordinal);
             if (!enabled)
             {
-                Log.Message("[RimWorldOptim.Poc] DDS cache disabled.");
+                Log.Message("[FixWorld] DDS cache disabled.");
                 return;
             }
 
@@ -65,7 +65,7 @@ namespace RimWorldOptim.Poc.Caching
                 {
                     cacheRoot = Path.Combine(
                         GenFilePaths.SaveDataFolderPath,
-                        "RimWorldOptim",
+                        "FixWorld",
                         "TextureCache",
                         "dds-v1");
                 }
@@ -79,7 +79,7 @@ namespace RimWorldOptim.Poc.Caching
                 if (builder.Available)
                 {
                     Log.Message(
-                        "[RimWorldOptim.Poc] DDS cache enabled at " + cacheRoot +
+                        "[FixWorld] DDS cache enabled at " + cacheRoot +
                         "; texconv=" + builder.TexconvPath +
                         "; maxGiB=" + ToGiB(maxCacheBytes).ToString("0.###", CultureInfo.InvariantCulture) +
                         "; minFreeGiB=" + ToGiB(minimumFreeBytes).ToString("0.###", CultureInfo.InvariantCulture));
@@ -87,14 +87,14 @@ namespace RimWorldOptim.Poc.Caching
                 else
                 {
                     Log.Warning(
-                        "[RimWorldOptim.Poc] DDS cache can read existing entries, but texconv.exe was not found; " +
+                        "[FixWorld] DDS cache can read existing entries, but texconv.exe was not found; " +
                         "missing or changed entries will use their original textures.");
                 }
             }
             catch (Exception exception)
             {
                 enabled = false;
-                Log.Warning("[RimWorldOptim.Poc] DDS cache disabled after initialization failure: " + exception);
+                Log.Warning("[FixWorld] DDS cache disabled after initialization failure: " + exception);
             }
         }
 
@@ -122,7 +122,7 @@ namespace RimWorldOptim.Poc.Caching
                 catch (Exception exception)
                 {
                     Log.Warning(
-                        "[RimWorldOptim.Poc] DDS cache skipped for " + mod.PackageId + ": " + exception);
+                        "[FixWorld] DDS cache skipped for " + mod.PackageId + ": " + exception);
                 }
             }
         }
@@ -136,12 +136,12 @@ namespace RimWorldOptim.Poc.Caching
 
             Log.Message(string.Format(
                 CultureInfo.InvariantCulture,
-                "[RimWorldOptim.Poc] DDS cache profile: hits={0}; misses={1}",
+                "[FixWorld] DDS cache profile: hits={0}; misses={1}",
                 Interlocked.Read(ref hitCount),
                 Interlocked.Read(ref missCount)));
             Log.Message(string.Format(
                 CultureInfo.InvariantCulture,
-                "[RimWorldOptim.Poc] DDS cache build: created={0}; invalidated={1}; excluded={2}; unsupported={3}; budgetSkipped={4}; failed={5}; buildMs={6}; cacheBytes={7}; maxCacheBytes={8}",
+                "[FixWorld] DDS cache build: created={0}; invalidated={1}; excluded={2}; unsupported={3}; budgetSkipped={4}; failed={5}; buildMs={6}; cacheBytes={7}; maxCacheBytes={8}",
                 Interlocked.Read(ref createdCount),
                 Interlocked.Read(ref invalidatedCount),
                 Interlocked.Read(ref excludedCount),
@@ -234,7 +234,7 @@ namespace RimWorldOptim.Poc.Caching
             currentCacheBytes += result.CreatedBytes;
             if (result.Error != null)
             {
-                Log.Warning("[RimWorldOptim.Poc] DDS cache build for " + mod.PackageId + ": " + result.Error);
+                Log.Warning("[FixWorld] DDS cache build for " + mod.PackageId + ": " + result.Error);
             }
 
             foreach (TextureCacheEntry entry in missingEntries)

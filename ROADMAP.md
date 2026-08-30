@@ -7,7 +7,7 @@ ohne Spielverhalten oder Saves zu beschädigen.
 
 ## 1. Grundlage
 
-Der Zielbuild ist dekompiliert, der Harmony-PoC baut, ein komplexer Save ist
+Der Zielbuild ist dekompiliert, FixWorld baut, ein komplexer Save ist
 eingefroren und Dubs Performance Analyzer ist installiert.
 
 ## 2. Mod-Loading

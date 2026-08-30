@@ -3,8 +3,8 @@
     <TargetFramework>net472</TargetFramework>
     <LangVersion>latest</LangVersion>
     <PlatformTarget>x64</PlatformTarget>
-    <AssemblyName>RimWorldOptim.Poc</AssemblyName>
-    <RootNamespace>RimWorldOptim.Poc</RootNamespace>
+    <AssemblyName>FixWorld</AssemblyName>
+    <RootNamespace>FixWorld</RootNamespace>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <Deterministic>true</Deterministic>

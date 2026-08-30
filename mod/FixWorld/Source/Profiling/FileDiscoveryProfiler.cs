@@ -7,11 +7,11 @@ using System.Threading;
 using UnityEngine;
 using Verse;
 
-namespace RimWorldOptim.Poc.Profiling
+namespace FixWorld.Profiling
 {
     internal static class FileDiscoveryProfiler
     {
-        private const string EnabledEnvironmentVariable = "RIMWORLDOPTIM_PROFILE_FILE_DISCOVERY";
+        private const string EnabledEnvironmentVariable = "FIXWORLD_PROFILE_FILE_DISCOVERY";
 
         private static readonly bool Enabled = ProfilerRegistry.IsEnabled(EnabledEnvironmentVariable);
 
@@ -60,7 +60,7 @@ namespace RimWorldOptim.Poc.Profiling
 
             Log.Message(string.Format(
                 CultureInfo.InvariantCulture,
-                "[RimWorldOptim.Poc] File discovery profile: calls={0}; files={1}; totalMs={2:0.###}; textureCalls={3}; textureFiles={4}; textureMs={5:0.###}",
+                "[FixWorld] File discovery profile: calls={0}; files={1}; totalMs={2:0.###}; textureCalls={3}; textureFiles={4}; textureMs={5:0.###}",
                 Interlocked.Read(ref callCount),
                 Interlocked.Read(ref fileCount),
                 ProfilerRegistry.ToMilliseconds(Interlocked.Read(ref totalTicks)),

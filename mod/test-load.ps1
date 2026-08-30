@@ -15,11 +15,11 @@ Set-StrictMode -Version Latest
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $workspaceRoot 'tools\rimworld-window.ps1')
 
-$modRoot = Join-Path $PSScriptRoot 'RimWorldOptim.Poc'
-$modLink = Join-Path $GameRoot 'Mods\RimWorldOptim.Poc'
+$modRoot = Join-Path $PSScriptRoot 'FixWorld'
+$modLink = Join-Path $GameRoot 'Mods\FixWorld'
 $gameExe = Join-Path $GameRoot 'RimWorldWin64.exe'
 $configTemplate = Join-Path $PSScriptRoot 'test-data\Config\ModsConfig.xml'
-$userDataRoot = Join-Path $workspaceRoot 'profiling\poc-userdata'
+$userDataRoot = Join-Path $workspaceRoot 'profiling\fixworld-userdata'
 $configRoot = Join-Path $userDataRoot 'Config'
 $configPath = Join-Path $configRoot 'ModsConfig.xml'
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -61,12 +61,12 @@ $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 try {
     $previousCacheSetting = [Environment]::GetEnvironmentVariable(
-        'RIMWORLDOPTIM_DDS_CACHE',
+        'FIXWORLD_DDS_CACHE',
         [EnvironmentVariableTarget]::Process)
     try {
         if ($DisableDdsCache) {
             [Environment]::SetEnvironmentVariable(
-                'RIMWORLDOPTIM_DDS_CACHE',
+                'FIXWORLD_DDS_CACHE',
                 '0',
                 [EnvironmentVariableTarget]::Process)
         }
@@ -81,15 +81,15 @@ try {
     }
     finally {
         [Environment]::SetEnvironmentVariable(
-            'RIMWORLDOPTIM_DDS_CACHE',
+            'FIXWORLD_DDS_CACHE',
             $previousCacheSetting,
             [EnvironmentVariableTarget]::Process)
     }
 
     while ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
         if (Test-Path -LiteralPath $logPath -PathType Leaf) {
-            $loaded = [bool](Select-String -LiteralPath $logPath -SimpleMatch '[RimWorldOptim.Poc] Loaded.' -Quiet)
-            $finalized = [bool](Select-String -LiteralPath $logPath -SimpleMatch '[RimWorldOptim.Poc] Harmony PoC observed Game.FinalizeInit.' -Quiet)
+            $loaded = [bool](Select-String -LiteralPath $logPath -SimpleMatch '[FixWorld] Loaded.' -Quiet)
+            $finalized = [bool](Select-String -LiteralPath $logPath -SimpleMatch '[FixWorld] Observed Game.FinalizeInit.' -Quiet)
             if ($finalized) {
                 break
             }
@@ -113,7 +113,7 @@ try {
             'Could not load file or assembly'
             'MissingMethodException'
             'TypeLoadException'
-            '\[RimWorldOptim\.Poc\].*(error|exception)'
+            '\[FixWorld\].*(error|exception)'
         )
     )
 

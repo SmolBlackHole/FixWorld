@@ -5,11 +5,11 @@ using System.IO;
 using System.Linq;
 using Verse;
 
-namespace RimWorldOptim.Poc.Profiling
+namespace FixWorld.Profiling
 {
     internal static class TexturePathProfiler
     {
-        private const string EnabledEnvironmentVariable = "RIMWORLDOPTIM_PROFILE_TEXTURE_PATHS";
+        private const string EnabledEnvironmentVariable = "FIXWORLD_PROFILE_TEXTURE_PATHS";
 
         private static readonly bool Enabled = ProfilerRegistry.IsEnabled(EnabledEnvironmentVariable);
 
@@ -104,7 +104,7 @@ namespace RimWorldOptim.Poc.Profiling
 
             Log.Message(string.Format(
                 CultureInfo.InvariantCulture,
-                "[RimWorldOptim.Poc] Texture path profile: unique={0}; duplicatePaths={1}; potentiallyShadowedFiles={2}; potentiallyShadowedBytes={3}; topShadowedMods={4}",
+                "[FixWorld] Texture path profile: unique={0}; duplicatePaths={1}; potentiallyShadowedFiles={2}; potentiallyShadowedBytes={3}; topShadowedMods={4}",
                 OwnersByPath.Count,
                 duplicatePathCount,
                 shadowedFileCount,

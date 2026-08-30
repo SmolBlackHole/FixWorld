@@ -1,6 +1,6 @@
 using System;
 
-namespace RimWorldOptim.Poc.Profiling
+namespace FixWorld.Profiling
 {
     internal static class ProfilerRegistry
     {

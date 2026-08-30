@@ -1,6 +1,6 @@
 # TODO
 
-Aktuell: **L3 automatischer DDS-Disk-Cache**
+Aktuell: **L4 inkrementeller DDS-Pack-Cache**
 
 ## Einmalig
 
@@ -9,6 +9,7 @@ Aktuell: **L3 automatischer DDS-Disk-Cache**
 - [x] Dubs Performance Analyzer installieren
 - [ ] Dubs beim nächsten Spielstart aktivieren
 - [x] bereinigten Stand committen
+- [x] Mod und Package-ID vollständig auf FixWorld umstellen
 
 ## Mod-Loading
 
@@ -22,11 +23,14 @@ Aktuell: **L3 automatischer DDS-Disk-Cache**
 - [x] Vollcache messen: 10.461 erzeugte DDS, 162 ungeeignete Abmessungen, 4 Hospitality-PSD, 0 Fehler
 - [x] automatischen, invalidierbaren DDS-Cache für alle geeigneten aktiven Mod-Texturen bauen
 - [x] DDS A/B testen: Texturpfad 21,16 s ohne Cache gegenüber 2,24 bis 2,51 s mit warmem Vollcache
-- [ ] `texconv` für Windows x64 inklusive Lizenz sauber paketieren oder durch einen internen Konverter ersetzen
-- [ ] Linux/macOS: plattformübergreifenden Konverter oder klaren Cache-Build-Fallback festlegen
+- [x] `texconv` für Windows x64 inklusive Lizenz und Prüfsumme bündeln
+- [ ] Linux: kleinen DirectXTex-Wrapper gegen CompressonatorCLI testen und Originaltextur-Fallback beibehalten
 - [x] Cache bei 4 GiB deckeln und mindestens 5 GiB freien Plattenplatz reservieren
 - [x] Budget-Fallback testen: 19 DDS bis exakt 1 MiB, 10.442 übersprungen, Spielstart gültig
 - [ ] LRU-Bereinigung innerhalb des Cache-Budgets untersuchen
+- [ ] pro Mod eine `.fwp`-Datendatei und einen atomaren `.fwi`-Index bauen
+- [ ] geänderte Texturen nur anhängen, entfernte Einträge aus dem Index löschen
+- [ ] Packdatei ab 25 % ungenutzten Daten budgetabhängig kompaktieren
 
 ## DDS-Messmatrix
 

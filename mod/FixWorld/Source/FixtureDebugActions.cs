@@ -7,11 +7,11 @@ using LudeonTK;
 using RimWorld;
 using Verse;
 
-namespace RimWorldOptim.Poc
+namespace FixWorld
 {
     internal static class FixtureDebugActions
     {
-        private const string Category = "RimWorldOptim";
+        private const string Category = "FixWorld";
 
         [DebugAction(Category, "Report fixture activity",
             allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -73,7 +73,7 @@ namespace RimWorldOptim.Poc
             float storedEnergy = powerNets.Sum(net => net.CurrentStoredEnergy());
 
             StringBuilder report = new StringBuilder();
-            report.AppendLine("[RimWorldOptim.Poc] Fixture activity report");
+            report.AppendLine("[FixWorld] Fixture activity report");
             report.AppendLine("Fixture: " + fixtureId);
             report.AppendLine("Tick: " + Find.TickManager.TicksGame.ToString(CultureInfo.InvariantCulture));
             report.AppendLine(string.Format(

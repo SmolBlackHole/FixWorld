@@ -8,7 +8,7 @@
 # Profiler captures and benchmark result data
 /profiling/captures/
 /profiling/cache/
-/profiling/poc-userdata/
+/profiling/fixworld-userdata/
 /benchmarks/results/
 /benchmarks/saves/
 

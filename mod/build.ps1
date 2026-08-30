@@ -48,13 +48,13 @@ else {
     }
 }
 
-$project = Join-Path $PSScriptRoot 'RimWorldOptim.Poc\Source\RimWorldOptim.Poc.csproj'
+$project = Join-Path $PSScriptRoot 'FixWorld\Source\FixWorld.csproj'
 & $DotNetPath build $project --configuration Release --nologo
 if ($LASTEXITCODE -ne 0) {
     throw "Build failed with exit code $LASTEXITCODE"
 }
 
-$assembly = Join-Path $PSScriptRoot 'RimWorldOptim.Poc\Assemblies\RimWorldOptim.Poc.dll'
+$assembly = Join-Path $PSScriptRoot 'FixWorld\Assemblies\FixWorld.dll'
 if (-not (Test-Path -LiteralPath $assembly -PathType Leaf)) {
     throw "The build succeeded, but the mod DLL is missing: $assembly"
 }

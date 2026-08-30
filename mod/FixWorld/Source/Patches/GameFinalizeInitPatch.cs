@@ -1,7 +1,7 @@
 using HarmonyLib;
 using Verse;
 
-namespace RimWorldOptim.Poc.Patches
+namespace FixWorld.Patches
 {
     [HarmonyPatch(typeof(Game), nameof(Game.FinalizeInit))]
     internal static class GameFinalizeInitPatch
@@ -9,7 +9,7 @@ namespace RimWorldOptim.Poc.Patches
         [HarmonyPostfix]
         private static void Postfix()
         {
-            Log.Message("[RimWorldOptim.Poc] Harmony PoC observed Game.FinalizeInit. Game state was not changed.");
+            Log.Message("[FixWorld] Observed Game.FinalizeInit. Game state was not changed.");
         }
     }
 }
