@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Reference Include="System.Runtime.Serialization" />
     <Reference Include="Assembly-CSharp">
       <HintPath>$(RimWorldManagedDir)\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
@@ -33,6 +34,14 @@
     </Reference>
     <Reference Include="UnityEngine.ImageConversionModule">
       <HintPath>$(RimWorldManagedDir)\UnityEngine.ImageConversionModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(RimWorldManagedDir)\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>$(RimWorldManagedDir)\UnityEngine.TextRenderingModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="0Harmony">
@@ -48,6 +57,10 @@
       Text="UnityEngine.CoreModule.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
     <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.ImageConversionModule.dll')"
       Text="UnityEngine.ImageConversionModule.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
+    <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.IMGUIModule.dll')"
+      Text="UnityEngine.IMGUIModule.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
+    <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.TextRenderingModule.dll')"
+      Text="UnityEngine.TextRenderingModule.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
     <Error Condition="!Exists('$(HarmonyAssemblyPath)')"
       Text="0Harmony.dll is missing. Set HarmonyAssemblyPath in mod/Local.Build.props or RIMWORLD_HARMONY_ASSEMBLY." />
   </Target>

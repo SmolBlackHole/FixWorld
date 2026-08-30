@@ -25,8 +25,10 @@ nicht vorgesehen; später folgt ein Pilot-Test mit einer zweiten Modliste.
 ## Befehle
 
 ```powershell
-.\mod\build.ps1
-.\mod\test-load.ps1
+python .\tools\build.py
+python .\tools\smoke_test.py
+python .\tools\benchmark.py
+python .\tools\rimworld_process.py
 ```
 
 Die RimWorld-Binaries bleiben unangetastet. Der eigene Mod und Dubs Performance

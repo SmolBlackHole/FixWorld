@@ -10,14 +10,10 @@ using RimWorld.IO;
 using UnityEngine;
 using Verse;
 
-namespace FixWorld.Profiling
+namespace FixWorld.Diagnostics
 {
-    internal static class TextureLoaderProfiler
+    internal static class TextureProbe
     {
-        private const string EnabledEnvironmentVariable = "FIXWORLD_PROFILE_TEXTURE_LOAD";
-
-        private static readonly bool Enabled = ProfilerRegistry.IsEnabled(EnabledEnvironmentVariable);
-
         private static long fileCount;
         private static long byteCount;
         private static long readTicks;
@@ -34,27 +30,17 @@ namespace FixWorld.Profiling
 
         internal static long BeginLoad()
         {
-            return Enabled ? Stopwatch.GetTimestamp() : 0L;
+            return Stopwatch.GetTimestamp();
         }
 
         internal static void EndLoad(long startedAt)
         {
-            if (startedAt == 0L)
-            {
-                return;
-            }
-
             Interlocked.Increment(ref fileCount);
             Interlocked.Add(ref totalTicks, Stopwatch.GetTimestamp() - startedAt);
         }
 
         internal static byte[] ReadAllBytes(VirtualFile file)
         {
-            if (!Enabled)
-            {
-                return file.ReadAllBytes();
-            }
-
             long startedAt = Stopwatch.GetTimestamp();
             byte[] data = file.ReadAllBytes();
             Interlocked.Add(ref readTicks, Stopwatch.GetTimestamp() - startedAt);
@@ -64,11 +50,6 @@ namespace FixWorld.Profiling
 
         internal static bool LoadImage(Texture2D texture, byte[] data)
         {
-            if (!Enabled)
-            {
-                return ImageConversion.LoadImage(texture, data);
-            }
-
             long startedAt = Stopwatch.GetTimestamp();
             bool result = ImageConversion.LoadImage(texture, data);
             Interlocked.Increment(ref loadImageCount);
@@ -78,12 +59,6 @@ namespace FixWorld.Profiling
 
         internal static void Apply(Texture2D texture, bool updateMipmaps, bool makeNoLongerReadable)
         {
-            if (!Enabled)
-            {
-                texture.Apply(updateMipmaps, makeNoLongerReadable);
-                return;
-            }
-
             long startedAt = Stopwatch.GetTimestamp();
             texture.Apply(updateMipmaps, makeNoLongerReadable);
             Interlocked.Increment(ref applyCount);
@@ -92,11 +67,6 @@ namespace FixWorld.Profiling
 
         internal static Texture2D FastCompressDXT(Texture2D texture, bool deleteOriginal)
         {
-            if (!Enabled)
-            {
-                return StaticTextureAtlas.FastCompressDXT(texture, deleteOriginal);
-            }
-
             long startedAt = Stopwatch.GetTimestamp();
             Texture2D result = StaticTextureAtlas.FastCompressDXT(texture, deleteOriginal);
             Interlocked.Increment(ref fastCompressCount);
@@ -106,90 +76,124 @@ namespace FixWorld.Profiling
 
         internal static long BeginDdsLoad(VirtualFile file)
         {
-            if (!Enabled)
-            {
-                return 0L;
-            }
-
             Interlocked.Add(ref ddsByteCount, file.Length);
             return Stopwatch.GetTimestamp();
         }
 
         internal static void EndDdsLoad(long startedAt)
         {
-            if (startedAt == 0L)
-            {
-                return;
-            }
-
             Interlocked.Increment(ref ddsFileCount);
             Interlocked.Add(ref ddsLoadTicks, Stopwatch.GetTimestamp() - startedAt);
         }
 
-        internal static void WriteSummary()
+        internal static TextureProbeSnapshot GetSnapshot()
         {
-            if (!Enabled)
-            {
-                return;
-            }
-
             long measuredTotalTicks = Interlocked.Read(ref totalTicks);
             long measuredReadTicks = Interlocked.Read(ref readTicks);
-            double totalMilliseconds = ProfilerRegistry.ToMilliseconds(measuredTotalTicks);
-            double readMilliseconds = ProfilerRegistry.ToMilliseconds(measuredReadTicks);
+            double totalMilliseconds = BenchmarkRecorder.ToMilliseconds(measuredTotalTicks);
+            double readMilliseconds = BenchmarkRecorder.ToMilliseconds(measuredReadTicks);
             double processingMilliseconds = Math.Max(0.0, totalMilliseconds - readMilliseconds);
-            double loadImageMilliseconds = ProfilerRegistry.ToMilliseconds(Interlocked.Read(ref loadImageTicks));
-            double applyMilliseconds = ProfilerRegistry.ToMilliseconds(Interlocked.Read(ref applyTicks));
-            double fastCompressMilliseconds = ProfilerRegistry.ToMilliseconds(Interlocked.Read(ref fastCompressTicks));
+            double loadImageMilliseconds = BenchmarkRecorder.ToMilliseconds(
+                Interlocked.Read(ref loadImageTicks));
+            double applyMilliseconds = BenchmarkRecorder.ToMilliseconds(
+                Interlocked.Read(ref applyTicks));
+            double fastCompressMilliseconds = BenchmarkRecorder.ToMilliseconds(
+                Interlocked.Read(ref fastCompressTicks));
             double otherMilliseconds = Math.Max(
                 0.0,
-                processingMilliseconds - loadImageMilliseconds - applyMilliseconds - fastCompressMilliseconds);
+                processingMilliseconds - loadImageMilliseconds - applyMilliseconds -
+                fastCompressMilliseconds);
 
-            Log.Message(string.Format(
-                CultureInfo.InvariantCulture,
-                "[FixWorld] Texture loader profile: files={0}; bytes={1}; totalMs={2:0.###}; readMs={3:0.###}; processingMs={4:0.###}",
+            return new TextureProbeSnapshot(
                 Interlocked.Read(ref fileCount),
                 Interlocked.Read(ref byteCount),
                 totalMilliseconds,
                 readMilliseconds,
-                processingMilliseconds));
-            Log.Message(string.Format(
-                CultureInfo.InvariantCulture,
-                "[FixWorld] Texture main-thread profile: loadImageCalls={0}; loadImageMs={1:0.###}; applyCalls={2}; applyMs={3:0.###}; fastCompressCalls={4}; fastCompressMs={5:0.###}; otherMs={6:0.###}",
+                processingMilliseconds,
                 Interlocked.Read(ref loadImageCount),
                 loadImageMilliseconds,
                 Interlocked.Read(ref applyCount),
                 applyMilliseconds,
                 Interlocked.Read(ref fastCompressCount),
                 fastCompressMilliseconds,
-                otherMilliseconds));
-            Log.Message(string.Format(
-                CultureInfo.InvariantCulture,
-                "[FixWorld] DDS loader profile: files={0}; bytes={1}; totalMs={2:0.###}",
+                otherMilliseconds,
                 Interlocked.Read(ref ddsFileCount),
                 Interlocked.Read(ref ddsByteCount),
-                ProfilerRegistry.ToMilliseconds(Interlocked.Read(ref ddsLoadTicks))));
+                BenchmarkRecorder.ToMilliseconds(Interlocked.Read(ref ddsLoadTicks)));
+        }
+    }
+
+    internal readonly struct TextureProbeSnapshot
+    {
+        internal readonly long Files;
+        internal readonly long Bytes;
+        internal readonly double TotalMilliseconds;
+        internal readonly double ReadMilliseconds;
+        internal readonly double ProcessingMilliseconds;
+        internal readonly long LoadImageCalls;
+        internal readonly double LoadImageMilliseconds;
+        internal readonly long ApplyCalls;
+        internal readonly double ApplyMilliseconds;
+        internal readonly long FastCompressCalls;
+        internal readonly double FastCompressMilliseconds;
+        internal readonly double OtherMilliseconds;
+        internal readonly long DdsFiles;
+        internal readonly long DdsBytes;
+        internal readonly double DdsMilliseconds;
+
+        internal TextureProbeSnapshot(
+            long files,
+            long bytes,
+            double totalMilliseconds,
+            double readMilliseconds,
+            double processingMilliseconds,
+            long loadImageCalls,
+            double loadImageMilliseconds,
+            long applyCalls,
+            double applyMilliseconds,
+            long fastCompressCalls,
+            double fastCompressMilliseconds,
+            double otherMilliseconds,
+            long ddsFiles,
+            long ddsBytes,
+            double ddsMilliseconds)
+        {
+            Files = files;
+            Bytes = bytes;
+            TotalMilliseconds = totalMilliseconds;
+            ReadMilliseconds = readMilliseconds;
+            ProcessingMilliseconds = processingMilliseconds;
+            LoadImageCalls = loadImageCalls;
+            LoadImageMilliseconds = loadImageMilliseconds;
+            ApplyCalls = applyCalls;
+            ApplyMilliseconds = applyMilliseconds;
+            FastCompressCalls = fastCompressCalls;
+            FastCompressMilliseconds = fastCompressMilliseconds;
+            OtherMilliseconds = otherMilliseconds;
+            DdsFiles = ddsFiles;
+            DdsBytes = ddsBytes;
+            DdsMilliseconds = ddsMilliseconds;
         }
     }
 
     [HarmonyPatch(typeof(ModDdsLoader), nameof(ModDdsLoader.TryLoadDds))]
-    internal static class DdsLoaderProfilePatch
+    internal static class DdsLoaderProbePatch
     {
         [HarmonyPrefix]
         private static void Prefix(VirtualFile file, out long __state)
         {
-            __state = TextureLoaderProfiler.BeginDdsLoad(file);
+            __state = TextureProbe.BeginDdsLoad(file);
         }
 
         [HarmonyPostfix]
         private static void Postfix(long __state)
         {
-            TextureLoaderProfiler.EndDdsLoad(__state);
+            TextureProbe.EndDdsLoad(__state);
         }
     }
 
     [HarmonyPatch]
-    internal static class TextureLoaderProfilePatch
+    internal static class TextureLoaderProbePatch
     {
         private static MethodBase TargetMethod()
         {
@@ -201,44 +205,46 @@ namespace FixWorld.Profiling
         [HarmonyPrefix]
         private static void Prefix(out long __state)
         {
-            __state = TextureLoaderProfiler.BeginLoad();
+            __state = TextureProbe.BeginLoad();
         }
 
         [HarmonyPostfix]
         private static void Postfix(long __state)
         {
-            TextureLoaderProfiler.EndLoad(__state);
+            TextureProbe.EndLoad(__state);
         }
 
         [HarmonyTranspiler]
         private static IEnumerable<CodeInstruction> Transpiler(
             IEnumerable<CodeInstruction> instructions)
         {
-            MethodInfo readOriginal = AccessTools.Method(typeof(VirtualFile), nameof(VirtualFile.ReadAllBytes));
+            MethodInfo readOriginal = AccessTools.Method(
+                typeof(VirtualFile),
+                nameof(VirtualFile.ReadAllBytes));
             MethodInfo readReplacement = AccessTools.Method(
-                typeof(TextureLoaderProfiler),
-                nameof(TextureLoaderProfiler.ReadAllBytes));
+                typeof(TextureProbe),
+                nameof(TextureProbe.ReadAllBytes));
             MethodInfo loadImageOriginal = AccessTools.Method(
                 typeof(ImageConversion),
                 nameof(ImageConversion.LoadImage),
                 new[] { typeof(Texture2D), typeof(byte[]) });
             MethodInfo loadImageReplacement = AccessTools.Method(
-                typeof(TextureLoaderProfiler),
-                nameof(TextureLoaderProfiler.LoadImage));
+                typeof(TextureProbe),
+                nameof(TextureProbe.LoadImage));
             MethodInfo applyOriginal = AccessTools.Method(
                 typeof(Texture2D),
                 nameof(Texture2D.Apply),
                 new[] { typeof(bool), typeof(bool) });
             MethodInfo applyReplacement = AccessTools.Method(
-                typeof(TextureLoaderProfiler),
-                nameof(TextureLoaderProfiler.Apply));
+                typeof(TextureProbe),
+                nameof(TextureProbe.Apply));
             MethodInfo fastCompressOriginal = AccessTools.Method(
                 typeof(StaticTextureAtlas),
                 nameof(StaticTextureAtlas.FastCompressDXT),
                 new[] { typeof(Texture2D), typeof(bool) });
             MethodInfo fastCompressReplacement = AccessTools.Method(
-                typeof(TextureLoaderProfiler),
-                nameof(TextureLoaderProfiler.FastCompressDXT));
+                typeof(TextureProbe),
+                nameof(TextureProbe.FastCompressDXT));
             int readReplacements = 0;
             int loadImageReplacements = 0;
             int applyReplacements = 0;

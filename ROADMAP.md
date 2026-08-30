@@ -12,8 +12,10 @@ eingefroren und Dubs Performance Analyzer ist installiert.
 
 ## 2. Mod-Loading
 
-Startzeit in grobe Phasen zerlegen, den größten reproduzierbaren Anteil finden
-und genau eine kleine Änderung per A/B-Test bewerten.
+Den Vanilla-Start in `Bootstrap`, `XML & Patches`, `Definitions`, `Content` und
+`Finalize` messen. Danach den größten reproduzierbaren Anteil mit genau einer
+kleinen Änderung per A/B-Test bewerten. Die spätere optimierte Content-Pipeline
+bekommt eigene Stages und wird nicht mit der Vanilla-Reihenfolge vermischt.
 
 ## 3. Ingame-Performance
 
@@ -24,6 +26,11 @@ und genau eine verhaltensneutrale Optimierung per A/B-Test bewerten.
 
 Nur nach einem klaren, reproduzierbaren Erfolg folgt der nächste Engpass.
 Unklare oder unwirksame Änderungen werden vollständig zurückgebaut.
+
+## Später
+
+DDS-Packs, OBST als mögliches Packformat und der Linux-Konverter folgen erst,
+wenn der staged Loader eine direkte Byte-/Stream-Ladegrenze besitzt.
 
 ## Grenzen
 

@@ -127,21 +127,12 @@ namespace FixWorld.Caching
             }
         }
 
-        internal static void WriteSummary()
+        internal static TextureDdsCacheSnapshot GetSnapshot()
         {
-            if (!enabled)
-            {
-                return;
-            }
-
-            Log.Message(string.Format(
-                CultureInfo.InvariantCulture,
-                "[FixWorld] DDS cache profile: hits={0}; misses={1}",
+            return new TextureDdsCacheSnapshot(
+                enabled,
                 Interlocked.Read(ref hitCount),
-                Interlocked.Read(ref missCount)));
-            Log.Message(string.Format(
-                CultureInfo.InvariantCulture,
-                "[FixWorld] DDS cache build: created={0}; invalidated={1}; excluded={2}; unsupported={3}; budgetSkipped={4}; failed={5}; buildMs={6}; cacheBytes={7}; maxCacheBytes={8}",
+                Interlocked.Read(ref missCount),
                 Interlocked.Read(ref createdCount),
                 Interlocked.Read(ref invalidatedCount),
                 Interlocked.Read(ref excludedCount),
@@ -150,7 +141,7 @@ namespace FixWorld.Caching
                 Interlocked.Read(ref failedCount),
                 Interlocked.Read(ref buildMilliseconds),
                 Interlocked.Read(ref currentCacheBytes),
-                maxCacheBytes));
+                maxCacheBytes);
         }
 
         private static void ApplyCore(ModContentPack mod, Dictionary<string, FileInfo> files)
@@ -378,6 +369,50 @@ namespace FixWorld.Caching
                 RemovedDirectories = removedDirectories;
                 RemovedBytes = removedBytes;
             }
+        }
+    }
+
+    internal readonly struct TextureDdsCacheSnapshot
+    {
+        internal readonly bool Enabled;
+        internal readonly long Hits;
+        internal readonly long Misses;
+        internal readonly long Created;
+        internal readonly long Invalidated;
+        internal readonly long Excluded;
+        internal readonly long Unsupported;
+        internal readonly long BudgetSkipped;
+        internal readonly long Failed;
+        internal readonly long BuildMilliseconds;
+        internal readonly long CacheBytes;
+        internal readonly long MaxCacheBytes;
+
+        internal TextureDdsCacheSnapshot(
+            bool enabled,
+            long hits,
+            long misses,
+            long created,
+            long invalidated,
+            long excluded,
+            long unsupported,
+            long budgetSkipped,
+            long failed,
+            long buildMilliseconds,
+            long cacheBytes,
+            long maxCacheBytes)
+        {
+            Enabled = enabled;
+            Hits = hits;
+            Misses = misses;
+            Created = created;
+            Invalidated = invalidated;
+            Excluded = excluded;
+            Unsupported = unsupported;
+            BudgetSkipped = budgetSkipped;
+            Failed = failed;
+            BuildMilliseconds = buildMilliseconds;
+            CacheBytes = cacheBytes;
+            MaxCacheBytes = maxCacheBytes;
         }
     }
 }

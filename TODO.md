@@ -1,6 +1,6 @@
 # TODO
 
-Aktuell: **L4 inkrementeller DDS-Pack-Cache**
+Aktuell: **Staged Loader: nächsten messbaren Engpass auswählen**
 
 ## Einmalig
 
@@ -24,13 +24,28 @@ Aktuell: **L4 inkrementeller DDS-Pack-Cache**
 - [x] automatischen, invalidierbaren DDS-Cache für alle geeigneten aktiven Mod-Texturen bauen
 - [x] DDS A/B testen: Texturpfad 21,16 s ohne Cache gegenüber 2,24 bis 2,51 s mit warmem Vollcache
 - [x] `texconv` für Windows x64 inklusive Lizenz und Prüfsumme bündeln
-- [ ] Linux: kleinen DirectXTex-Wrapper gegen CompressonatorCLI testen und Originaltextur-Fallback beibehalten
 - [x] Cache bei 4 GiB deckeln und mindestens 5 GiB freien Plattenplatz reservieren
 - [x] Budget-Fallback testen: 19 DDS bis exakt 1 MiB, 10.442 übersprungen, Spielstart gültig
-- [ ] LRU-Bereinigung innerhalb des Cache-Budgets untersuchen
-- [ ] pro Mod eine `.fwp`-Datendatei und einen atomaren `.fwi`-Index bauen
-- [ ] geänderte Texturen nur anhängen, entfernte Einträge aus dem Index löschen
-- [ ] Packdatei ab 25 % ungenutzten Daten budgetabhängig kompaktieren
+
+## Staged Loader (aktuell)
+
+- [x] Vanilla-Start in `Bootstrap -> XML & Patches -> Definitions -> Content -> Finalize` zerlegen
+- [x] zentralen Loader-Observer statt einer großen Methoden-Patchliste bauen
+- [x] eigene FixWorld-Ladeanzeige aus demselben Loader-Snapshot zeichnen
+- [x] typisierten C#-Report und kleines Python-Benchmarktool bauen
+- [ ] `LoadTextures` und statische Konstruktoren als nächste Engpässe getrennt untersuchen
+- [x] parallele Discovery auf NVMe vorerst zurückstellen: nur 74,8 ms Gesamtpotenzial
+- [ ] Überschreibungen vor Dekodierung auflösen, damit Verlierer gar nicht vorbereitet werden
+- [x] Cache-Artefakte inkrementell anhand Quellpfad, Größe, Änderungszeit und Cacheformat aktualisieren
+- [ ] Cache-Schlüssel aus Quellinhalt, Loader-Version, Plattform und Zielformat bilden
+- [ ] PNG-Dekodierung, Mipmaps und BC3-Kompression in begrenzten Worker-Batches vorbereiten
+- [x] Cache-Ergebnisse erst nach erfolgreicher Konvertierung atomar veröffentlichen
+- [ ] Hauptthread nur fertige DDS-/Raw-Artefakte in ursprünglicher Mod-Reihenfolge übernehmen lassen
+- [ ] Worker-Pipeline mit fester Obergrenze und Backpressure statt unbegrenzter Parallelität bauen
+- [ ] RAM- und VRAM-Budget in Bytes statt nur eine feste Anzahl Dateien begrenzen
+- [ ] Puffer wiederverwenden und Allokationen sowie GC-Pausen pro Stage messen
+- [ ] heiße Texturen vorladen und seltene Texturen optional lazy laden
+- [ ] Zeit, Trefferquote, Queue-Stalls, RAM, VRAM und Cachegröße pro Stage messen
 
 ## DDS-Messmatrix
 
@@ -57,26 +72,6 @@ Aktuell: **L4 inkrementeller DDS-Pack-Cache**
 - [ ] statische Konstruktoren und langsame Mod-Konstruktoren einzeln messen
 - [ ] `ThingDef.PostLoad`, Sound-Auflösung und XML-Patches getrennt messen
 - [ ] Assembly-Scanning, Reflection und Harmony-Patching auf wiederholbare Arbeit prüfen
-
-## Staged Loader
-
-- [ ] Pipeline in `Discover -> Resolve -> Prepare -> Apply -> Initialize` zerlegen
-- [x] parallele Discovery auf NVMe vorerst zurückstellen: nur 74,8 ms Gesamtpotenzial
-- [ ] parallele Discovery und Read-ahead auf HDD/SATA gesondert testen
-- [ ] Look-ahead anhand der bekannten Loader-Reihenfolge priorisieren: als Nächstes benötigte Dateien zuerst vorbereiten
-- [ ] sequenzielles Read-ahead und gepackte Cache-Dateien nur für HDD/hohe Seek-Zeiten testen
-- [ ] Überschreibungen vor Dekodierung auflösen, damit Verlierer gar nicht vorbereitet werden
-- [x] Cache-Artefakte inkrementell anhand Quellpfad, Größe, Änderungszeit und Cacheformat aktualisieren
-- [ ] Cache-Schlüssel aus Quellinhalt, Loader-Version, Plattform und Zielformat bilden
-- [ ] PNG-Dekodierung, Mipmaps und BC3-Kompression in begrenzten Worker-Batches vorbereiten
-- [x] Cache-Ergebnisse erst nach erfolgreicher Konvertierung atomar veröffentlichen
-- [ ] Hauptthread nur fertige DDS-/Raw-Artefakte in ursprünglicher Mod-Reihenfolge übernehmen lassen
-- [ ] Worker-Pipeline mit fester Obergrenze und Backpressure statt unbegrenzter Parallelität bauen
-- [ ] RAM- und VRAM-Budget in Bytes statt nur eine feste Anzahl Dateien begrenzen
-- [ ] Puffer wiederverwenden und Allokationen sowie GC-Pausen pro Stage messen
-- [ ] heiße Texturen vorladen und seltene Texturen optional lazy laden
-- [ ] Read-ahead nur für HDD/kalten Cache erneut testen, wenn DDS-I/O messbar über 0,65 s liegt
-- [ ] Zeit, Trefferquote, Queue-Stalls, RAM, VRAM und Cachegröße pro Stage messen
 
 ## GPU-Texturpipeline
 
@@ -107,3 +102,14 @@ Aktuell: **L4 inkrementeller DDS-Pack-Cache**
 - [ ] mit Dubs den dominanten Tick-Pfad finden
 - [ ] genau eine Optimierung testen
 - [ ] A/B vergleichen, behalten oder zurückbauen
+
+## Später
+
+- [ ] parallele Discovery, Read-ahead und Look-ahead auf HDD/SATA gesondert testen
+- [ ] DDS-Pack erst nach einer direkten Byte-/Stream-Ladegrenze erneut bewerten
+- [ ] OBST als konformes Packformat mit rebuildbarem Sidecar-Index prüfen
+- [ ] pro Mod eine `.fwp`-Datendatei und einen atomaren `.fwi`-Index bauen
+- [ ] geänderte Texturen nur anhängen, entfernte Einträge aus dem Index löschen
+- [ ] Packdatei ab 25 % ungenutzten Daten budgetabhängig kompaktieren
+- [ ] LRU-Bereinigung innerhalb des Cache-Budgets untersuchen
+- [ ] Linux-Konverter bauen und Originaltextur-Fallback beibehalten

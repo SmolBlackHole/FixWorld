@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+from datetime import datetime
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import time
+
+from build import build_mod
+from rimworld_process import is_rimworld_running, launch, select_monitor
+
+
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_GAME_ROOT = Path(r"G:\Steam\steamapps\common\RimWorld")
+ERROR_PATTERNS = (
+    r"Exception while patching",
+    r"Could not load file or assembly",
+    r"MissingMethodException",
+    r"TypeLoadException",
+    r"\[FixWorld\].*(?:error|exception)",
+)
+
+
+def bounded_int(minimum: int, maximum: int):
+    def parse(value: str) -> int:
+        number = int(value)
+        if not minimum <= number <= maximum:
+            raise argparse.ArgumentTypeError(f"must be between {minimum} and {maximum}")
+        return number
+
+    return parse
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Smoke-test the FixWorld mod loader.")
+    parser.add_argument("--game-root", type=Path, default=DEFAULT_GAME_ROOT)
+    parser.add_argument("--monitor-name", default="G276HL")
+    parser.add_argument("--monitor", type=bounded_int(1, 16), default=2)
+    parser.add_argument("--timeout", type=bounded_int(10, 600), default=180)
+    parser.add_argument("--no-dds-cache", action="store_false", dest="dds_cache")
+    parser.add_argument("--keep-running", action="store_true")
+    parser.add_argument("--minimized", action="store_true")
+    parser.add_argument("--skip-build", action="store_true")
+    parser.set_defaults(dds_cache=True)
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    if not args.skip_build:
+        build_mod()
+
+    game_root = args.game_root.resolve()
+    executable = game_root / "RimWorldWin64.exe"
+    config_template = ROOT / "mod" / "test-data" / "Config" / "ModsConfig.xml"
+    mod_root = ROOT / "mod" / "FixWorld"
+    mod_link = game_root / "Mods" / "FixWorld"
+    if not executable.is_file():
+        raise RuntimeError(f"RimWorld does not exist: {executable}")
+    if not config_template.is_file():
+        raise RuntimeError(f"Test configuration does not exist: {config_template}")
+    try:
+        same_mod = os.path.samefile(mod_link, mod_root)
+    except OSError:
+        same_mod = False
+    if not same_mod:
+        raise RuntimeError(f"The FixWorld mod junction does not point to {mod_root}.")
+    if is_rimworld_running():
+        raise RuntimeError("RimWorld is already running.")
+
+    user_data = ROOT / "profiling" / "fixworld-userdata"
+    config = user_data / "Config"
+    config.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(config_template, config / "ModsConfig.xml")
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    log_path = user_data / f"Player-{timestamp}.log"
+
+    environment = os.environ.copy()
+    environment["FIXWORLD_DDS_CACHE"] = "1" if args.dds_cache else "0"
+    monitor = select_monitor(args.monitor_name, args.monitor)
+    arguments = [
+        f"-savedatafolder={user_data}",
+        "-logFile",
+        str(log_path),
+        "-quicktest",
+        "-popupwindow",
+    ]
+
+    started = time.monotonic()
+    rimworld = launch(
+        executable, game_root, arguments, environment, monitor, args.minimized
+    )
+    loaded = False
+    ready = False
+    errors = 0
+    try:
+        while time.monotonic() - started < args.timeout:
+            if log_path.is_file():
+                log = log_path.read_text(encoding="utf-8", errors="replace")
+                loaded = "[FixWorld] Loaded." in log
+                ready = "[FixWorld] Main menu ready." in log
+                if ready:
+                    break
+            if rimworld.process.poll() is not None:
+                raise RuntimeError(
+                    f"RimWorld exited before the loader completed. Log: {log_path}"
+                )
+            time.sleep(0.25)
+
+        if not loaded or not ready:
+            raise TimeoutError(
+                f"Smoke test incomplete after {args.timeout} seconds. "
+                f"Loaded={loaded}, Ready={ready}, Log={log_path}"
+            )
+
+        log = log_path.read_text(encoding="utf-8", errors="replace")
+        errors = sum(
+            len(re.findall(pattern, log, re.IGNORECASE)) for pattern in ERROR_PATTERNS
+        )
+        if errors:
+            raise RuntimeError(f"Smoke test found {errors} relevant errors: {log_path}")
+    finally:
+        if not args.keep_running:
+            rimworld.close()
+
+    duration = time.monotonic() - started
+    print(
+        f"Loaded={loaded} Ready={ready} RelevantErrors={errors} "
+        f"DurationSeconds={duration:.1f} Log={log_path}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (
+        OSError,
+        RuntimeError,
+        TimeoutError,
+        subprocess.CalledProcessError,
+    ) as error:
+        print(f"error: {error}")
+        raise SystemExit(1)
