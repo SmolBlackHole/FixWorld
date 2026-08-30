@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <RimWorldRoot>X:\path\to\RimWorld</RimWorldRoot>
+    <HarmonyAssemblyPath>X:\path\to\Harmony\Assemblies\0Harmony.dll</HarmonyAssemblyPath>
+  </PropertyGroup>
+</Project>

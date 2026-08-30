@@ -1,0 +1,11 @@
+{
+  "dotnet.defaultSolution": "RimWorldOptim.slnx",
+  "files.readonlyInclude": {
+    "decompiled/Assembly-CSharp/**": true,
+    "mod/**/Assemblies/**": true,
+    "mod/**/bin/**": true,
+    "mod/**/obj/**": true,
+    "profiling/poc-userdata/**": true,
+    "tools/ilspycmd/**": true
+  }
+}

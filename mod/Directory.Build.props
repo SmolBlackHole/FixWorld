@@ -1,0 +1,10 @@
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)Local.Build.props"
+          Condition="Exists('$(MSBuildThisFileDirectory)Local.Build.props')" />
+
+  <PropertyGroup>
+    <RimWorldRoot Condition="'$(RimWorldRoot)' == ''">$(RIMWORLD_ROOT)</RimWorldRoot>
+    <RimWorldManagedDir Condition="'$(RimWorldManagedDir)' == '' and '$(RimWorldRoot)' != ''">$(RimWorldRoot)\RimWorldWin64_Data\Managed</RimWorldManagedDir>
+    <HarmonyAssemblyPath Condition="'$(HarmonyAssemblyPath)' == ''">$(RIMWORLD_HARMONY_ASSEMBLY)</HarmonyAssemblyPath>
+  </PropertyGroup>
+</Project>

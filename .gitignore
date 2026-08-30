@@ -1,0 +1,18 @@
+# Copyrighted/generated game artifacts
+/decompiled/Assembly-CSharp/
+/decompiled/*.dll
+/tools/ilspycmd/
+
+# Profiler captures and benchmark result data
+/profiling/captures/
+/profiling/poc-userdata/
+/benchmarks/results/
+/benchmarks/saves/
+
+# Local machine configuration and build output
+/mod/Local.Build.props
+/mod/**/Assemblies/
+/mod/**/bin/
+/mod/**/obj/
+*.user
+*.suo
