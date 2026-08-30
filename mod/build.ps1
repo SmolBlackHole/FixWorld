@@ -18,7 +18,7 @@ function Test-DotNetSdk([string] $Candidate) {
 
 if ($DotNetPath) {
     if (-not (Test-DotNetSdk $DotNetPath)) {
-        throw "Kein verwendbares .NET SDK unter: $DotNetPath"
+        throw "No usable .NET SDK found at: $DotNetPath"
     }
 }
 else {
@@ -44,19 +44,19 @@ else {
     }
 
     if (-not $DotNetPath) {
-        throw 'Kein .NET SDK gefunden. DotNetPath explizit angeben oder dotnet-sdk installieren.'
+        throw 'No .NET SDK found. Pass DotNetPath explicitly or install dotnet-sdk.'
     }
 }
 
 $project = Join-Path $PSScriptRoot 'RimWorldOptim.Poc\Source\RimWorldOptim.Poc.csproj'
 & $DotNetPath build $project --configuration Release --nologo
 if ($LASTEXITCODE -ne 0) {
-    throw "Build fehlgeschlagen, Exitcode $LASTEXITCODE"
+    throw "Build failed with exit code $LASTEXITCODE"
 }
 
 $assembly = Join-Path $PSScriptRoot 'RimWorldOptim.Poc\Assemblies\RimWorldOptim.Poc.dll'
 if (-not (Test-Path -LiteralPath $assembly -PathType Leaf)) {
-    throw "Build meldete Erfolg, aber die Mod-DLL fehlt: $assembly"
+    throw "The build succeeded, but the mod DLL is missing: $assembly"
 }
 
 $hash = (Get-FileHash -LiteralPath $assembly -Algorithm SHA256).Hash

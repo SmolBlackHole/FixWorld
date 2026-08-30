@@ -1,7 +1,7 @@
 using HarmonyLib;
 using Verse;
 
-namespace RimWorldOptim.Poc
+namespace RimWorldOptim.Poc.Patches
 {
     [HarmonyPatch(typeof(Game), nameof(Game.FinalizeInit))]
     internal static class GameFinalizeInitPatch

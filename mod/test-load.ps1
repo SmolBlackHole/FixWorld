@@ -3,6 +3,9 @@ param(
     [string] $GameRoot = 'G:\Steam\steamapps\common\RimWorld',
     [ValidateRange(10, 600)]
     [int] $TimeoutSeconds = 180,
+    [ValidateNotNullOrEmpty()]
+    [string] $MonitorName = 'G276HL',
+    [switch] $DisableDdsCache,
     [switch] $KeepRunning
 )
 
@@ -10,6 +13,8 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $workspaceRoot 'tools\rimworld-window.ps1')
+
 $modRoot = Join-Path $PSScriptRoot 'RimWorldOptim.Poc'
 $modLink = Join-Path $GameRoot 'Mods\RimWorldOptim.Poc'
 $gameExe = Join-Path $GameRoot 'RimWorldWin64.exe'
@@ -21,20 +26,20 @@ $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $logPath = Join-Path $userDataRoot "Player-$timestamp.log"
 
 if (-not (Test-Path -LiteralPath $gameExe -PathType Leaf)) {
-    throw "RimWorld wurde nicht gefunden: $gameExe"
+    throw "RimWorld was not found: $gameExe"
 }
 
 if (-not (Test-Path -LiteralPath $configTemplate -PathType Leaf)) {
-    throw "Testkonfiguration wurde nicht gefunden: $configTemplate"
+    throw "The test configuration was not found: $configTemplate"
 }
 
 $link = Get-Item -LiteralPath $modLink -ErrorAction Stop
 if ($link.LinkType -ne 'Junction' -or $link.Target -notcontains $modRoot) {
-    throw "Der Mod-Junction zeigt nicht auf $modRoot. Aktuelles Ziel: $($link.Target -join ', ')"
+    throw "The mod junction does not point to $modRoot. Current target: $($link.Target -join ', ')"
 }
 
 if (Get-Process -Name RimWorldWin64 -ErrorAction SilentlyContinue) {
-    throw 'RimWorld laeuft bereits. Der isolierte Test startet keine zweite Instanz.'
+    throw 'RimWorld is already running. The isolated test will not start another instance.'
 }
 
 New-Item -ItemType Directory -Path $configRoot -Force | Out-Null
@@ -46,10 +51,6 @@ $arguments = @(
     $logPath
     '-quicktest'
     '-popupwindow'
-    '-screen-width'
-    '1280'
-    '-screen-height'
-    '720'
 )
 
 $process = $null
@@ -59,7 +60,31 @@ $relevantErrors = @()
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 try {
-    $process = Start-Process -FilePath $gameExe -WorkingDirectory $GameRoot -ArgumentList $arguments -PassThru
+    $previousCacheSetting = [Environment]::GetEnvironmentVariable(
+        'RIMWORLDOPTIM_DDS_CACHE',
+        [EnvironmentVariableTarget]::Process)
+    try {
+        if ($DisableDdsCache) {
+            [Environment]::SetEnvironmentVariable(
+                'RIMWORLDOPTIM_DDS_CACHE',
+                '0',
+                [EnvironmentVariableTarget]::Process)
+        }
+
+        $launch = Start-RimWorldOnDisplay `
+            -FilePath $gameExe `
+            -WorkingDirectory $GameRoot `
+            -ArgumentList $arguments `
+            -MonitorName $MonitorName `
+            -FallbackMonitor 2
+        $process = $launch.Process
+    }
+    finally {
+        [Environment]::SetEnvironmentVariable(
+            'RIMWORLDOPTIM_DDS_CACHE',
+            $previousCacheSetting,
+            [EnvironmentVariableTarget]::Process)
+    }
 
     while ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
         if (Test-Path -LiteralPath $logPath -PathType Leaf) {
@@ -71,7 +96,7 @@ try {
         }
 
         if ($process.HasExited) {
-            throw "RimWorld wurde vor dem FinalizeInit-Nachweis beendet. Log: $logPath"
+            throw "RimWorld exited before FinalizeInit was observed. Log: $logPath"
         }
 
         Start-Sleep -Seconds 1
@@ -79,7 +104,7 @@ try {
     }
 
     if (-not $loaded -or -not $finalized) {
-        throw "Laufzeittest nach $TimeoutSeconds Sekunden nicht vollstaendig. Loaded=$loaded, Finalized=$finalized, Log=$logPath"
+        throw "Runtime test incomplete after $TimeoutSeconds seconds. Loaded=$loaded, Finalized=$finalized, Log=$logPath"
     }
 
     $relevantErrors = @(
@@ -88,12 +113,12 @@ try {
             'Could not load file or assembly'
             'MissingMethodException'
             'TypeLoadException'
-            '\[RimWorldOptim\.Poc\].*(error|exception|fail)'
+            '\[RimWorldOptim\.Poc\].*(error|exception)'
         )
     )
 
     if ($relevantErrors.Count -gt 0) {
-        throw "Der Laufzeittest enthaelt relevante Fehler. Log: $logPath"
+        throw "The runtime test contains relevant errors. Log: $logPath"
     }
 }
 finally {

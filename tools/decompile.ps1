@@ -17,17 +17,17 @@ $dotnet = 'C:\Program Files\dotnet\dotnet.exe'
 
 foreach ($requiredPath in @($sourceAssembly, $ilspy, $dotnet)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
-        throw "Erforderliche Datei fehlt: $requiredPath"
+        throw "Required file is missing: $requiredPath"
     }
 }
 
 $actualSha256 = (Get-FileHash -LiteralPath $sourceAssembly -Algorithm SHA256).Hash
 if ($actualSha256 -ne $ExpectedSha256) {
-    throw "Assembly-Hash weicht ab. Erwartet: $ExpectedSha256, gefunden: $actualSha256"
+    throw "Assembly hash mismatch. Expected: $ExpectedSha256, actual: $actualSha256"
 }
 
 if (Test-Path -LiteralPath $outputPath) {
-    throw "Ausgabe existiert bereits und wird nicht ueberschrieben: $outputPath"
+    throw "Output already exists and will not be overwritten: $outputPath"
 }
 
 New-Item -ItemType Directory -Path $outputPath | Out-Null
@@ -41,11 +41,11 @@ New-Item -ItemType Directory -Path $outputPath | Out-Null
     $sourceAssembly
 
 if ($LASTEXITCODE -ne 0) {
-    throw "ilspycmd wurde mit Exitcode $LASTEXITCODE beendet."
+    throw "ilspycmd exited with code $LASTEXITCODE."
 }
 
 $fileCount = (Get-ChildItem -LiteralPath $outputPath -Recurse -File).Count
-Write-Output "Dekompilierung abgeschlossen: $fileCount Dateien"
+Write-Output "Decompilation complete: $fileCount files"
 Write-Output "Quelle: $sourceAssembly"
 Write-Output "SHA-256: $actualSha256"
-Write-Output "Ausgabe: $outputPath"
+Write-Output "Output: $outputPath"

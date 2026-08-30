@@ -1,5 +1,6 @@
 using System.Reflection;
 using HarmonyLib;
+using RimWorldOptim.Poc.Caching;
 using Verse;
 
 namespace RimWorldOptim.Poc
@@ -10,9 +11,10 @@ namespace RimWorldOptim.Poc
 
         public RimWorldOptimPocMod(ModContentPack content) : base(content)
         {
+            TextureDdsCache.Initialize(content.RootDir);
             var harmony = new Harmony(HarmonyId);
             harmony.PatchAll(Assembly.GetExecutingAssembly());
-            Log.Message("[RimWorldOptim.Poc] Loaded. No optimization patches are active.");
+            Log.Message("[RimWorldOptim.Poc] Loaded. Automatic DDS cache and optional profilers are active.");
         }
     }
 }
