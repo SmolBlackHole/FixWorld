@@ -1,7 +1,9 @@
 # Copyrighted/generated game artifacts
 /decompiled/Assembly-CSharp/
+/decompiled/third-party/
 /decompiled/*.dll
 /tools/ilspycmd/
+/tools/dubs-performance-analyzer/
 
 # Profiler captures and benchmark result data
 /profiling/captures/

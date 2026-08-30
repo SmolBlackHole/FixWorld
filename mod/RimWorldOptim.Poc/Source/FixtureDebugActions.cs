@@ -12,71 +12,12 @@ namespace RimWorldOptim.Poc
     internal static class FixtureDebugActions
     {
         private const string Category = "RimWorldOptim";
-        private const int ExpectedMapSize = 250;
-
-        [DebugAction(Category, "Create catalog control (fresh map)",
-            allowedGameStates = AllowedGameStates.PlayingOnMap)]
-        private static void CreateCatalogControl()
-        {
-            Map map = Find.CurrentMap;
-            string rejectionReason;
-            if (!CanReplaceWithCatalogControl(map, out rejectionReason))
-            {
-                Messages.Message(
-                    "Catalog control not created: " + rejectionReason,
-                    MessageTypeDefOf.RejectInput,
-                    false);
-                return;
-            }
-
-            Autotests_ColonyMaker.MakeColony_Full();
-            WriteActivityReport(map, "catalog-control-v1");
-        }
 
         [DebugAction(Category, "Report fixture activity",
             allowedGameStates = AllowedGameStates.PlayingOnMap)]
         private static void ReportFixtureActivity()
         {
             WriteActivityReport(Find.CurrentMap, "current-map");
-        }
-
-        private static bool CanReplaceWithCatalogControl(Map map, out string reason)
-        {
-            if (map == null)
-            {
-                reason = "no current map";
-                return false;
-            }
-
-            if (map.Size.x != ExpectedMapSize || map.Size.z != ExpectedMapSize)
-            {
-                reason = string.Format(
-                    CultureInfo.InvariantCulture,
-                    "expected a {0}x{0} quick-test map, got {1}x{2}",
-                    ExpectedMapSize,
-                    map.Size.x,
-                    map.Size.z);
-                return false;
-            }
-
-            List<Pawn> playerPawns = map.mapPawns.AllPawnsSpawned
-                .Where(pawn => pawn.Faction == Faction.OfPlayer)
-                .ToList();
-            bool hasUnexpectedPlayerPawn = playerPawns.Any(
-                pawn => !Find.GameInfo.startingAndOptionalPawns.Contains(pawn));
-            bool hasUnexpectedPlayerThing = map.listerThings.AllThings.Any(
-                thing => !(thing is Pawn) && thing.Faction == Faction.OfPlayer);
-            bool hasPlayerZone = map.zoneManager.AllZones.Count != 0;
-            bool hasDesignation = map.designationManager.AllDesignations.Count != 0;
-
-            if (hasUnexpectedPlayerPawn || hasUnexpectedPlayerThing || hasPlayerZone || hasDesignation)
-            {
-                reason = "the map contains player state beyond the untouched starting pawns";
-                return false;
-            }
-
-            reason = null;
-            return true;
         }
 
         private static void WriteActivityReport(Map map, string fixtureId)
@@ -102,18 +43,32 @@ namespace RimWorldOptim.Poc
             List<Zone_Growing> growingZones = map.zoneManager.AllZones
                 .OfType<Zone_Growing>()
                 .ToList();
+            List<Zone_Fishing> fishingZones = map.zoneManager.AllZones
+                .OfType<Zone_Fishing>()
+                .ToList();
             List<PowerNet> powerNets = map.powerNetManager.AllNetsListForReading;
 
             int activeBills = workTables.Sum(table => table.BillStack.Count);
+            int suspendedBills = workTables.Sum(table =>
+                table.BillStack.Bills.Count(bill => bill.suspended));
             int growingCells = growingZones.Sum(zone => zone.Cells.Count);
             int plantedGrowingCells = growingZones.Sum(zone =>
                 zone.Cells.Count(cell => cell.GetPlant(map) != null));
+            int harvestablePlants = growingZones.Sum(zone =>
+                zone.Cells.Count(cell => cell.GetPlant(map)?.HarvestableNow == true));
+            int fishableCells = fishingZones.Sum(zone => zone.FishbleCells.Count);
             int itemCount = map.listerThings.AllThings.Count(
                 thing => thing.def.category == ThingCategory.Item);
             int filthCount = map.listerThings.AllThings.Count(thing => thing is Filth);
             int buildingCount = map.listerThings.AllThings.Count(thing => thing is Building);
+            int damagedBuildings = map.listerThings.AllThings.Count(thing =>
+                thing is Building building && building.HitPoints < building.MaxHitPoints);
+            int plannedConstruction = map.listerThings.AllThings.Count(thing =>
+                thing is Blueprint || thing is Frame);
             int powerComponents = powerNets.Sum(net => net.powerComps.Count);
             int batteries = powerNets.Sum(net => net.batteryComps.Count);
+            int poweredConsumers = powerNets.Sum(net =>
+                net.powerComps.OfType<CompPowerTrader>().Count(comp => comp.PowerOn));
             float energyGainPerTick = powerNets.Sum(net => net.CurrentEnergyGainRate());
             float storedEnergy = powerNets.Sum(net => net.CurrentStoredEnergy());
 
@@ -142,22 +97,29 @@ namespace RimWorldOptim.Poc
                 pawn => pawn.timetable.CurrentAssignment.defName));
             report.AppendLine(string.Format(
                 CultureInfo.InvariantCulture,
-                "Work: tables={0}, bills={1}, reservations={2}",
+                "Work: tables={0}, bills={1}, suspendedBills={2}, reservations={3}",
                 workTables.Count,
                 activeBills,
+                suspendedBills,
                 map.reservationManager.ReservationsReadOnly.Count));
             report.AppendLine(string.Format(
                 CultureInfo.InvariantCulture,
-                "Topology: buildings={0}, doors={1}, stockpiles={2}, growingZones={3}",
+                "Topology: buildings={0}, damagedBuildings={1}, plannedConstruction={2}, doors={3}, stockpiles={4}, growingZones={5}, fishingZones={6}",
                 buildingCount,
+                damagedBuildings,
+                plannedConstruction,
                 doors.Count,
                 stockpiles.Count,
-                growingZones.Count));
+                growingZones.Count,
+                fishingZones.Count));
             report.AppendLine(string.Format(
                 CultureInfo.InvariantCulture,
-                "Growing: cells={0}, plantedCells={1}",
+                "Growing: cells={0}, plantedCells={1}, harvestablePlants={2}",
                 growingCells,
-                plantedGrowingCells));
+                plantedGrowingCells,
+                harvestablePlants));
+            report.AppendLine("Fishing: fishableCells=" +
+                              fishableCells.ToString(CultureInfo.InvariantCulture));
             report.AppendLine(string.Format(
                 CultureInfo.InvariantCulture,
                 "Map contents: items={0}, filth={1}",
@@ -165,9 +127,10 @@ namespace RimWorldOptim.Poc
                 filthCount));
             report.AppendLine(string.Format(
                 CultureInfo.InvariantCulture,
-                "Power: nets={0}, traders={1}, batteries={2}, gainPerTick={3:0.###}, stored={4:0.###}",
+                "Power: nets={0}, traders={1}, poweredConsumers={2}, batteries={3}, gainPerTick={4:0.###}, stored={5:0.###}",
                 powerNets.Count,
                 powerComponents,
+                poweredConsumers,
                 batteries,
                 energyGainPerTick,
                 storedEnergy));
