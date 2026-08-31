@@ -80,6 +80,7 @@ def main() -> int:
     log_path = user_data / f"Player-{timestamp}.log"
 
     environment = os.environ.copy()
+    environment.pop("FIXWORLD_BENCHMARK_OUTPUT", None)
     environment["FIXWORLD_DDS_CACHE"] = "1" if args.dds_cache else "0"
     monitor = select_monitor(args.monitor_name, args.monitor)
     arguments = [
@@ -100,7 +101,7 @@ def main() -> int:
         while time.monotonic() - started < args.timeout:
             if log_path.is_file():
                 log = log_path.read_text(encoding="utf-8", errors="replace")
-                loaded = "[FixWorld] Loaded." in log
+                loaded = "[FixWorld] Initialized;" in log
                 ready = "[FixWorld] Main menu ready." in log
                 if ready:
                     break

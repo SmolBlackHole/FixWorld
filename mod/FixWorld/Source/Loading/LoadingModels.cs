@@ -13,7 +13,6 @@ namespace FixWorld.Loading
 
     internal enum LoadingStep
     {
-        Attached,
         LoadXml,
         CombineXml,
         ParseTranslationKeys,
