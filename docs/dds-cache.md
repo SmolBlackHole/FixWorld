@@ -23,10 +23,25 @@ Ein Cacheeintrag hängt derzeit von Cacheformat, relativem Quellpfad, Dateigrö�
 Änderungszeit ab. Neue oder geänderte Quellen werden neu erzeugt, veraltete Einträge
 werden entfernt.
 
-- maximales Cachebudget: 4 GiB
-- mindestens verbleibender freier Plattenplatz: 5 GiB
+PNG- und JPG-Quellen werden beim DirectXTex-Export vertikal gespiegelt, damit RimWorlds
+direkter DDS-Raw-Load dieselbe Ausrichtung wie Unitys normaler Bildpfad erhält. Die
+Cacheformat-Version invalidiert ältere, falsch ausgerichtete Einträge automatisch.
+
+- standardmäßig kein künstliches Größenlimit
+- mindestens verbleibender freier Plattenplatz: 10 GiB
+- optionales hartes Limit über `FIXWORLD_DDS_CACHE_MAX_GIB`
 - Cacheeintrag erst nach erfolgreicher Konvertierung atomar bereitstellen
-- bei fehlendem Konverter oder ausgeschöpftem Budget wird die Originaltextur geladen
+- bei fehlendem Konverter oder ausgeschöpftem Plattenbudget wird die Originaltextur geladen
+
+Der Cache lässt sich ohne Python aus dem FixWorld-Modordner prüfen oder entfernen:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Tools\Cleanup-DdsCache.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Tools\Cleanup-DdsCache.ps1 -Delete
+```
+
+Der erste Aufruf ist nur ein Dry-Run. `-Delete` löscht ausschließlich erkannte
+FixWorld-DDS- und Staging-Dateien und verweigert die Ausführung, solange RimWorld läuft.
 
 Vor dem Pilot-Test soll der Schlüssel zusätzlich Konverterversion, Plattform und
 Zielformat enthalten.

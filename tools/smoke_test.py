@@ -86,7 +86,6 @@ def main() -> int:
         f"-savedatafolder={user_data}",
         "-logFile",
         str(log_path),
-        "-quicktest",
         "-popupwindow",
     ]
 

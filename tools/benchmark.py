@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import time
+from typing import Mapping, Sequence, TypedDict, cast
 import xml.etree.ElementTree as ET
 
 from build import build_mod
@@ -21,7 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_GAME_ROOT = Path(r"G:\Steam\steamapps\common\RimWorld")
 FIXTURE_ID = "spoon-spring-v1-fixworld"
 FIXTURE_CONFIG = ROOT / "benchmarks" / "saves" / "spoon-spring-v1-ModsConfig.xml"
-RESULT_FIELDS = (
+RESULT_FIELDS: tuple[str, ...] = (
     "id",
     "track",
     "variant",
@@ -38,6 +39,95 @@ RESULT_FIELDS = (
 )
 
 
+class CompletionData(TypedDict):
+    source: str
+
+
+class LoaderStageData(TypedDict):
+    number: int
+    name: str
+    observed: bool
+    exclusiveMs: float
+    mainThreadMs: float
+    workerThreadMs: float
+
+
+class LoaderStepData(TypedDict):
+    id: str
+    number: int
+    stage: str
+    name: str
+    calls: int
+    totalMs: float
+    exclusiveMs: float
+    mainThreadMs: float
+    workerThreadMs: float
+
+
+class ModAssemblyData(TypedDict):
+    packageId: str
+    modName: str
+    files: int
+    loaded: int
+    failed: int
+    reflected: int
+    unusable: int
+    totalMs: float
+    loadMs: float
+    reflectionMs: float
+
+
+class LoaderData(TypedDict):
+    observedMs: float
+    stages: list[LoaderStageData]
+    steps: list[LoaderStepData]
+    modAssemblies: list[ModAssemblyData]
+
+
+class FileData(TypedDict):
+    totalMs: float
+
+
+class TexturePathData(TypedDict):
+    duplicatePaths: int
+
+
+class TextureData(TypedDict):
+    totalMs: float
+    ddsMs: float
+
+
+class DdsCacheData(TypedDict):
+    hits: int
+    misses: int
+
+
+class BenchmarkReport(TypedDict):
+    schemaVersion: int
+    completion: CompletionData
+    loader: LoaderData
+    files: FileData
+    texturePaths: TexturePathData
+    textures: TextureData
+    ddsCache: DdsCacheData
+
+
+class ResultRecord(TypedDict):
+    id: str
+    track: str
+    variant: str
+    run: int
+    build: str
+    fixture: str
+    wall_ms: int
+    total_ms: str
+    texture_ms: str
+    tps: str
+    fps: str
+    result: str
+    notes: str
+
+
 def bounded_int(minimum: int, maximum: int):
     def parse(value: str) -> int:
         number = int(value)
@@ -48,7 +138,9 @@ def bounded_int(minimum: int, maximum: int):
     return parse
 
 
-def prepare_config(destination: Path, texture_compression: bool) -> int:
+def prepare_config(
+    destination: Path, texture_compression: bool, use_live_mods: bool
+) -> int:
     live_config = (
         Path.home()
         / "AppData"
@@ -59,11 +151,12 @@ def prepare_config(destination: Path, texture_compression: bool) -> int:
     )
     if not live_config.is_dir():
         raise RuntimeError(f"RimWorld configuration does not exist: {live_config}")
-    if not FIXTURE_CONFIG.is_file():
+    if not use_live_mods and not FIXTURE_CONFIG.is_file():
         raise RuntimeError(f"Benchmark fixture does not exist: {FIXTURE_CONFIG}")
 
     shutil.copytree(live_config, destination, dirs_exist_ok=True)
-    shutil.copy2(FIXTURE_CONFIG, destination / "ModsConfig.xml")
+    if not use_live_mods:
+        shutil.copy2(FIXTURE_CONFIG, destination / "ModsConfig.xml")
 
     prefs_path = destination / "Prefs.xml"
     prefs = ET.parse(prefs_path)
@@ -73,7 +166,7 @@ def prepare_config(destination: Path, texture_compression: bool) -> int:
     _set_xml_text(root, "textureCompression", str(texture_compression))
     prefs.write(prefs_path, encoding="utf-8", xml_declaration=True)
 
-    mods = ET.parse(FIXTURE_CONFIG).getroot()
+    mods = ET.parse(destination / "ModsConfig.xml").getroot()
     return len(mods.findall("./activeMods/li"))
 
 
@@ -86,40 +179,55 @@ def _set_xml_text(root: ET.Element, name: str, value: str) -> None:
 
 def wait_for_report(
     process: subprocess.Popen[bytes], report_path: Path, timeout_seconds: int
-) -> tuple[int, dict[str, object]]:
+) -> tuple[int, BenchmarkReport]:
     started = time.monotonic()
     while time.monotonic() - started < timeout_seconds:
         if report_path.is_file():
             with report_path.open("r", encoding="utf-8") as source:
-                return round((time.monotonic() - started) * 1000), json.load(source)
+                raw: object = json.load(source)
+            return (
+                round((time.monotonic() - started) * 1000),
+                validate_report(raw),
+            )
         if process.poll() is not None:
             raise RuntimeError("RimWorld exited before writing the benchmark report.")
         time.sleep(0.1)
     raise TimeoutError(f"RimWorld did not finish within {timeout_seconds} seconds.")
 
 
-def validate_report(report: dict[str, object]) -> None:
+def validate_report(raw: object) -> BenchmarkReport:
+    report = _string_dict(raw, "benchmark report")
     if report.get("schemaVersion") != 1:
         raise RuntimeError(
             f"Unsupported benchmark schema: {report.get('schemaVersion')!r}"
         )
-    completion = report.get("completion")
-    loader = report.get("loader")
-    if (
-        not isinstance(completion, dict)
-        or completion.get("source") != "play-data-clear-cache"
-    ):
+    completion = _string_dict(report.get("completion"), "completion")
+    loader = _string_dict(report.get("loader"), "loader")
+    if completion.get("source") != "play-data-clear-cache":
         raise RuntimeError(f"Unexpected completion data: {completion!r}")
-    if not isinstance(loader, dict):
-        raise RuntimeError("Benchmark report contains no loader section.")
-    if len(loader.get("stages", [])) != 5 or not loader.get("steps"):
+    stages = loader.get("stages")
+    steps = loader.get("steps")
+    mod_assemblies = loader.get("modAssemblies")
+    if (
+        not isinstance(stages, list)
+        or len(stages) != 5
+        or not isinstance(steps, list)
+        or not steps
+        or not isinstance(mod_assemblies, list)
+    ):
         raise RuntimeError("Benchmark report contains incomplete loader measurements.")
     for section in ("files", "texturePaths", "textures", "ddsCache"):
-        if not isinstance(report.get(section), dict):
-            raise RuntimeError(f"Benchmark report contains no {section} section.")
+        _string_dict(report.get(section), section)
+    return cast(BenchmarkReport, report)
 
 
-def write_loader_csvs(run_root: Path, report: dict[str, object]) -> None:
+def _string_dict(value: object, name: str) -> dict[str, object]:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise RuntimeError(f"Benchmark report contains no valid {name} section.")
+    return cast(dict[str, object], value)
+
+
+def write_loader_csvs(run_root: Path, report: BenchmarkReport) -> None:
     loader = report["loader"]
     _write_csv(
         run_root / "loader-stages.csv",
@@ -141,13 +249,29 @@ def write_loader_csvs(run_root: Path, report: dict[str, object]) -> None:
         ),
         loader["steps"],
     )
+    _write_csv(
+        run_root / "loader-mod-assemblies.csv",
+        (
+            "packageId",
+            "modName",
+            "files",
+            "loaded",
+            "failed",
+            "reflected",
+            "unusable",
+            "totalMs",
+            "loadMs",
+            "reflectionMs",
+        ),
+        loader["modAssemblies"],
+    )
 
 
 def _write_csv(
-    path: Path, fields: tuple[str, ...], rows: list[dict[str, object]]
+    path: Path, fields: tuple[str, ...], rows: Sequence[Mapping[str, object]]
 ) -> None:
     with path.open("w", newline="", encoding="utf-8") as output:
-        writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
+        writer = csv.DictWriter[str](output, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
 
@@ -165,11 +289,11 @@ def relevant_error_count(log_path: Path) -> int:
     return sum(len(re.findall(pattern, log, re.IGNORECASE)) for pattern in patterns)
 
 
-def append_result(record: dict[str, object]) -> None:
+def append_result(record: ResultRecord) -> None:
     with (ROOT / "benchmarks" / "results.csv").open(
         "a", newline="", encoding="utf-8"
     ) as output:
-        csv.DictWriter(output, fieldnames=RESULT_FIELDS).writerow(record)
+        csv.DictWriter[str](output, fieldnames=RESULT_FIELDS).writerow(record)
 
 
 def run_once(args: argparse.Namespace, run_number: int) -> None:
@@ -189,7 +313,9 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
     report_path = run_root / "profile.json"
     config.mkdir(parents=True)
 
-    active_mods = prepare_config(config, not args.disable_texture_compression)
+    active_mods = prepare_config(
+        config, not args.disable_texture_compression, args.live_mods
+    )
     monitor = select_monitor(args.monitor_name, args.monitor)
     cache_root = args.dds_cache_root or ROOT / "profiling" / "cache" / "dds-v1"
     if args.dds_cache:
@@ -219,7 +345,6 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
     )
     try:
         wall_ms, report = wait_for_report(rimworld.process, report_path, args.timeout)
-        validate_report(report)
         write_loader_csvs(run_root, report)
         time.sleep(0.5)
 
@@ -253,13 +378,13 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                 ),
             )
         )
-        record = {
+        record: ResultRecord = {
             "id": run_id,
             "track": "loader",
             "variant": args.variant,
             "run": run_number,
             "build": "1.6.4871 rev591",
-            "fixture": FIXTURE_ID,
+            "fixture": "live-config" if args.live_mods else FIXTURE_ID,
             "wall_ms": wall_ms,
             "total_ms": "",
             "texture_ms": "",
@@ -286,6 +411,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-dds-cache", action="store_false", dest="dds_cache")
     parser.add_argument("--disable-texture-compression", action="store_true")
     parser.add_argument("--minimized", action="store_true")
+    parser.add_argument(
+        "--live-mods",
+        action="store_true",
+        help="Use the current RimWorld ModsConfig.xml instead of the fixture list.",
+    )
     parser.add_argument("--skip-build", action="store_true")
     parser.set_defaults(dds_cache=True)
     return parser.parse_args()

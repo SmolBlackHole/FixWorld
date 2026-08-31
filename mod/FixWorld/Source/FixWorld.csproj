@@ -23,6 +23,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\..\preloader\Shared\PreloaderInstallation.cs"
+      Link="Preloader\PreloaderInstallation.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="System.Runtime.Serialization" />
     <Reference Include="Assembly-CSharp">
       <HintPath>$(RimWorldManagedDir)\Assembly-CSharp.dll</HintPath>
@@ -30,6 +35,10 @@
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(RimWorldManagedDir)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AudioModule">
+      <HintPath>$(RimWorldManagedDir)\UnityEngine.AudioModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.ImageConversionModule">
@@ -55,6 +64,8 @@
       Text="Assembly-CSharp.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
     <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.CoreModule.dll')"
       Text="UnityEngine.CoreModule.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
+    <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.AudioModule.dll')"
+      Text="UnityEngine.AudioModule.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
     <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.ImageConversionModule.dll')"
       Text="UnityEngine.ImageConversionModule.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
     <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.IMGUIModule.dll')"
@@ -63,5 +74,70 @@
       Text="UnityEngine.TextRenderingModule.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
     <Error Condition="!Exists('$(HarmonyAssemblyPath)')"
       Text="0Harmony.dll is missing. Set HarmonyAssemblyPath in mod/Local.Build.props or RIMWORLD_HARMONY_ASSEMBLY." />
+  </Target>
+
+  <Target Name="Package" DependsOnTargets="Build">
+    <PropertyGroup>
+      <FixWorldDistDir>$(MSBuildProjectDirectory)\..\..\..\dist</FixWorldDistDir>
+      <FixWorldPackageStage>$(FixWorldDistDir)\.package</FixWorldPackageStage>
+      <FixWorldPackageZip>$(FixWorldDistDir)\FixWorld-pilot-win-x64.zip</FixWorldPackageZip>
+    </PropertyGroup>
+    <ItemGroup>
+      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\About\About.xml">
+        <PackagePath>About\About.xml</PackagePath>
+      </FixWorldPackageFile>
+      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\Assemblies\FixWorld.dll">
+        <PackagePath>Assemblies\FixWorld.dll</PackagePath>
+      </FixWorldPackageFile>
+      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\Tools\DirectXTex-LICENSE.txt">
+        <PackagePath>Tools\DirectXTex-LICENSE.txt</PackagePath>
+      </FixWorldPackageFile>
+      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\Tools\Cleanup-DdsCache.ps1">
+        <PackagePath>Tools\Cleanup-DdsCache.ps1</PackagePath>
+      </FixWorldPackageFile>
+      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\texconv.exe">
+        <PackagePath>Tools\Windows-x64\texconv.exe</PackagePath>
+      </FixWorldPackageFile>
+      <FixWorldPackageFile
+        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\FixWorld.Preloader.dll">
+        <PackagePath>Tools\Windows-x64\FixWorld.Preloader.dll</PackagePath>
+      </FixWorldPackageFile>
+      <FixWorldPackageFile
+        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\FixWorld.Preloader.Tool.exe">
+        <PackagePath>Tools\Windows-x64\FixWorld.Preloader.Tool.exe</PackagePath>
+      </FixWorldPackageFile>
+      <FixWorldPackageFile
+        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\FixWorld.Preloader.Tool.exe.config">
+        <PackagePath>Tools\Windows-x64\FixWorld.Preloader.Tool.exe.config</PackagePath>
+      </FixWorldPackageFile>
+      <FixWorldPackageFile
+        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\Doorstop-4.4.0\.doorstop_version">
+        <PackagePath>Tools\Windows-x64\Doorstop-4.4.0\.doorstop_version</PackagePath>
+      </FixWorldPackageFile>
+      <FixWorldPackageFile
+        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\Doorstop-4.4.0\manifest.json">
+        <PackagePath>Tools\Windows-x64\Doorstop-4.4.0\manifest.json</PackagePath>
+      </FixWorldPackageFile>
+      <FixWorldPackageFile
+        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\Doorstop-4.4.0\UnityDoorstop-LICENSE.txt">
+        <PackagePath>Tools\Windows-x64\Doorstop-4.4.0\UnityDoorstop-LICENSE.txt</PackagePath>
+      </FixWorldPackageFile>
+      <FixWorldPackageFile
+        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\Doorstop-4.4.0\winhttp.dll">
+        <PackagePath>Tools\Windows-x64\Doorstop-4.4.0\winhttp.dll</PackagePath>
+      </FixWorldPackageFile>
+    </ItemGroup>
+    <RemoveDir Directories="$(FixWorldPackageStage)" />
+    <MakeDir Directories="$(FixWorldPackageStage)\FixWorld" />
+    <Copy
+      SourceFiles="@(FixWorldPackageFile)"
+      DestinationFiles="@(FixWorldPackageFile->'$(FixWorldPackageStage)\FixWorld\%(PackagePath)')" />
+    <Delete Files="$(FixWorldPackageZip)" />
+    <ZipDirectory
+      SourceDirectory="$(FixWorldPackageStage)"
+      DestinationFile="$(FixWorldPackageZip)"
+      Overwrite="true" />
+    <RemoveDir Directories="$(FixWorldPackageStage)" />
+    <Message Importance="high" Text="FixWorld package: $(FixWorldPackageZip)" />
   </Target>
 </Project>

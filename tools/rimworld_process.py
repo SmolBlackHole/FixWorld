@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 from ctypes import wintypes
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import os
 from pathlib import Path
 import re
@@ -160,7 +160,7 @@ def select_monitor(friendly_name: str, fallback_index: int) -> Monitor:
         f"Warning: monitor {friendly_name!r} is not active; using "
         f"{fallback.device_name}."
     )
-    return Monitor(**{**fallback.__dict__, "used_fallback": True})
+    return replace(fallback, used_fallback=True)
 
 
 def is_rimworld_running() -> bool:
@@ -169,6 +169,7 @@ def is_rimworld_running() -> bool:
         check=True,
         capture_output=True,
         text=True,
+        errors="replace",
     )
     return "RimWorldWin64.exe" in result.stdout
 
@@ -298,31 +299,35 @@ def _place_window(window: int, monitor: Monitor, minimized: bool) -> str:
         USER32.ShowWindow(window, 6)
         return monitor.device_name
 
-    USER32.ShowWindow(window, 9)
-    if not USER32.SetWindowPos(
-        window,
-        0,
-        monitor.left,
-        monitor.top,
-        monitor.width,
-        monitor.height,
-        0x0014,
-    ):
-        raise ctypes.WinError(ctypes.get_last_error())
-    USER32.ShowWindow(window, 3)
-    time.sleep(0.1)
+    deadline = time.monotonic() + 5
+    actual_device = "unknown"
+    while time.monotonic() < deadline:
+        USER32.ShowWindow(window, 9)
+        if not USER32.SetWindowPos(
+            window,
+            0,
+            monitor.left,
+            monitor.top,
+            monitor.width,
+            monitor.height,
+            0x0014,
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        USER32.ShowWindow(window, 3)
+        time.sleep(0.25)
 
-    handle = USER32.MonitorFromWindow(window, 2)
-    info = MonitorInfo()
-    info.size = ctypes.sizeof(MonitorInfo)
-    if not USER32.GetMonitorInfoW(handle, ctypes.byref(info)):
-        raise ctypes.WinError(ctypes.get_last_error())
-    if info.device_name.casefold() != monitor.device_name.casefold():
-        raise RuntimeError(
-            f"RimWorld remained on {info.device_name!r} instead of "
-            f"{monitor.device_name!r}."
-        )
-    return info.device_name
+        handle = USER32.MonitorFromWindow(window, 2)
+        info = MonitorInfo()
+        info.size = ctypes.sizeof(MonitorInfo)
+        if not USER32.GetMonitorInfoW(handle, ctypes.byref(info)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        actual_device = info.device_name
+        if actual_device.casefold() == monitor.device_name.casefold():
+            return actual_device
+
+    raise RuntimeError(
+        f"RimWorld remained on {actual_device!r} instead of {monitor.device_name!r}."
+    )
 
 
 def parse_args() -> argparse.Namespace:

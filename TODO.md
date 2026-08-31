@@ -24,11 +24,19 @@ Aktuell: **Staged Loader: nächsten messbaren Engpass auswählen**
 - [x] automatischen, invalidierbaren DDS-Cache für alle geeigneten aktiven Mod-Texturen bauen
 - [x] DDS A/B testen: Texturpfad 21,16 s ohne Cache gegenüber 2,24 bis 2,51 s mit warmem Vollcache
 - [x] `texconv` für Windows x64 inklusive Lizenz und Prüfsumme bündeln
-- [x] Cache bei 4 GiB deckeln und mindestens 5 GiB freien Plattenplatz reservieren
+- [x] Cache ohne künstliches Standardlimit aufbauen und mindestens 10 GiB freien Plattenplatz reservieren
 - [x] Budget-Fallback testen: 19 DDS bis exakt 1 MiB, 10.442 übersprungen, Spielstart gültig
 
 ## Staged Loader (aktuell)
 
+- [x] normalen Mod und optionalen frühen Doorstop-Bootstrap klar trennen
+- [x] Doorstop nur nach Opt-in installieren und fremde Proxy-Dateien niemals überschreiben
+- [x] Doorstop von RimWorld und Harmony entkoppeln und die Installationslogik zwischen Mod und CLI teilen
+- [x] normale FixWorld-Patches beim Laden von `FixWorld.dll` zentral über Harmony registrieren
+- [x] Assembly-Laden und Reflection pro Mod typisiert messen
+- [x] reinen Doorstop-Prozesseinstieg bis zum Hauptmenü verifizieren
+- [ ] korrekten frühen RimWorld-Hookpunkt belegen, bevor dort Harmony-Patches registriert werden
+- [ ] Absturz der vollständigen isolierten Mod-Fixture bei Quarry unabhängig vom Preloader klären
 - [x] Vanilla-Start in `Bootstrap -> XML & Patches -> Definitions -> Content -> Finalize` zerlegen
 - [x] zentralen Loader-Observer statt einer großen Methoden-Patchliste bauen
 - [x] eigene FixWorld-Ladeanzeige aus demselben Loader-Snapshot zeichnen

@@ -136,7 +136,7 @@ namespace FixWorld.Caching
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
                 FileName = texconvPath,
-                Arguments = "-nologo -y -f BC3_UNORM -m " +
+                Arguments = "-nologo -y -vflip -f BC3_UNORM -m " +
                             mipCount.ToString(CultureInfo.InvariantCulture) +
                             " -o " + Quote(outputDirectory) + " " + Quote(inputPattern),
                 UseShellExecute = false,

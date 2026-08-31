@@ -9,6 +9,7 @@
 /profiling/captures/
 /profiling/cache/
 /profiling/fixworld-userdata/
+/dist/
 /benchmarks/results/
 /benchmarks/saves/
 
@@ -17,6 +18,13 @@
 /mod/**/Assemblies/
 /mod/**/bin/
 /mod/**/obj/
+/preloader/**/bin/
+/preloader/**/obj/
+/mod/FixWorld/Tools/Windows-x64/FixWorld.Preloader.dll
+/mod/FixWorld/Tools/Windows-x64/FixWorld.Preloader.pdb
+/mod/FixWorld/Tools/Windows-x64/FixWorld.Preloader.Tool.exe
+/mod/FixWorld/Tools/Windows-x64/FixWorld.Preloader.Tool.exe.config
+/mod/FixWorld/Tools/Windows-x64/FixWorld.Preloader.Tool.pdb
 *.user
 *.suo
 __pycache__/

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 import hashlib
 import os
 from pathlib import Path
@@ -41,38 +42,80 @@ def find_dotnet_sdk() -> Path:
     raise RuntimeError("No usable .NET SDK was found on PATH or in DOTNET_ROOT.")
 
 
-def build_mod() -> Path:
+def run_build(project: Path, target: str | None = None) -> None:
     dotnet = find_dotnet_sdk()
     environment = os.environ.copy()
-    environment.update(
-        {"DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_NOLOGO": "1"}
-    )
+    environment.update({"DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_NOLOGO": "1"})
+    command: list[str | Path] = [
+        dotnet,
+        "build",
+        project,
+        "--configuration",
+        "Release",
+        "--nologo",
+    ]
+    if target:
+        command.append(f"-target:{target}")
     subprocess.run(
-        [
-            dotnet,
-            "build",
-            ROOT / "mod" / "FixWorld" / "Source" / "FixWorld.csproj",
-            "--configuration",
-            "Release",
-            "--nologo",
-        ],
+        command,
         cwd=ROOT,
         env=environment,
         check=True,
     )
+    print(f"SDK: {dotnet}")
+
+
+def build_mod() -> Path:
+    build_runtime_components()
+    run_build(ROOT / "mod" / "FixWorld" / "Source" / "FixWorld.csproj")
 
     assembly = ROOT / "mod" / "FixWorld" / "Assemblies" / "FixWorld.dll"
     if not assembly.is_file():
         raise RuntimeError(f"Build succeeded, but the mod DLL is missing: {assembly}")
     digest = hashlib.sha256(assembly.read_bytes()).hexdigest().upper()
-    print(f"SDK: {dotnet}")
     print(f"Mod DLL: {assembly}")
     print(f"SHA-256: {digest}")
     return assembly
 
 
+def package_mod() -> Path:
+    build_runtime_components()
+    run_build(ROOT / "mod" / "FixWorld" / "Source" / "FixWorld.csproj", "Package")
+    package = ROOT / "dist" / "FixWorld-pilot-win-x64.zip"
+    if not package.is_file():
+        raise RuntimeError(f"Package target did not create the expected ZIP: {package}")
+    digest = hashlib.sha256(package.read_bytes()).hexdigest().upper()
+    print(f"Package: {package}")
+    print(f"SHA-256: {digest}")
+    return package
+
+
+def build_runtime_components() -> None:
+    run_build(ROOT / "preloader" / "FixWorld.Preloader" / "FixWorld.Preloader.csproj")
+    run_build(
+        ROOT
+        / "preloader"
+        / "FixWorld.Preloader.Tool"
+        / "FixWorld.Preloader.Tool.csproj"
+    )
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Build the FixWorld mod.")
+    parser.add_argument(
+        "--package",
+        action="store_true",
+        help="create the runtime-only Windows pilot ZIP",
+    )
+    return parser.parse_args()
+
+
 def main() -> int:
-    build_mod()
+    args = parse_args()
+    if args.package:
+        package_mod()
+    else:
+        build_mod()
     return 0
 
 

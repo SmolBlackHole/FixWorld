@@ -13,13 +13,13 @@ namespace FixWorld.Caching
 {
     internal static class TextureDdsCache
     {
-        private const string CacheIdentityVersion = "bc3-unorm-mips-v1";
+        private const string CacheIdentityVersion = "bc3-unorm-mips-v2-vflip";
         private const string EnabledEnvironmentVariable = "FIXWORLD_DDS_CACHE";
         private const string CacheRootEnvironmentVariable = "FIXWORLD_DDS_CACHE_ROOT";
         private const string MaxCacheGiBEnvironmentVariable = "FIXWORLD_DDS_CACHE_MAX_GIB";
         private const string MinimumFreeGiBEnvironmentVariable = "FIXWORLD_DDS_CACHE_MIN_FREE_GIB";
-        private const long DefaultMaxCacheBytes = 4L * 1024L * 1024L * 1024L;
-        private const long DefaultMinimumFreeBytes = 5L * 1024L * 1024L * 1024L;
+        private const long DefaultMaxCacheBytes = 0L;
+        private const long DefaultMinimumFreeBytes = 10L * 1024L * 1024L * 1024L;
 
         private static readonly object Sync = new object();
 
@@ -78,10 +78,13 @@ namespace FixWorld.Caching
                 builder = new TextureDdsCacheBuilder(cacheRoot, modRoot);
                 if (builder.Available)
                 {
+                    string maxCacheDescription = maxCacheBytes > 0L
+                        ? ToGiB(maxCacheBytes).ToString("0.###", CultureInfo.InvariantCulture) + " GiB"
+                        : "unlimited";
                     Log.Message(
                         "[FixWorld] DDS cache enabled at " + cacheRoot +
                         "; texconv=" + builder.TexconvPath +
-                        "; maxGiB=" + ToGiB(maxCacheBytes).ToString("0.###", CultureInfo.InvariantCulture) +
+                        "; maxCache=" + maxCacheDescription +
                         "; minFreeGiB=" + ToGiB(minimumFreeBytes).ToString("0.###", CultureInfo.InvariantCulture));
                 }
                 else
@@ -247,7 +250,8 @@ namespace FixWorld.Caching
             foreach (TextureCacheEntry entry in entries)
             {
                 long entryTemporaryBytes = entry.Source.Length + entry.EstimatedCacheBytes;
-                if (projectedCacheBytes + entry.EstimatedCacheBytes > maxCacheBytes ||
+                if ((maxCacheBytes > 0L &&
+                     projectedCacheBytes + entry.EstimatedCacheBytes > maxCacheBytes) ||
                     availableFreeBytes - projectedTemporaryBytes - entryTemporaryBytes < minimumFreeBytes)
                 {
                     continue;

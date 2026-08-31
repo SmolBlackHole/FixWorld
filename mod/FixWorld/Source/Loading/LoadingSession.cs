@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using Verse;
 
@@ -19,6 +21,7 @@ namespace FixWorld.Loading
     internal enum LoadingStep
     {
         Attached,
+        LoadModAssemblies,
         LoadXml,
         CombineXml,
         ParseTranslationKeys,
@@ -46,17 +49,53 @@ namespace FixWorld.Loading
         GarbageCollection
     }
 
+    internal enum LoadingContentKind
+    {
+        None,
+        Assemblies,
+        Audio,
+        Textures,
+        Strings
+    }
+
     internal readonly struct LoadingSnapshot
     {
         internal readonly LoadingStage Stage;
         internal readonly string StageName;
         internal readonly string StepName;
+        internal readonly double ElapsedMilliseconds;
+        internal readonly float Progress;
+        internal readonly bool HasDurationEstimate;
+        internal readonly double EstimatedTotalMilliseconds;
+        internal readonly string CurrentModName;
+        internal readonly string CurrentModActivity;
+        internal readonly int CurrentModCompletedItems;
+        internal readonly int CurrentModTotalItems;
 
-        internal LoadingSnapshot(LoadingStage stage, string stageName, string stepName)
+        internal LoadingSnapshot(
+            LoadingStage stage,
+            string stageName,
+            string stepName,
+            double elapsedMilliseconds,
+            float progress,
+            bool hasDurationEstimate,
+            double estimatedTotalMilliseconds,
+            string currentModName,
+            string currentModActivity,
+            int currentModCompletedItems,
+            int currentModTotalItems)
         {
             Stage = stage;
             StageName = stageName;
             StepName = stepName;
+            ElapsedMilliseconds = elapsedMilliseconds;
+            Progress = progress;
+            HasDurationEstimate = hasDurationEstimate;
+            EstimatedTotalMilliseconds = estimatedTotalMilliseconds;
+            CurrentModName = currentModName;
+            CurrentModActivity = currentModActivity;
+            CurrentModCompletedItems = currentModCompletedItems;
+            CurrentModTotalItems = currentModTotalItems;
         }
     }
 
@@ -102,13 +141,54 @@ namespace FixWorld.Loading
     {
         internal double ObservedMilliseconds { get; }
         internal IReadOnlyList<LoadingStepMeasurement> Steps { get; }
+        internal IReadOnlyList<ModAssemblyMeasurement> ModAssemblies { get; }
 
         internal LoadingMeasurement(
             double observedMilliseconds,
-            IReadOnlyList<LoadingStepMeasurement> steps)
+            IReadOnlyList<LoadingStepMeasurement> steps,
+            IReadOnlyList<ModAssemblyMeasurement> modAssemblies)
         {
             ObservedMilliseconds = observedMilliseconds;
             Steps = steps;
+            ModAssemblies = modAssemblies;
+        }
+    }
+
+    internal sealed class ModAssemblyMeasurement
+    {
+        internal string PackageId { get; }
+        internal string ModName { get; }
+        internal int Files { get; }
+        internal int Loaded { get; }
+        internal int Failed { get; }
+        internal int Reflected { get; }
+        internal int Unusable { get; }
+        internal double TotalMilliseconds { get; }
+        internal double LoadMilliseconds { get; }
+        internal double ReflectionMilliseconds { get; }
+
+        internal ModAssemblyMeasurement(
+            string packageId,
+            string modName,
+            int files,
+            int loaded,
+            int failed,
+            int reflected,
+            int unusable,
+            double totalMilliseconds,
+            double loadMilliseconds,
+            double reflectionMilliseconds)
+        {
+            PackageId = packageId;
+            ModName = modName;
+            Files = files;
+            Loaded = loaded;
+            Failed = failed;
+            Reflected = reflected;
+            Unusable = unusable;
+            TotalMilliseconds = totalMilliseconds;
+            LoadMilliseconds = loadMilliseconds;
+            ReflectionMilliseconds = reflectionMilliseconds;
         }
     }
 
@@ -117,6 +197,12 @@ namespace FixWorld.Loading
         private static readonly object Sync = new object();
         private static readonly Dictionary<LoadingStep, StepStats> Stats =
             new Dictionary<LoadingStep, StepStats>();
+        private static readonly Dictionary<string, ModAssemblyStats> ModAssemblyStatsByPackage =
+            new Dictionary<string, ModAssemblyStats>(StringComparer.OrdinalIgnoreCase);
+        private static readonly StepDescriptor ModAssemblyDescriptor = new StepDescriptor(
+            LoadingStep.LoadModAssemblies,
+            LoadingStage.Bootstrap,
+            "Load mod assemblies");
 
         private static volatile bool active;
         private static bool completed;
@@ -126,15 +212,32 @@ namespace FixWorld.Loading
         private static long currentSequence;
         private static LoadingStage currentStage;
         private static string currentStepName;
+        private static double estimatedDurationMilliseconds;
+        private static long currentModSequence;
+        private static LoadingContentKind currentModContentKind;
+        private static string currentModName;
+        private static string currentModActivity;
+        private static int currentModCompletedItems;
+        private static int currentModTotalItems;
 
         [ThreadStatic]
         private static Stack<Scope> scopes;
 
-        internal static void Start()
+        [ThreadStatic]
+        private static ModAssemblyScope modAssemblyScope;
+
+        internal static void Start(bool readEstimate)
         {
+            double previousDuration = readEstimate ? LoadingEstimateStore.Read() : 0.0;
             lock (Sync)
             {
+                if (active || startedAt != 0L)
+                {
+                    return;
+                }
+
                 Stats.Clear();
+                ModAssemblyStatsByPackage.Clear();
                 completed = false;
                 startedAt = Stopwatch.GetTimestamp();
                 completedAt = 0L;
@@ -142,7 +245,217 @@ namespace FixWorld.Loading
                 currentStepName = "FixWorld attached";
                 currentSequence = 0L;
                 sequence = 0L;
+                estimatedDurationMilliseconds = previousDuration;
+                ClearCurrentMod();
                 active = true;
+            }
+        }
+
+        internal static void LoadEstimate()
+        {
+            double previousDuration = LoadingEstimateStore.Read();
+            lock (Sync)
+            {
+                estimatedDurationMilliseconds = previousDuration;
+            }
+        }
+
+        internal static void BeginModAssemblies(ModContentPack mod)
+        {
+            if (!active || mod == null)
+            {
+                return;
+            }
+
+            long scopeSequence = Interlocked.Increment(ref sequence);
+            ModAssemblyScope scope = new ModAssemblyScope(
+                mod.PackageId,
+                mod.Name,
+                scopeSequence,
+                Stopwatch.GetTimestamp(),
+                UnityData.IsInMainThread);
+            modAssemblyScope = scope;
+            lock (Sync)
+            {
+                if (!active)
+                {
+                    return;
+                }
+
+                if (!ModAssemblyStatsByPackage.TryGetValue(
+                        scope.PackageId,
+                        out ModAssemblyStats stats))
+                {
+                    stats = new ModAssemblyStats(scope.PackageId, scope.ModName);
+                    ModAssemblyStatsByPackage.Add(scope.PackageId, stats);
+                }
+
+                stats.Calls++;
+                currentSequence = scopeSequence;
+                currentStage = LoadingStage.Bootstrap;
+                currentStepName = "Load mod assemblies: " + scope.ModName;
+                currentModSequence = scopeSequence;
+                currentModContentKind = LoadingContentKind.Assemblies;
+                currentModName = scope.ModName;
+                currentModActivity = "Assemblies";
+                currentModCompletedItems = 0;
+                currentModTotalItems = -1;
+            }
+        }
+
+        internal static void SetCurrentModAssemblyTotal(ModContentPack mod, int totalFiles)
+        {
+            ModAssemblyScope scope = modAssemblyScope;
+            if (!active || scope == null || mod == null ||
+                !string.Equals(scope.PackageId, mod.PackageId, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            lock (Sync)
+            {
+                scope.TotalFiles = Math.Max(0, totalFiles);
+                currentModTotalItems = scope.TotalFiles;
+                if (ModAssemblyStatsByPackage.TryGetValue(
+                        scope.PackageId,
+                        out ModAssemblyStats stats))
+                {
+                    stats.Files = Math.Max(stats.Files, scope.TotalFiles);
+                }
+            }
+        }
+
+        internal static long BeginAssemblyFileLoad(string path)
+        {
+            ModAssemblyScope scope = modAssemblyScope;
+            if (!active || scope == null)
+            {
+                return 0L;
+            }
+
+            lock (Sync)
+            {
+                currentModActivity = "Assembly: " + Path.GetFileName(path);
+            }
+
+            return Stopwatch.GetTimestamp();
+        }
+
+        internal static void EndAssemblyFileLoad(long startedAt, bool loaded)
+        {
+            ModAssemblyScope scope = modAssemblyScope;
+            if (startedAt == 0L || scope == null)
+            {
+                return;
+            }
+
+            long elapsedTicks = Stopwatch.GetTimestamp() - startedAt;
+            lock (Sync)
+            {
+                if (ModAssemblyStatsByPackage.TryGetValue(
+                        scope.PackageId,
+                        out ModAssemblyStats stats))
+                {
+                    stats.LoadTicks += elapsedTicks;
+                    if (loaded)
+                    {
+                        stats.Loaded++;
+                    }
+                    else
+                    {
+                        stats.Failed++;
+                    }
+                }
+
+                currentModCompletedItems++;
+                if (currentModTotalItems >= 0)
+                {
+                    currentModCompletedItems = Math.Min(
+                        currentModCompletedItems,
+                        currentModTotalItems);
+                }
+
+                currentModActivity = "Assemblies";
+            }
+        }
+
+        internal static void ObserveAssemblyReflection(
+            Assembly assembly,
+            long startedAt,
+            bool usable)
+        {
+            ModAssemblyScope scope = modAssemblyScope;
+            if (!active || scope == null || startedAt == 0L)
+            {
+                return;
+            }
+
+            long elapsedTicks = Stopwatch.GetTimestamp() - startedAt;
+            lock (Sync)
+            {
+                if (ModAssemblyStatsByPackage.TryGetValue(
+                        scope.PackageId,
+                        out ModAssemblyStats stats))
+                {
+                    stats.ReflectionTicks += elapsedTicks;
+                    stats.Reflected++;
+                    if (!usable)
+                    {
+                        stats.Unusable++;
+                    }
+                }
+
+                currentModActivity = assembly == null
+                    ? "Assembly reflection"
+                    : "Reflection: " + assembly.GetName().Name;
+            }
+        }
+
+        internal static void EndModAssemblies()
+        {
+            ModAssemblyScope scope = modAssemblyScope;
+            modAssemblyScope = null;
+            if (scope == null)
+            {
+                return;
+            }
+
+            long elapsedTicks = Stopwatch.GetTimestamp() - scope.StartedAt;
+            lock (Sync)
+            {
+                if (ModAssemblyStatsByPackage.TryGetValue(
+                        scope.PackageId,
+                        out ModAssemblyStats assemblyStats))
+                {
+                    assemblyStats.TotalTicks += elapsedTicks;
+                }
+
+                if (!Stats.TryGetValue(LoadingStep.LoadModAssemblies, out StepStats stats))
+                {
+                    stats = new StepStats(ModAssemblyDescriptor);
+                    Stats.Add(LoadingStep.LoadModAssemblies, stats);
+                }
+
+                stats.Calls++;
+                stats.TotalTicks += elapsedTicks;
+                stats.ExclusiveTicks += elapsedTicks;
+                if (scope.MainThread)
+                {
+                    stats.MainThreadTicks += elapsedTicks;
+                    stats.MainThreadExclusiveTicks += elapsedTicks;
+                }
+                else
+                {
+                    stats.WorkerThreadTicks += elapsedTicks;
+                    stats.WorkerThreadExclusiveTicks += elapsedTicks;
+                }
+
+                if (currentModSequence == scope.Sequence)
+                {
+                    currentSequence = 0L;
+                    currentStepName = GetStageName(LoadingStage.Bootstrap);
+                    ClearCurrentMod();
+                }
             }
         }
 
@@ -183,6 +496,39 @@ namespace FixWorld.Loading
                 currentSequence = scopeSequence;
                 currentStage = descriptor.Stage;
                 currentStepName = descriptor.DisplayName;
+                if (descriptor.ModName != null)
+                {
+                    SetCurrentMod(scopeSequence, descriptor);
+                }
+            }
+        }
+
+        internal static void SetCurrentModItemTotal(LoadingContentKind kind, int totalItems)
+        {
+            lock (Sync)
+            {
+                if (!active || currentModContentKind != kind)
+                {
+                    return;
+                }
+
+                currentModCompletedItems = 0;
+                currentModTotalItems = Math.Max(0, totalItems);
+            }
+        }
+
+        internal static void AdvanceCurrentModItem()
+        {
+            lock (Sync)
+            {
+                if (!active || currentModTotalItems < 0)
+                {
+                    return;
+                }
+
+                currentModCompletedItems = Math.Min(
+                    currentModCompletedItems + 1,
+                    currentModTotalItems);
             }
         }
 
@@ -230,6 +576,7 @@ namespace FixWorld.Loading
 
                 if (currentSequence != scope.Sequence)
                 {
+                    RestoreCurrentModAfter(scope);
                     return;
                 }
 
@@ -245,11 +592,14 @@ namespace FixWorld.Loading
                     currentSequence = 0L;
                     currentStepName = GetStageName(scope.Descriptor.Stage);
                 }
+
+                RestoreCurrentModAfter(scope);
             }
         }
 
         internal static bool TryComplete()
         {
+            double observedMilliseconds;
             lock (Sync)
             {
                 if (completed)
@@ -263,8 +613,11 @@ namespace FixWorld.Loading
                 currentSequence = 0L;
                 currentStage = LoadingStage.Finalize;
                 currentStepName = "Ready";
-                return true;
+                observedMilliseconds = ToMilliseconds(completedAt - startedAt);
             }
+
+            LoadingEstimateStore.Write(observedMilliseconds);
+            return true;
         }
 
         internal static bool TryGetSnapshot(out LoadingSnapshot snapshot)
@@ -277,10 +630,24 @@ namespace FixWorld.Loading
                     return false;
                 }
 
+                double elapsedMilliseconds =
+                    ToMilliseconds(Math.Max(0L, Stopwatch.GetTimestamp() - startedAt));
+                bool hasEstimate = estimatedDurationMilliseconds > 0.0;
+                float progress = hasEstimate
+                    ? (float)Math.Min(0.98, elapsedMilliseconds / estimatedDurationMilliseconds)
+                    : (float)Math.Min(0.95, ((int)currentStage - 0.5) / 5.0);
                 snapshot = new LoadingSnapshot(
                     currentStage,
                     GetStageName(currentStage),
-                    currentStepName);
+                    currentStepName,
+                    elapsedMilliseconds,
+                    Math.Max(0.02f, progress),
+                    hasEstimate,
+                    estimatedDurationMilliseconds,
+                    currentModName,
+                    currentModActivity,
+                    currentModCompletedItems,
+                    currentModTotalItems);
                 return true;
             }
         }
@@ -305,9 +672,25 @@ namespace FixWorld.Loading
                         ToMilliseconds(item.MainThreadExclusiveTicks),
                         ToMilliseconds(item.WorkerThreadExclusiveTicks)))
                     .ToList();
+                List<ModAssemblyMeasurement> modAssemblies = ModAssemblyStatsByPackage.Values
+                    .OrderByDescending(item => item.TotalTicks)
+                    .ThenBy(item => item.ModName, StringComparer.OrdinalIgnoreCase)
+                    .Select(item => new ModAssemblyMeasurement(
+                        item.PackageId,
+                        item.ModName,
+                        item.Files,
+                        item.Loaded,
+                        item.Failed,
+                        item.Reflected,
+                        item.Unusable,
+                        ToMilliseconds(item.TotalTicks),
+                        ToMilliseconds(item.LoadTicks),
+                        ToMilliseconds(item.ReflectionTicks)))
+                    .ToList();
                 return new LoadingMeasurement(
                     ToMilliseconds(Math.Max(0L, end - startedAt)),
-                    steps);
+                    steps,
+                    modAssemblies);
             }
         }
 
@@ -327,6 +710,44 @@ namespace FixWorld.Loading
         private static double ToMilliseconds(long ticks)
         {
             return ticks * 1000.0 / Stopwatch.Frequency;
+        }
+
+        private static void RestoreCurrentModAfter(Scope completedScope)
+        {
+            if (currentModSequence != completedScope.Sequence)
+            {
+                return;
+            }
+
+            Scope parent = scopes.FirstOrDefault(candidate =>
+                candidate.Recognized && candidate.Descriptor.ModName != null);
+            if (parent == null)
+            {
+                ClearCurrentMod();
+                return;
+            }
+
+            SetCurrentMod(parent.Sequence, parent.Descriptor);
+        }
+
+        private static void SetCurrentMod(long scopeSequence, StepDescriptor descriptor)
+        {
+            currentModSequence = scopeSequence;
+            currentModContentKind = descriptor.ContentKind;
+            currentModName = descriptor.ModName;
+            currentModActivity = descriptor.ModActivity;
+            currentModCompletedItems = 0;
+            currentModTotalItems = -1;
+        }
+
+        private static void ClearCurrentMod()
+        {
+            currentModSequence = 0L;
+            currentModContentKind = LoadingContentKind.None;
+            currentModName = null;
+            currentModActivity = null;
+            currentModCompletedItems = 0;
+            currentModTotalItems = -1;
         }
 
         private sealed class Scope
@@ -369,6 +790,53 @@ namespace FixWorld.Loading
                 Descriptor = descriptor;
             }
         }
+
+        private sealed class ModAssemblyScope
+        {
+            internal readonly string PackageId;
+            internal readonly string ModName;
+            internal readonly long Sequence;
+            internal readonly long StartedAt;
+            internal readonly bool MainThread;
+            internal int TotalFiles;
+
+            internal ModAssemblyScope(
+                string packageId,
+                string modName,
+                long sequence,
+                long startedAt,
+                bool mainThread)
+            {
+                PackageId = packageId;
+                ModName = modName;
+                Sequence = sequence;
+                StartedAt = startedAt;
+                MainThread = mainThread;
+                TotalFiles = -1;
+            }
+        }
+
+        private sealed class ModAssemblyStats
+        {
+            internal readonly string PackageId;
+            internal readonly string ModName;
+            internal long Calls;
+            internal int Files;
+            internal int Loaded;
+            internal int Failed;
+            internal int Reflected;
+            internal int Unusable;
+            internal long TotalTicks;
+            internal long LoadTicks;
+            internal long ReflectionTicks;
+
+            internal ModAssemblyStats(string packageId, string modName)
+            {
+                PackageId = packageId;
+                ModName = modName;
+            }
+        }
+
     }
 
     internal readonly struct StepDescriptor
@@ -377,17 +845,26 @@ namespace FixWorld.Loading
         internal readonly LoadingStage Stage;
         internal readonly string Name;
         internal readonly string DisplayName;
+        internal readonly LoadingContentKind ContentKind;
+        internal readonly string ModName;
+        internal readonly string ModActivity;
 
         internal StepDescriptor(
             LoadingStep step,
             LoadingStage stage,
             string name,
-            string displayName = null)
+            string displayName = null,
+            LoadingContentKind contentKind = LoadingContentKind.None,
+            string modName = null,
+            string modActivity = null)
         {
             Step = step;
             Stage = stage;
             Name = name;
             DisplayName = displayName ?? name;
+            ContentKind = contentKind;
+            ModName = modName;
+            ModActivity = modActivity;
         }
     }
 
@@ -494,9 +971,35 @@ namespace FixWorld.Loading
                 return true;
             }
 
-            if (TryMatchMod(label, TexturePrefix, LoadingStep.LoadTextures, "Load textures", out descriptor) ||
-                TryMatchMod(label, AudioPrefix, LoadingStep.LoadAudio, "Load audio", out descriptor) ||
-                TryMatchMod(label, StringPrefix, LoadingStep.LoadStrings, "Load strings", out descriptor))
+            if (TryMatchMod(
+                    label,
+                    TexturePrefix,
+                    LoadingStep.LoadTextures,
+                    LoadingContentKind.Textures,
+                    "Load textures",
+                    "Textures",
+                    out descriptor) ||
+                TryMatchMod(
+                    label,
+                    AudioPrefix,
+                    LoadingStep.LoadAudio,
+                    LoadingContentKind.Audio,
+                    "Load audio",
+                    "Audio",
+                    out descriptor) ||
+                TryMatchMod(
+                    label,
+                    StringPrefix,
+                    LoadingStep.LoadStrings,
+                    LoadingContentKind.Strings,
+                    "Load strings",
+                    "Strings",
+                    out descriptor))
+            {
+                return true;
+            }
+
+            if (TryMatchModContent(label, out descriptor))
             {
                 return true;
             }
@@ -509,7 +1012,9 @@ namespace FixWorld.Loading
             string label,
             string prefix,
             LoadingStep step,
+            LoadingContentKind contentKind,
             string name,
+            string activity,
             out StepDescriptor descriptor)
         {
             if (!StartsWith(label, prefix))
@@ -518,11 +1023,41 @@ namespace FixWorld.Loading
                 return false;
             }
 
+            string modName = label.Substring(prefix.Length);
             descriptor = new StepDescriptor(
                 step,
                 LoadingStage.Content,
                 name,
-                name + ": " + label.Substring(prefix.Length));
+                name + ": " + modName,
+                contentKind,
+                modName,
+                activity);
+            return true;
+        }
+
+        private static bool TryMatchModContent(string label, out StepDescriptor descriptor)
+        {
+            const string prefix = "Loading ";
+            const string suffix = " content";
+            if (!StartsWith(label, prefix) ||
+                !label.EndsWith(suffix, StringComparison.Ordinal) ||
+                label.Length <= prefix.Length + suffix.Length)
+            {
+                descriptor = default;
+                return false;
+            }
+
+            string modName = label.Substring(
+                prefix.Length,
+                label.Length - prefix.Length - suffix.Length);
+            descriptor = new StepDescriptor(
+                LoadingStep.LoadContent,
+                LoadingStage.Content,
+                "Load mod content",
+                "Load mod content: " + modName,
+                LoadingContentKind.None,
+                modName,
+                "Mod content");
             return true;
         }
 
