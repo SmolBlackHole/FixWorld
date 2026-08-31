@@ -33,13 +33,14 @@ Aktuell: **Staged Loader: nächsten messbaren Engpass auswählen**
 - [x] Doorstop nur nach Opt-in installieren und fremde Proxy-Dateien niemals überschreiben
 - [x] Doorstop von RimWorld und Harmony entkoppeln und die Installationslogik zwischen Mod und CLI teilen
 - [x] normale FixWorld-Patches beim Laden von `FixWorld.dll` zentral über Harmony registrieren
-- [x] Assembly-Laden und Reflection pro Mod typisiert messen
+- [ ] vollständiges Assembly-Laden später über den optionalen Preloader messen
 - [x] reinen Doorstop-Prozesseinstieg bis zum Hauptmenü verifizieren
 - [ ] korrekten frühen RimWorld-Hookpunkt belegen, bevor dort Harmony-Patches registriert werden
-- [ ] Absturz der vollständigen isolierten Mod-Fixture bei Quarry unabhängig vom Preloader klären
+- [ ] Absturz der vollständigen isolierten Mod-Fixture bei Quarry unabhängig von Preloader und FixWorld-Runner klären
 - [x] Vanilla-Start in `Bootstrap -> XML & Patches -> Definitions -> Content -> Finalize` zerlegen
 - [x] zentralen Loader-Observer statt einer großen Methoden-Patchliste bauen
 - [x] eigene FixWorld-Ladeanzeige aus demselben Loader-Snapshot zeichnen
+- [x] FixWorld-Anzeige bei verzögerten Initialisierungsaufgaben und statischen Konstruktoren testen
 - [x] typisierten C#-Report und kleines Python-Benchmarktool bauen
 - [ ] `LoadTextures` und statische Konstruktoren als nächste Engpässe getrennt untersuchen
 - [x] parallele Discovery auf NVMe vorerst zurückstellen: nur 74,8 ms Gesamtpotenzial

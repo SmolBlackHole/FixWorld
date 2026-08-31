@@ -64,24 +64,10 @@ class LoaderStepData(TypedDict):
     workerThreadMs: float
 
 
-class ModAssemblyData(TypedDict):
-    packageId: str
-    modName: str
-    files: int
-    loaded: int
-    failed: int
-    reflected: int
-    unusable: int
-    totalMs: float
-    loadMs: float
-    reflectionMs: float
-
-
 class LoaderData(TypedDict):
     observedMs: float
     stages: list[LoaderStageData]
     steps: list[LoaderStepData]
-    modAssemblies: list[ModAssemblyData]
 
 
 class FileData(TypedDict):
@@ -207,13 +193,11 @@ def validate_report(raw: object) -> BenchmarkReport:
         raise RuntimeError(f"Unexpected completion data: {completion!r}")
     stages = loader.get("stages")
     steps = loader.get("steps")
-    mod_assemblies = loader.get("modAssemblies")
     if (
         not isinstance(stages, list)
         or len(stages) != 5
         or not isinstance(steps, list)
         or not steps
-        or not isinstance(mod_assemblies, list)
     ):
         raise RuntimeError("Benchmark report contains incomplete loader measurements.")
     for section in ("files", "texturePaths", "textures", "ddsCache"):
@@ -248,22 +232,6 @@ def write_loader_csvs(run_root: Path, report: BenchmarkReport) -> None:
             "workerThreadMs",
         ),
         loader["steps"],
-    )
-    _write_csv(
-        run_root / "loader-mod-assemblies.csv",
-        (
-            "packageId",
-            "modName",
-            "files",
-            "loaded",
-            "failed",
-            "reflected",
-            "unusable",
-            "totalMs",
-            "loadMs",
-            "reflectionMs",
-        ),
-        loader["modAssemblies"],
     )
 
 

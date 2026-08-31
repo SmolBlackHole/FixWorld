@@ -1,51 +1,46 @@
 using System;
-using System.IO;
-using System.Threading;
 using FixWorld.Caching;
+using FixWorld.Diagnostics;
 using FixWorld.Integration;
 using FixWorld.Loading;
-using HarmonyLib;
+using FixWorld.Preloader;
+using Verse;
 
 namespace FixWorld
 {
     internal static class FixWorldBootstrap
     {
-        private const string HarmonyId = "smolblackhole.fixworld";
         private static readonly object Sync = new object();
         private static bool initialized;
 
-        internal static bool InitializeRuntime()
+        internal static void Initialize(
+            FixWorldMod owner,
+            ModContentPack content,
+            FixWorldSettings settings)
         {
             lock (Sync)
             {
-                if (!initialized)
+                if (initialized)
                 {
-                    TextureDdsCache.Initialize(FindModRoot());
-                    LoadingSession.Start(true);
-                    RimWorldHooks.InstallRuntime(new Harmony(HarmonyId));
-                    Thread.MemoryBarrier();
-                    initialized = true;
+                    return;
                 }
 
-                return string.Equals(
+                LoadingSession.Start(true);
+                bool hooksInstalled = RimWorldHooks.Install(BenchmarkRecorder.Enabled);
+                TextureDdsCache.Initialize(content.RootDir);
+                PreloaderManager.Configure(content.RootDir);
+                PreloaderPrompt.Configure(owner, settings);
+
+                bool earlyLoader = string.Equals(
                     Environment.GetEnvironmentVariable("FIXWORLD_PRELOADER_ACTIVE"),
                     "1",
                     StringComparison.Ordinal);
+                initialized = true;
+                Log.Message(
+                    "[FixWorld] Initialized; hooks=" + hooksInstalled +
+                    ", benchmark=" + BenchmarkRecorder.Enabled +
+                    ", earlyLoader=" + earlyLoader + ".");
             }
-        }
-
-        private static string FindModRoot()
-        {
-            string assemblyPath = typeof(FixWorldBootstrap).Assembly.Location;
-            DirectoryInfo assemblyDirectory = new FileInfo(assemblyPath).Directory;
-            DirectoryInfo modRoot = assemblyDirectory?.Parent;
-            if (modRoot == null)
-            {
-                throw new DirectoryNotFoundException(
-                    "FixWorld could not locate its mod directory.");
-            }
-
-            return modRoot.FullName;
         }
     }
 }

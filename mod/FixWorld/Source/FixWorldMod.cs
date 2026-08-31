@@ -1,5 +1,4 @@
 using System;
-using FixWorld.Diagnostics;
 using FixWorld.Preloader;
 using UnityEngine;
 using Verse;
@@ -12,13 +11,8 @@ namespace FixWorld
 
         public FixWorldMod(ModContentPack content) : base(content)
         {
-            bool early = FixWorldBootstrap.InitializeRuntime();
             settings = GetSettings<FixWorldSettings>();
-            PreloaderManager.Configure(content.RootDir);
-            PreloaderPrompt.Configure(this, settings);
-            Log.Message(
-                "[FixWorld] Loaded. DDS cache and loading progress are active; benchmark=" +
-                BenchmarkRecorder.Enabled + ", earlyLoader=" + early + ".");
+            FixWorldBootstrap.Initialize(this, content, settings);
         }
 
         public override string SettingsCategory()

@@ -70,8 +70,7 @@ namespace FixWorld.Diagnostics
                 Loader = new LoaderReport(
                     loading.ObservedMilliseconds,
                     stages,
-                    steps,
-                    loading.ModAssemblies.Select(item => new ModAssemblyReport(item)).ToList()),
+                    steps),
                 Files = new FileDiscoveryReport(files),
                 TexturePaths = new TexturePathReport(texturePaths),
                 Textures = new TextureReport(textures),
@@ -148,67 +147,14 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "steps", Order = 3)]
         public List<LoaderStepReport> Steps { get; private set; }
 
-        [DataMember(Name = "modAssemblies", Order = 4)]
-        public List<ModAssemblyReport> ModAssemblies { get; private set; }
-
         internal LoaderReport(
             double observedMilliseconds,
             List<LoaderStageReport> stages,
-            List<LoaderStepReport> steps,
-            List<ModAssemblyReport> modAssemblies)
+            List<LoaderStepReport> steps)
         {
             ObservedMilliseconds = observedMilliseconds;
             Stages = stages;
             Steps = steps;
-            ModAssemblies = modAssemblies;
-        }
-    }
-
-    [DataContract]
-    internal sealed class ModAssemblyReport
-    {
-        [DataMember(Name = "packageId", Order = 1)]
-        public string PackageId { get; private set; }
-
-        [DataMember(Name = "modName", Order = 2)]
-        public string ModName { get; private set; }
-
-        [DataMember(Name = "files", Order = 3)]
-        public int Files { get; private set; }
-
-        [DataMember(Name = "loaded", Order = 4)]
-        public int Loaded { get; private set; }
-
-        [DataMember(Name = "failed", Order = 5)]
-        public int Failed { get; private set; }
-
-        [DataMember(Name = "reflected", Order = 6)]
-        public int Reflected { get; private set; }
-
-        [DataMember(Name = "unusable", Order = 7)]
-        public int Unusable { get; private set; }
-
-        [DataMember(Name = "totalMs", Order = 8)]
-        public double TotalMilliseconds { get; private set; }
-
-        [DataMember(Name = "loadMs", Order = 9)]
-        public double LoadMilliseconds { get; private set; }
-
-        [DataMember(Name = "reflectionMs", Order = 10)]
-        public double ReflectionMilliseconds { get; private set; }
-
-        internal ModAssemblyReport(ModAssemblyMeasurement measurement)
-        {
-            PackageId = measurement.PackageId;
-            ModName = measurement.ModName;
-            Files = measurement.Files;
-            Loaded = measurement.Loaded;
-            Failed = measurement.Failed;
-            Reflected = measurement.Reflected;
-            Unusable = measurement.Unusable;
-            TotalMilliseconds = measurement.TotalMilliseconds;
-            LoadMilliseconds = measurement.LoadMilliseconds;
-            ReflectionMilliseconds = measurement.ReflectionMilliseconds;
         }
     }
 

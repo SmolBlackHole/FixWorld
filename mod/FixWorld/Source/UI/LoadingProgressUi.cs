@@ -9,7 +9,7 @@ namespace FixWorld.UI
 {
     internal static class LoadingProgressUi
     {
-        private const float PanelHeight = 232f;
+        private const float PanelHeight = 254f;
         private const float PanelMaxWidth = 860f;
 
         private static readonly Color Accent = new Color(0.25f, 0.73f, 0.90f, 1f);
@@ -84,35 +84,44 @@ namespace FixWorld.UI
                 new Rect(content.x, content.y + 38f, 300f, 24f),
                 (int)snapshot.Stage + " / 5   " + snapshot.StageName);
 
-            if (snapshot.CurrentModTotalItems >= 0)
+            if (snapshot.TotalItems >= 0)
             {
                 Text.Font = GameFont.Tiny;
                 Text.Anchor = TextAnchor.UpperRight;
+                string unit = string.IsNullOrEmpty(snapshot.ItemUnit)
+                    ? "items"
+                    : snapshot.ItemUnit;
                 Widgets.Label(
                     new Rect(content.x + 300f, content.y + 42f, content.width - 300f, 20f),
-                    snapshot.CurrentModCompletedItems.ToString("N0", CultureInfo.InvariantCulture) +
-                    " / " + snapshot.CurrentModTotalItems.ToString("N0", CultureInfo.InvariantCulture) +
-                    " files");
+                    snapshot.CompletedItems.ToString("N0", CultureInfo.InvariantCulture) +
+                    " / " + snapshot.TotalItems.ToString("N0", CultureInfo.InvariantCulture) +
+                    " " + unit);
             }
 
-            Text.Font = GameFont.Tiny;
+            Text.Font = GameFont.Small;
             Text.Anchor = TextAnchor.UpperLeft;
-            string activity = snapshot.CurrentModName == null
-                ? snapshot.StepName
-                : snapshot.CurrentModActivity + " for " + snapshot.CurrentModName;
             Widgets.LabelEllipses(
-                new Rect(content.x, content.y + 63f, content.width, 21f),
-                activity);
+                new Rect(content.x, content.y + 62f, content.width, 24f),
+                snapshot.StepName);
+
+            if (!string.IsNullOrEmpty(snapshot.Activity) &&
+                !string.Equals(snapshot.Activity, snapshot.StepName, StringComparison.Ordinal))
+            {
+                Text.Font = GameFont.Tiny;
+                Widgets.LabelEllipses(
+                    new Rect(content.x, content.y + 86f, content.width, 20f),
+                    snapshot.Activity);
+            }
         }
 
         private static void DrawProgressBars(Rect content, LoadingSnapshot snapshot)
         {
-            Rect currentBar = new Rect(content.x, content.y + 88f, content.width, 14f);
+            Rect currentBar = new Rect(content.x, content.y + 110f, content.width, 14f);
             Widgets.DrawBoxSolid(currentBar, Track);
-            if (snapshot.CurrentModTotalItems > 0)
+            if (snapshot.TotalItems > 0)
             {
                 float progress = Mathf.Clamp01(
-                    (float)snapshot.CurrentModCompletedItems / snapshot.CurrentModTotalItems);
+                    (float)snapshot.CompletedItems / snapshot.TotalItems);
                 DrawFill(currentBar, progress);
             }
             else
@@ -122,7 +131,7 @@ namespace FixWorld.UI
 
             Widgets.DrawBox(currentBar);
 
-            Rect overallBar = new Rect(content.x, content.y + 111f, content.width, 16f);
+            Rect overallBar = new Rect(content.x, content.y + 133f, content.width, 16f);
             Widgets.DrawBoxSolid(overallBar, Track);
             DrawFill(overallBar, snapshot.Progress);
             Widgets.DrawBox(overallBar);
@@ -143,7 +152,7 @@ namespace FixWorld.UI
         private static void DrawStages(Rect content, LoadingStage stage)
         {
             const float gap = 5f;
-            Rect rail = new Rect(content.x, content.y + 137f, content.width, 7f);
+            Rect rail = new Rect(content.x, content.y + 159f, content.width, 7f);
             float segmentWidth = (rail.width - gap * 4f) / 5f;
             for (int number = 1; number <= 5; number++)
             {
