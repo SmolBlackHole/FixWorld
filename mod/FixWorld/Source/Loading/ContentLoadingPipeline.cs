@@ -10,6 +10,9 @@ namespace FixWorld.Loading
 {
     internal sealed class ContentLoadingPipeline
     {
+        private static readonly object AccessorSync = new object();
+        private static readonly Dictionary<Type, ClosureAccessor> Accessors =
+            new Dictionary<Type, ClosureAccessor>();
         private static readonly MethodInfo ReloadContentMethod = AccessTools.Method(
             typeof(ModContentPack),
             "ReloadContentInt",
@@ -20,48 +23,32 @@ namespace FixWorld.Loading
         private static readonly FieldInfo AssetNamesTrieCacheField = AccessTools.Field(
             typeof(ModContentPack),
             "allAssetNamesInBundleCachedTrie");
-        internal ModContentPack Mod { get; }
-        internal IReadOnlyList<ContentLoadingStep> Steps { get; }
+
+        private readonly ModContentPack mod;
 
         private ContentLoadingPipeline(ModContentPack mod)
         {
-            Mod = mod;
-            Steps = new[]
-            {
-                new ContentLoadingStep(
-                    "Audio",
-                    "Reload audio clips",
-                    () => mod.GetContentHolder<AudioClip>().ReloadAll(false)),
-                new ContentLoadingStep(
-                    "Textures",
-                    "Reload textures",
-                    () => mod.GetContentHolder<Texture2D>().ReloadAll(false)),
-                new ContentLoadingStep(
-                    "Strings",
-                    "Reload strings",
-                    () => mod.GetContentHolder<string>().ReloadAll(false)),
-                new ContentLoadingStep(
-                    "Asset bundles",
-                    "Reload asset bundles",
-                    () => ReloadAssetBundles(mod))
-            };
+            this.mod = mod;
         }
 
-        internal static bool TryCreate(
+        internal static bool MatchesContract(MethodInfo method)
+        {
+            return method != null &&
+                   method.Name == "<ReloadContent>b__0" &&
+                   method.DeclaringType?.DeclaringType == typeof(ModContentPack);
+        }
+
+        internal static bool TryCreateCompatible(
             Action action,
             out ContentLoadingPipeline pipeline)
         {
             pipeline = null;
-            bool reloadAction = action.Method.Name == "<ReloadContent>b__0";
-            bool declaringTypeMatches =
-                action.Method.DeclaringType?.DeclaringType == typeof(ModContentPack);
-            bool hasHarmonyPatches = ReloadContentMethod != null && HasHarmonyPatches();
-            if (ReloadContentMethod == null ||
+            if (action == null ||
+                !MatchesContract(action.Method) ||
+                ReloadContentMethod == null ||
                 AssetNamesCacheField == null ||
                 AssetNamesTrieCacheField == null ||
-                !reloadAction ||
-                !declaringTypeMatches ||
-                hasHarmonyPatches)
+                HasHarmonyPatches())
             {
                 return false;
             }
@@ -72,22 +59,97 @@ namespace FixWorld.Loading
                 return false;
             }
 
-            FieldInfo[] fields = target.GetType().GetFields(
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            ModContentPack mod = fields
-                .Where(field => typeof(ModContentPack).IsAssignableFrom(field.FieldType))
-                .Select(field => field.GetValue(target) as ModContentPack)
-                .FirstOrDefault(value => value != null);
-            FieldInfo hotReloadField = fields.FirstOrDefault(field => field.FieldType == typeof(bool));
-            if (mod == null ||
-                hotReloadField == null ||
-                (bool)hotReloadField.GetValue(target))
+            ClosureAccessor accessor = GetAccessor(target.GetType());
+            ModContentPack targetMod = accessor.ModField?.GetValue(target) as ModContentPack;
+            if (targetMod == null ||
+                accessor.HotReloadField == null ||
+                (bool)accessor.HotReloadField.GetValue(target))
             {
                 return false;
             }
 
-            pipeline = new ContentLoadingPipeline(mod);
+            pipeline = new ContentLoadingPipeline(targetMod);
             return true;
+        }
+
+        internal LoadingActionPlan CreatePlan(string label)
+        {
+            ContentLoadingStep[] steps =
+            {
+                new ContentLoadingStep(
+                    LoadingStep.LoadAudio,
+                    "Audio",
+                    "Reload audio clips",
+                    () => mod.GetContentHolder<AudioClip>().ReloadAll(false)),
+                new ContentLoadingStep(
+                    LoadingStep.LoadTextures,
+                    "Textures",
+                    "Reload textures",
+                    () => mod.GetContentHolder<Texture2D>().ReloadAll(false)),
+                new ContentLoadingStep(
+                    LoadingStep.LoadStrings,
+                    "Strings",
+                    "Reload strings",
+                    () => mod.GetContentHolder<string>().ReloadAll(false)),
+                new ContentLoadingStep(
+                    LoadingStep.LoadAssetBundles,
+                    "Asset bundles",
+                    "Reload asset bundles",
+                    () => ReloadAssetBundles(mod))
+            };
+            LoadingModAttribution attribution = LoadingModAttribution.Exact(mod);
+            LoadingPipelineStage[] stages = new LoadingPipelineStage[steps.Length];
+            for (int index = 0; index < steps.Length; index++)
+            {
+                ContentLoadingStep step = steps[index];
+                LoadingWorkItem item = new LoadingWorkItem(
+                    LoadingStage.Content,
+                    step.Operation,
+                    "Loading content for " + mod.Name,
+                    step.DisplayName + "   " + (index + 1) + " / " + steps.Length,
+                    step.ProfilerLabel,
+                    step.DisplayName,
+                    attribution,
+                    index + 1,
+                    steps.Length,
+                    continueOnFailure: false,
+                    execute: step.Execute);
+                stages[index] = new LoadingPipelineStage(
+                    index,
+                    step.DisplayName,
+                    LoadingStage.Content,
+                    step.Operation,
+                    LoadingExecutionMode.MainThread,
+                    item,
+                    index == 0 ? null : new[] { index - 1 });
+            }
+
+            return new LoadingActionPlan(
+                label,
+                attribution,
+                stages);
+        }
+
+        private static ClosureAccessor GetAccessor(Type targetType)
+        {
+            lock (AccessorSync)
+            {
+                if (Accessors.TryGetValue(targetType, out ClosureAccessor accessor))
+                {
+                    return accessor;
+                }
+
+                FieldInfo[] fields = targetType.GetFields(
+                    BindingFlags.Instance |
+                    BindingFlags.Public |
+                    BindingFlags.NonPublic);
+                accessor = new ClosureAccessor(
+                    fields.FirstOrDefault(field =>
+                        typeof(ModContentPack).IsAssignableFrom(field.FieldType)),
+                    fields.FirstOrDefault(field => field.FieldType == typeof(bool)));
+                Accessors.Add(targetType, accessor);
+                return accessor;
+            }
         }
 
         private static bool HasHarmonyPatches()
@@ -100,28 +162,43 @@ namespace FixWorld.Loading
                     patches.Finalizers.Count > 0);
         }
 
-        private static void ReloadAssetBundles(ModContentPack mod)
+        private static void ReloadAssetBundles(ModContentPack targetMod)
         {
-            mod.assetBundles.ReloadAll(false);
-            AssetNamesCacheField.SetValue(mod, null);
-            AssetNamesTrieCacheField.SetValue(mod, null);
+            targetMod.assetBundles.ReloadAll(false);
+            AssetNamesCacheField.SetValue(targetMod, null);
+            AssetNamesTrieCacheField.SetValue(targetMod, null);
         }
-    }
 
-    internal readonly struct ContentLoadingStep
-    {
-        internal readonly string DisplayName;
-        internal readonly string ProfilerLabel;
-        internal readonly Action Execute;
-
-        internal ContentLoadingStep(
-            string displayName,
-            string profilerLabel,
-            Action execute)
+        private readonly struct ContentLoadingStep
         {
-            DisplayName = displayName;
-            ProfilerLabel = profilerLabel;
-            Execute = execute;
+            internal readonly LoadingStep Operation;
+            internal readonly string DisplayName;
+            internal readonly string ProfilerLabel;
+            internal readonly Action Execute;
+
+            internal ContentLoadingStep(
+                LoadingStep operation,
+                string displayName,
+                string profilerLabel,
+                Action execute)
+            {
+                Operation = operation;
+                DisplayName = displayName;
+                ProfilerLabel = profilerLabel;
+                Execute = execute;
+            }
+        }
+
+        private sealed class ClosureAccessor
+        {
+            internal readonly FieldInfo ModField;
+            internal readonly FieldInfo HotReloadField;
+
+            internal ClosureAccessor(FieldInfo modField, FieldInfo hotReloadField)
+            {
+                ModField = modField;
+                HotReloadField = hotReloadField;
+            }
         }
     }
 }

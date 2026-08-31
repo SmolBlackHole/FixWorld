@@ -13,7 +13,7 @@ namespace FixWorld.Diagnostics
     [DataContract]
     internal sealed class BenchmarkReport
     {
-        private const int CurrentSchemaVersion = 3;
+        private const int CurrentSchemaVersion = 4;
 
         [DataMember(Name = "schemaVersion", Order = 1)]
         public int SchemaVersion { get; private set; }
@@ -46,9 +46,6 @@ namespace FixWorld.Diagnostics
         internal static BenchmarkReport Create(
             string completionSource,
             LoadingMeasurement loading,
-            IReadOnlyList<DelayedActionSnapshot> delayedActions,
-            IReadOnlyList<StaticConstructorSnapshot> staticConstructors,
-            double staticConstructorTailMilliseconds,
             FileDiscoverySnapshot files,
             TexturePathSnapshot texturePaths,
             TextureProbeSnapshot textures,
@@ -74,11 +71,17 @@ namespace FixWorld.Diagnostics
                     loading.ObservedMilliseconds,
                     stages,
                     steps,
-                    delayedActions.Select(item => new DelayedActionReport(item)).ToList(),
-                    staticConstructors
+                    loading.DelayedActions
+                        .Select(item => new DelayedActionReport(item))
+                        .ToList(),
+                    loading.StaticConstructors
                         .Select(item => new StaticConstructorReport(item))
                         .ToList(),
-                    staticConstructorTailMilliseconds),
+                    loading.StaticConstructorTailMilliseconds,
+                    loading.Mods.Select(item => new ModLoadingReport(item)).ToList(),
+                    loading.Overhead
+                        .Select(item => new LoadingOverheadReport(item))
+                        .ToList()),
                 Files = new FileDiscoveryReport(files),
                 TexturePaths = new TexturePathReport(texturePaths),
                 Textures = new TextureReport(textures),
@@ -164,13 +167,21 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "staticConstructorTailMs", Order = 6)]
         public double StaticConstructorTailMilliseconds { get; private set; }
 
+        [DataMember(Name = "mods", Order = 7)]
+        public List<ModLoadingReport> Mods { get; private set; }
+
+        [DataMember(Name = "overhead", Order = 8)]
+        public List<LoadingOverheadReport> Overhead { get; private set; }
+
         internal LoaderReport(
             double observedMilliseconds,
             List<LoaderStageReport> stages,
             List<LoaderStepReport> steps,
             List<DelayedActionReport> delayedActions,
             List<StaticConstructorReport> staticConstructors,
-            double staticConstructorTailMilliseconds)
+            double staticConstructorTailMilliseconds,
+            List<ModLoadingReport> mods,
+            List<LoadingOverheadReport> overhead)
         {
             ObservedMilliseconds = observedMilliseconds;
             Stages = stages;
@@ -178,6 +189,8 @@ namespace FixWorld.Diagnostics
             DelayedActions = delayedActions;
             StaticConstructors = staticConstructors;
             StaticConstructorTailMilliseconds = staticConstructorTailMilliseconds;
+            Mods = mods;
+            Overhead = overhead;
         }
     }
 
@@ -246,6 +259,90 @@ namespace FixWorld.Diagnostics
             TotalMilliseconds = constructor.TotalMilliseconds;
             MaxMilliseconds = constructor.MaxMilliseconds;
             Failures = constructor.Failures;
+        }
+    }
+
+    [DataContract]
+    internal sealed class ModLoadingReport
+    {
+        [DataMember(Name = "packageId", Order = 1)]
+        public string PackageId { get; private set; }
+
+        [DataMember(Name = "mod", Order = 2)]
+        public string ModName { get; private set; }
+
+        [DataMember(Name = "attribution", Order = 3)]
+        public string Attribution { get; private set; }
+
+        [DataMember(Name = "stage", Order = 4)]
+        public string Stage { get; private set; }
+
+        [DataMember(Name = "operation", Order = 5)]
+        public string Operation { get; private set; }
+
+        [DataMember(Name = "calls", Order = 6)]
+        public long Calls { get; private set; }
+
+        [DataMember(Name = "failures", Order = 7)]
+        public long Failures { get; private set; }
+
+        [DataMember(Name = "executionMs", Order = 8)]
+        public double ExecutionMilliseconds { get; private set; }
+
+        [DataMember(Name = "mainThreadMs", Order = 9)]
+        public double MainThreadMilliseconds { get; private set; }
+
+        [DataMember(Name = "workerThreadMs", Order = 10)]
+        public double WorkerThreadMilliseconds { get; private set; }
+
+        [DataMember(Name = "waitMs", Order = 11)]
+        public double WaitMilliseconds { get; private set; }
+
+        [DataMember(Name = "wallMs", Order = 12)]
+        public double WallMilliseconds { get; private set; }
+
+        internal ModLoadingReport(ModLoadingMeasurement measurement)
+        {
+            PackageId = measurement.PackageId;
+            ModName = measurement.ModName;
+            Attribution = measurement.Attribution.ToString();
+            Stage = LoadingSession.GetStageName(measurement.Stage);
+            Operation = measurement.Operation.ToString();
+            Calls = measurement.Calls;
+            Failures = measurement.Failures;
+            ExecutionMilliseconds = measurement.ExecutionMilliseconds;
+            MainThreadMilliseconds = measurement.MainThreadMilliseconds;
+            WorkerThreadMilliseconds = measurement.WorkerThreadMilliseconds;
+            WaitMilliseconds = measurement.WaitMilliseconds;
+            WallMilliseconds = measurement.WallMilliseconds;
+        }
+    }
+
+    [DataContract]
+    internal sealed class LoadingOverheadReport
+    {
+        [DataMember(Name = "operation", Order = 1)]
+        public string Operation { get; private set; }
+
+        [DataMember(Name = "calls", Order = 2)]
+        public long Calls { get; private set; }
+
+        [DataMember(Name = "totalMs", Order = 3)]
+        public double TotalMilliseconds { get; private set; }
+
+        [DataMember(Name = "maxMs", Order = 4)]
+        public double MaxMilliseconds { get; private set; }
+
+        [DataMember(Name = "estimated", Order = 5)]
+        public bool Estimated { get; private set; }
+
+        internal LoadingOverheadReport(LoadingOverheadMeasurement measurement)
+        {
+            Operation = measurement.Kind.ToString();
+            Calls = measurement.Calls;
+            TotalMilliseconds = measurement.TotalMilliseconds;
+            MaxMilliseconds = measurement.MaxMilliseconds;
+            Estimated = measurement.Estimated;
         }
     }
 

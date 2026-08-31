@@ -1,38 +1,26 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.Linq;
 using System.Threading;
-using Verse;
 
 namespace FixWorld.Loading
 {
     internal static class LoadingSession
     {
         private static readonly object Sync = new object();
-        private static readonly Dictionary<LoadingStep, StepStats> Stats =
-            new Dictionary<LoadingStep, StepStats>();
         private static readonly long DetailRefreshTicks =
             Math.Max(1L, Stopwatch.Frequency / 5L);
 
         private static volatile bool active;
         private static bool completed;
         private static long startedAt;
-        private static long completedAt;
-        private static long sequence;
-        private static long currentSequence;
         private static LoadingStage currentStage;
         private static string currentStepName;
         private static string currentDetailName;
         private static string pendingDetailLabel;
         private static long nextDetailRefreshAt;
         private static double estimatedDurationMilliseconds;
-        private static long currentModSequence;
         private static string currentActivity;
-
-        [ThreadStatic]
-        private static Stack<Scope> scopes;
 
         internal static bool IsActive => active;
 
@@ -46,132 +34,16 @@ namespace FixWorld.Loading
                     return;
                 }
 
-                Stats.Clear();
                 completed = false;
                 startedAt = Stopwatch.GetTimestamp();
-                completedAt = 0L;
                 currentStage = LoadingStage.Bootstrap;
                 currentStepName = "FixWorld attached";
                 currentDetailName = null;
                 pendingDetailLabel = null;
                 nextDetailRefreshAt = 0L;
-                currentSequence = 0L;
-                sequence = 0L;
                 estimatedDurationMilliseconds = previousDuration;
-                ClearCurrentMod();
+                currentActivity = null;
                 active = true;
-            }
-        }
-
-        internal static void Begin(string label)
-        {
-            if (!active)
-            {
-                return;
-            }
-
-            if (scopes == null)
-            {
-                scopes = new Stack<Scope>();
-            }
-
-            bool recognized = LoaderStepCatalog.TryMatch(label, out StepDescriptor descriptor);
-            long scopeSequence = recognized ? Interlocked.Increment(ref sequence) : 0L;
-            Scope scope = new Scope(
-                Stopwatch.GetTimestamp(),
-                recognized,
-                descriptor,
-                scopeSequence,
-                UnityData.IsInMainThread);
-            scopes.Push(scope);
-
-            if (!recognized)
-            {
-                Interlocked.Exchange(ref pendingDetailLabel, label);
-                return;
-            }
-
-            lock (Sync)
-            {
-                if (!active)
-                {
-                    return;
-                }
-
-                ClearDetail();
-                currentSequence = scopeSequence;
-                currentStage = descriptor.Stage;
-                currentStepName = descriptor.DisplayName;
-                if (descriptor.ModName != null)
-                {
-                    SetCurrentMod(scopeSequence, descriptor);
-                }
-            }
-        }
-
-        internal static void End()
-        {
-            if (!active || scopes == null || scopes.Count == 0)
-            {
-                return;
-            }
-
-            Scope scope = scopes.Pop();
-            long elapsedTicks = Stopwatch.GetTimestamp() - scope.StartedAt;
-            long exclusiveTicks = Math.Max(0L, elapsedTicks - scope.ChildTicks);
-            if (scopes.Count > 0)
-            {
-                scopes.Peek().ChildTicks += elapsedTicks;
-            }
-
-            if (!scope.Recognized)
-            {
-                return;
-            }
-
-            lock (Sync)
-            {
-                if (!Stats.TryGetValue(scope.Descriptor.Step, out StepStats stats))
-                {
-                    stats = new StepStats(scope.Descriptor);
-                    Stats.Add(scope.Descriptor.Step, stats);
-                }
-
-                stats.Calls++;
-                stats.TotalTicks += elapsedTicks;
-                stats.ExclusiveTicks += exclusiveTicks;
-                if (scope.MainThread)
-                {
-                    stats.MainThreadTicks += elapsedTicks;
-                    stats.MainThreadExclusiveTicks += exclusiveTicks;
-                }
-                else
-                {
-                    stats.WorkerThreadTicks += elapsedTicks;
-                    stats.WorkerThreadExclusiveTicks += exclusiveTicks;
-                }
-
-                if (currentSequence != scope.Sequence)
-                {
-                    RestoreCurrentModAfter(scope);
-                    return;
-                }
-
-                ClearDetail();
-                Scope parent = scopes.FirstOrDefault(candidate => candidate.Recognized);
-                if (parent != null)
-                {
-                    currentSequence = parent.Sequence;
-                    currentStage = parent.Descriptor.Stage;
-                    currentStepName = parent.Descriptor.DisplayName;
-                }
-                else
-                {
-                    currentSequence = 0L;
-                    currentStepName = GetStageFallbackName(scope.Descriptor.Stage);
-                }
-
-                RestoreCurrentModAfter(scope);
             }
         }
 
@@ -186,11 +58,11 @@ namespace FixWorld.Loading
                 }
 
                 completed = true;
-                completedAt = Stopwatch.GetTimestamp();
+                long completedAt = Stopwatch.GetTimestamp();
                 active = false;
-                currentSequence = 0L;
                 currentStage = LoadingStage.Finalize;
                 currentStepName = "Ready";
+                currentActivity = null;
                 ClearDetail();
                 observedMilliseconds = ToMilliseconds(completedAt - startedAt);
             }
@@ -199,9 +71,74 @@ namespace FixWorld.Loading
             return true;
         }
 
-        internal static void ReportDelayedInitialization(
-            string label,
-            int currentTask,
+        internal static void ReportProfilerStep(StepDescriptor descriptor)
+        {
+            if (!active)
+            {
+                return;
+            }
+
+            lock (Sync)
+            {
+                if (!active)
+                {
+                    return;
+                }
+
+                ClearDetail();
+                currentStage = descriptor.Stage;
+                currentStepName = descriptor.DisplayName;
+                currentActivity = descriptor.ModName == null
+                    ? null
+                    : descriptor.ModActivity + " for " + descriptor.ModName;
+            }
+        }
+
+        internal static void ReportProfilerDetail(string label)
+        {
+            if (active)
+            {
+                Interlocked.Exchange(ref pendingDetailLabel, label);
+            }
+        }
+
+        internal static void RestoreProfilerStep(
+            bool hasParent,
+            StepDescriptor parent,
+            LoadingStage completedStage)
+        {
+            if (!active)
+            {
+                return;
+            }
+
+            lock (Sync)
+            {
+                if (!active)
+                {
+                    return;
+                }
+
+                ClearDetail();
+                if (hasParent)
+                {
+                    currentStage = parent.Stage;
+                    currentStepName = parent.DisplayName;
+                    currentActivity = parent.ModName == null
+                        ? null
+                        : parent.ModActivity + " for " + parent.ModName;
+                    return;
+                }
+
+                currentStage = completedStage;
+                currentStepName = GetStageFallbackName(completedStage);
+                currentActivity = null;
+            }
+        }
+
+        internal static void ReportStage(
+            LoadingPipelineStage stage,
+            int completedTasks,
             int totalTasks)
         {
             if (!active)
@@ -217,94 +154,42 @@ namespace FixWorld.Loading
                 }
 
                 ClearDetail();
-                currentStage = LoadingStage.Content;
-                currentStepName = LoaderStepCatalog.GetDisplayName(label);
+                currentStage = stage.Phase;
+                currentStepName = stage.Name;
                 currentActivity = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "Stage tasks {0:N0} / {1:N0}   {2}",
+                    completedTasks,
+                    totalTasks,
+                    stage.ExecutionMode);
+            }
+        }
+
+        internal static void ReportWork(
+            LoadingWorkItem item,
+            int currentAction,
+            int totalActions)
+        {
+            if (!active)
+            {
+                return;
+            }
+
+            lock (Sync)
+            {
+                if (!active)
+                {
+                    return;
+                }
+
+                ClearDetail();
+                currentStage = item.Stage;
+                currentStepName = item.DisplayName;
+                currentActivity = item.Activity ?? string.Format(
                     CultureInfo.InvariantCulture,
                     "Delayed initialization task {0:N0} / {1:N0}",
-                    currentTask,
-                    totalTasks);
-            }
-        }
-
-        internal static void ReportContentLoading(
-            string modName,
-            string activity,
-            int currentStep,
-            int totalSteps)
-        {
-            if (!active)
-            {
-                return;
-            }
-
-            lock (Sync)
-            {
-                if (!active)
-                {
-                    return;
-                }
-
-                ClearDetail();
-                currentStage = LoadingStage.Content;
-                currentStepName = "Loading content for " + modName;
-                currentActivity = string.Format(
-                    CultureInfo.InvariantCulture,
-                    "{0}   {1} / {2}",
-                    activity,
-                    currentStep,
-                    totalSteps);
-            }
-        }
-
-        internal static void ReportStaticConstructor(
-            string typeName,
-            string modName,
-            int current,
-            int total)
-        {
-            if (!active)
-            {
-                return;
-            }
-
-            lock (Sync)
-            {
-                if (!active)
-                {
-                    return;
-                }
-
-                ClearDetail();
-                currentStage = LoadingStage.Finalize;
-                currentStepName = "Initializing " + modName;
-                currentActivity = string.Format(
-                    CultureInfo.InvariantCulture,
-                    "{0}   {1:N0} / {2:N0}",
-                    typeName,
-                    current,
-                    total);
-            }
-        }
-
-        internal static void ReportFinalization(string stepName, string activity)
-        {
-            if (!active)
-            {
-                return;
-            }
-
-            lock (Sync)
-            {
-                if (!active)
-                {
-                    return;
-                }
-
-                ClearDetail();
-                currentStage = LoadingStage.Finalize;
-                currentStepName = stepName;
-                currentActivity = activity;
+                    currentAction,
+                    totalActions);
             }
         }
 
@@ -324,7 +209,9 @@ namespace FixWorld.Loading
                     ToMilliseconds(Math.Max(0L, now - startedAt));
                 bool hasEstimate = estimatedDurationMilliseconds > 0.0;
                 float progress = hasEstimate
-                    ? (float)Math.Min(0.98, elapsedMilliseconds / estimatedDurationMilliseconds)
+                    ? (float)Math.Min(
+                        0.98,
+                        elapsedMilliseconds / estimatedDurationMilliseconds)
                     : (float)Math.Min(0.95, ((int)currentStage - 0.5) / 5.0);
                 snapshot = new LoadingSnapshot(
                     currentStage,
@@ -336,32 +223,6 @@ namespace FixWorld.Loading
                     estimatedDurationMilliseconds,
                     currentActivity);
                 return true;
-            }
-        }
-
-        internal static LoadingMeasurement GetMeasurement()
-        {
-            lock (Sync)
-            {
-                long end = completedAt != 0L ? completedAt : Stopwatch.GetTimestamp();
-                List<LoadingStepMeasurement> steps = Stats.Values
-                    .OrderBy(item => item.Descriptor.Stage)
-                    .ThenBy(item => item.Descriptor.Step)
-                    .Select(item => new LoadingStepMeasurement(
-                        item.Descriptor.Step,
-                        item.Descriptor.Stage,
-                        item.Descriptor.Name,
-                        item.Calls,
-                        ToMilliseconds(item.TotalTicks),
-                        ToMilliseconds(item.ExclusiveTicks),
-                        ToMilliseconds(item.MainThreadTicks),
-                        ToMilliseconds(item.WorkerThreadTicks),
-                        ToMilliseconds(item.MainThreadExclusiveTicks),
-                        ToMilliseconds(item.WorkerThreadExclusiveTicks)))
-                    .ToList();
-                return new LoadingMeasurement(
-                    ToMilliseconds(Math.Max(0L, end - startedAt)),
-                    steps);
             }
         }
 
@@ -417,77 +278,5 @@ namespace FixWorld.Loading
             Interlocked.Exchange(ref pendingDetailLabel, null);
             nextDetailRefreshAt = 0L;
         }
-
-        private static void RestoreCurrentModAfter(Scope completedScope)
-        {
-            if (currentModSequence != completedScope.Sequence)
-            {
-                return;
-            }
-
-            Scope parent = scopes.FirstOrDefault(candidate =>
-                candidate.Recognized && candidate.Descriptor.ModName != null);
-            if (parent == null)
-            {
-                ClearCurrentMod();
-                return;
-            }
-
-            SetCurrentMod(parent.Sequence, parent.Descriptor);
-        }
-
-        private static void SetCurrentMod(long scopeSequence, StepDescriptor descriptor)
-        {
-            currentModSequence = scopeSequence;
-            currentActivity = descriptor.ModActivity + " for " + descriptor.ModName;
-        }
-
-        private static void ClearCurrentMod()
-        {
-            currentModSequence = 0L;
-            currentActivity = null;
-        }
-
-        private sealed class Scope
-        {
-            internal readonly long StartedAt;
-            internal readonly bool Recognized;
-            internal readonly StepDescriptor Descriptor;
-            internal readonly long Sequence;
-            internal readonly bool MainThread;
-            internal long ChildTicks;
-
-            internal Scope(
-                long startedAt,
-                bool recognized,
-                StepDescriptor descriptor,
-                long sequence,
-                bool mainThread)
-            {
-                StartedAt = startedAt;
-                Recognized = recognized;
-                Descriptor = descriptor;
-                Sequence = sequence;
-                MainThread = mainThread;
-            }
-        }
-
-        private sealed class StepStats
-        {
-            internal readonly StepDescriptor Descriptor;
-            internal long Calls;
-            internal long TotalTicks;
-            internal long ExclusiveTicks;
-            internal long MainThreadTicks;
-            internal long WorkerThreadTicks;
-            internal long MainThreadExclusiveTicks;
-            internal long WorkerThreadExclusiveTicks;
-
-            internal StepStats(StepDescriptor descriptor)
-            {
-                Descriptor = descriptor;
-            }
-        }
-
     }
 }

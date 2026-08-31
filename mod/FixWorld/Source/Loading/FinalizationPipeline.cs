@@ -33,24 +33,54 @@ namespace FixWorld.Loading
             typeof(Resources),
             nameof(Resources.UnloadUnusedAssets));
 
-        internal IReadOnlyList<StaticConstructorTarget> Constructors { get; }
-        internal string CallAllPostfixOwners { get; }
-        internal bool ShouldCheckMissingAttributes => Prefs.DevMode;
+        private readonly IReadOnlyList<StaticConstructorTarget> constructors;
+        private readonly string callAllPostfixOwners;
 
         private FinalizationPipeline()
         {
-            Constructors = GenTypes.AllTypesWithAttribute<StaticConstructorOnStartup>()
+            constructors = GenTypes.AllTypesWithAttribute<StaticConstructorOnStartup>()
                 .Select(StaticConstructorTarget.Create)
                 .ToList();
-            CallAllPostfixOwners = GetHarmonyPostfixOwners(CallAllMethod);
+            callAllPostfixOwners = GetHarmonyPostfixOwners(CallAllMethod);
         }
 
-        internal static bool TryCreate(Action action, out FinalizationPipeline pipeline)
+        internal static bool IsCandidate(MethodInfo method)
+        {
+            return method != null &&
+                   method.Name == "<DoPlayLoad>b__4_4" &&
+                   method.DeclaringType?.DeclaringType == typeof(PlayDataLoader);
+        }
+
+        internal static bool MatchesContract(MethodInfo method)
+        {
+            if (!IsCandidate(method) || !ContractMethodsAvailable())
+            {
+                return false;
+            }
+
+            try
+            {
+                List<CodeInstruction> instructions =
+                    PatchProcessor.GetOriginalInstructions(method, null);
+                return instructions.Any(item => item.Calls(CallAllMethod)) &&
+                       instructions.Any(item => item.Calls(FloatMenuInitMethod)) &&
+                       instructions.Any(item => item.Calls(BakeAtlasesMethod)) &&
+                       instructions.Any(item => item.Calls(ClearFilesystemCacheMethod)) &&
+                       instructions.Any(item => item.Calls(CollectGarbageMethod)) &&
+                       instructions.Any(item => item.Calls(UnloadUnusedAssetsMethod));
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        internal static bool TryCreateCompatible(
+            Action action,
+            out FinalizationPipeline pipeline)
         {
             pipeline = null;
-            if (action == null ||
-                !ContractMethodsAvailable() ||
-                !CallsExpectedFinalizationMethods(action.Method))
+            if (action == null || !ContractMethodsAvailable())
             {
                 return false;
             }
@@ -79,32 +109,186 @@ namespace FixWorld.Loading
             return true;
         }
 
-        internal static void RunConstructor(StaticConstructorTarget target)
+        internal LoadingActionPlan CreatePlan(Action originalAction, string label)
+        {
+            int tailSteps = Prefs.DevMode ? 5 : 4;
+            List<LoadingPipelineStage> stages =
+                new List<LoadingPipelineStage>(tailSteps + 1);
+            int nextStageId = 0;
+            int previousStageId = -1;
+
+            if (constructors.Count > 0)
+            {
+                LoadingWorkItem[] constructorTasks =
+                    new LoadingWorkItem[constructors.Count];
+                for (int index = 0; index < constructors.Count; index++)
+                {
+                    StaticConstructorTarget target = constructors[index];
+                    string typeName = target.Type.FullName ?? target.Type.Name;
+                    constructorTasks[index] = new LoadingWorkItem(
+                        LoadingStage.Finalize,
+                        LoadingStep.RunStaticConstructors,
+                        "Initializing " + target.ModName,
+                        typeName + "   " + (index + 1).ToString("N0") + " / " +
+                        constructors.Count.ToString("N0"),
+                        "StaticConstructorOnStartupUtility.CallAll()",
+                        typeName,
+                        LoadingModAttribution.Exact(target.PackageId, target.ModName),
+                        index + 1,
+                        constructors.Count,
+                        continueOnFailure: true,
+                        execute: () => RunConstructor(target));
+                }
+
+                stages.Add(new LoadingPipelineStage(
+                    nextStageId,
+                    "Static constructors",
+                    LoadingStage.Finalize,
+                    LoadingStep.RunStaticConstructors,
+                    LoadingExecutionMode.Ordered,
+                    constructorTasks));
+                previousStageId = nextStageId++;
+            }
+
+            AddMainThreadStage(
+                stages,
+                ref nextStageId,
+                ref previousStageId,
+                new LoadingWorkItem(
+                    LoadingStage.Finalize,
+                    LoadingStep.FinalizeStaticInitialization,
+                    "Finalizing mod frameworks",
+                    callAllPostfixOwners == null
+                        ? "Completing RimWorld static initialization"
+                        : "Harmony postfixes: " + callAllPostfixOwners,
+                    "Finalize static initialization",
+                    "Static initialization",
+                    LoadingModAttribution.Global,
+                    1,
+                    tailSteps,
+                    continueOnFailure: false,
+                    execute: CompleteStaticInitialization));
+
+            if (Prefs.DevMode)
+            {
+                AddMainThreadStage(
+                    stages,
+                    ref nextStageId,
+                    ref previousStageId,
+                    new LoadingWorkItem(
+                        LoadingStage.Finalize,
+                        LoadingStep.CheckStaticConstructorAttributes,
+                        "Checking startup attributes",
+                        "Developer-mode validation",
+                        "Check static constructor attributes",
+                        "Static constructor attributes",
+                        LoadingModAttribution.Global,
+                        2,
+                        tailSteps,
+                        continueOnFailure: false,
+                        execute: CheckMissingAttributes));
+            }
+
+            int tailIndex = Prefs.DevMode ? 3 : 2;
+            AddMainThreadStage(
+                stages,
+                ref nextStageId,
+                ref previousStageId,
+                new LoadingWorkItem(
+                    LoadingStage.Finalize,
+                    LoadingStep.InitializeFloatMenus,
+                    "Initializing runtime",
+                    "Building float-menu data",
+                    null,
+                    "Float menus",
+                    LoadingModAttribution.Global,
+                    tailIndex,
+                    tailSteps,
+                    continueOnFailure: false,
+                    execute: InitializeFloatMenus));
+            AddMainThreadStage(
+                stages,
+                ref nextStageId,
+                ref previousStageId,
+                new LoadingWorkItem(
+                    LoadingStage.Finalize,
+                    LoadingStep.BakeAtlases,
+                    "Building texture atlases",
+                    "Atlas baking",
+                    "Atlas baking.",
+                    "Texture atlases",
+                    LoadingModAttribution.Global,
+                    tailIndex + 1,
+                    tailSteps,
+                    continueOnFailure: false,
+                    execute: BakeAtlases));
+            AddMainThreadStage(
+                stages,
+                ref nextStageId,
+                ref previousStageId,
+                new LoadingWorkItem(
+                    LoadingStage.Finalize,
+                    LoadingStep.GarbageCollection,
+                    "Cleaning up loading data",
+                    "Garbage collection and unused asset cleanup",
+                    "Garbage Collection",
+                    "Loading cleanup",
+                    LoadingModAttribution.Global,
+                    tailIndex + 2,
+                    tailSteps,
+                    continueOnFailure: false,
+                    execute: CleanUp));
+
+            return new LoadingActionPlan(
+                label,
+                LoadingAttributionResolver.Infer(originalAction),
+                stages);
+        }
+
+        private static void AddMainThreadStage(
+            ICollection<LoadingPipelineStage> stages,
+            ref int nextStageId,
+            ref int previousStageId,
+            LoadingWorkItem task)
+        {
+            int currentStageId = nextStageId++;
+            stages.Add(new LoadingPipelineStage(
+                currentStageId,
+                task.DisplayName,
+                task.Stage,
+                task.Operation,
+                LoadingExecutionMode.MainThread,
+                task,
+                previousStageId < 0 ? null : new[] { previousStageId }));
+            previousStageId = currentStageId;
+        }
+
+        private static void RunConstructor(StaticConstructorTarget target)
         {
             RuntimeHelpers.RunClassConstructor(target.Type.TypeHandle);
         }
 
-        internal static void CompleteStaticInitialization()
+        private static void CompleteStaticInitialization()
         {
             StaticConstructorOnStartupUtility.CallAll();
         }
 
-        internal static void CheckMissingAttributes()
+        private static void CheckMissingAttributes()
         {
             StaticConstructorOnStartupUtility.ReportProbablyMissingAttributes();
         }
 
-        internal static void InitializeFloatMenus()
+        private static void InitializeFloatMenus()
         {
             FloatMenuMakerMap.Init();
         }
 
-        internal static void BakeAtlases()
+        private static void BakeAtlases()
         {
             GlobalTextureAtlasManager.BakeStaticAtlases();
         }
 
-        internal static void CleanUp()
+        private static void CleanUp()
         {
             AbstractFilesystem.ClearAllCache();
             GC.Collect(int.MaxValue, GCCollectionMode.Forced);
@@ -119,25 +303,6 @@ namespace FixWorld.Loading
                    ClearFilesystemCacheMethod != null &&
                    CollectGarbageMethod != null &&
                    UnloadUnusedAssetsMethod != null;
-        }
-
-        private static bool CallsExpectedFinalizationMethods(MethodInfo method)
-        {
-            try
-            {
-                List<CodeInstruction> instructions =
-                    PatchProcessor.GetOriginalInstructions(method, null);
-                return instructions.Any(item => item.Calls(CallAllMethod)) &&
-                       instructions.Any(item => item.Calls(FloatMenuInitMethod)) &&
-                       instructions.Any(item => item.Calls(BakeAtlasesMethod)) &&
-                       instructions.Any(item => item.Calls(ClearFilesystemCacheMethod)) &&
-                       instructions.Any(item => item.Calls(CollectGarbageMethod)) &&
-                       instructions.Any(item => item.Calls(UnloadUnusedAssetsMethod));
-            }
-            catch
-            {
-                return false;
-            }
         }
 
         private static string GetHarmonyPatchOwners(MethodBase method)

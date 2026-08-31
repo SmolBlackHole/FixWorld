@@ -40,8 +40,16 @@ namespace FixWorld.Loading
         RunStaticConstructors,
         FinalizeStaticInitialization,
         CheckStaticConstructorAttributes,
+        InitializeFloatMenus,
         BakeAtlases,
         GarbageCollection
+    }
+
+    internal enum LoadingOverheadKind
+    {
+        Classification,
+        Scheduling,
+        Telemetry
     }
 
     internal readonly struct LoadingSnapshot
@@ -118,13 +126,150 @@ namespace FixWorld.Loading
     {
         internal double ObservedMilliseconds { get; }
         internal IReadOnlyList<LoadingStepMeasurement> Steps { get; }
+        internal IReadOnlyList<DelayedActionSnapshot> DelayedActions { get; }
+        internal IReadOnlyList<StaticConstructorSnapshot> StaticConstructors { get; }
+        internal double StaticConstructorTailMilliseconds { get; }
+        internal IReadOnlyList<ModLoadingMeasurement> Mods { get; }
+        internal IReadOnlyList<LoadingOverheadMeasurement> Overhead { get; }
 
         internal LoadingMeasurement(
             double observedMilliseconds,
-            IReadOnlyList<LoadingStepMeasurement> steps)
+            IReadOnlyList<LoadingStepMeasurement> steps,
+            IReadOnlyList<DelayedActionSnapshot> delayedActions,
+            IReadOnlyList<StaticConstructorSnapshot> staticConstructors,
+            double staticConstructorTailMilliseconds,
+            IReadOnlyList<ModLoadingMeasurement> mods,
+            IReadOnlyList<LoadingOverheadMeasurement> overhead)
         {
             ObservedMilliseconds = observedMilliseconds;
             Steps = steps;
+            DelayedActions = delayedActions;
+            StaticConstructors = staticConstructors;
+            StaticConstructorTailMilliseconds = staticConstructorTailMilliseconds;
+            Mods = mods;
+            Overhead = overhead;
+        }
+    }
+
+    internal readonly struct DelayedActionSnapshot
+    {
+        internal readonly string Method;
+        internal readonly string PackageId;
+        internal readonly string ModName;
+        internal readonly long Calls;
+        internal readonly double TotalMilliseconds;
+        internal readonly double MaxMilliseconds;
+
+        internal DelayedActionSnapshot(
+            string method,
+            string packageId,
+            string modName,
+            long calls,
+            double totalMilliseconds,
+            double maxMilliseconds)
+        {
+            Method = method;
+            PackageId = packageId;
+            ModName = modName;
+            Calls = calls;
+            TotalMilliseconds = totalMilliseconds;
+            MaxMilliseconds = maxMilliseconds;
+        }
+    }
+
+    internal readonly struct StaticConstructorSnapshot
+    {
+        internal readonly string TypeName;
+        internal readonly string PackageId;
+        internal readonly string ModName;
+        internal readonly long Calls;
+        internal readonly double TotalMilliseconds;
+        internal readonly double MaxMilliseconds;
+        internal readonly long Failures;
+
+        internal StaticConstructorSnapshot(
+            string typeName,
+            string packageId,
+            string modName,
+            long calls,
+            double totalMilliseconds,
+            double maxMilliseconds,
+            long failures)
+        {
+            TypeName = typeName;
+            PackageId = packageId;
+            ModName = modName;
+            Calls = calls;
+            TotalMilliseconds = totalMilliseconds;
+            MaxMilliseconds = maxMilliseconds;
+            Failures = failures;
+        }
+    }
+
+    internal sealed class ModLoadingMeasurement
+    {
+        internal string PackageId { get; }
+        internal string ModName { get; }
+        internal ModAttributionQuality Attribution { get; }
+        internal LoadingStage Stage { get; }
+        internal LoadingStep Operation { get; }
+        internal long Calls { get; }
+        internal long Failures { get; }
+        internal double ExecutionMilliseconds { get; }
+        internal double MainThreadMilliseconds { get; }
+        internal double WorkerThreadMilliseconds { get; }
+        internal double WaitMilliseconds { get; }
+        internal double WallMilliseconds { get; }
+
+        internal ModLoadingMeasurement(
+            string packageId,
+            string modName,
+            ModAttributionQuality attribution,
+            LoadingStage stage,
+            LoadingStep operation,
+            long calls,
+            long failures,
+            double executionMilliseconds,
+            double mainThreadMilliseconds,
+            double workerThreadMilliseconds,
+            double waitMilliseconds,
+            double wallMilliseconds)
+        {
+            PackageId = packageId;
+            ModName = modName;
+            Attribution = attribution;
+            Stage = stage;
+            Operation = operation;
+            Calls = calls;
+            Failures = failures;
+            ExecutionMilliseconds = executionMilliseconds;
+            MainThreadMilliseconds = mainThreadMilliseconds;
+            WorkerThreadMilliseconds = workerThreadMilliseconds;
+            WaitMilliseconds = waitMilliseconds;
+            WallMilliseconds = wallMilliseconds;
+        }
+    }
+
+    internal sealed class LoadingOverheadMeasurement
+    {
+        internal LoadingOverheadKind Kind { get; }
+        internal long Calls { get; }
+        internal double TotalMilliseconds { get; }
+        internal double MaxMilliseconds { get; }
+        internal bool Estimated { get; }
+
+        internal LoadingOverheadMeasurement(
+            LoadingOverheadKind kind,
+            long calls,
+            double totalMilliseconds,
+            double maxMilliseconds,
+            bool estimated)
+        {
+            Kind = kind;
+            Calls = calls;
+            TotalMilliseconds = totalMilliseconds;
+            MaxMilliseconds = maxMilliseconds;
+            Estimated = estimated;
         }
     }
 }

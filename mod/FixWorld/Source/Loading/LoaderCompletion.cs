@@ -13,6 +13,7 @@ namespace FixWorld.Loading
                 return;
             }
 
+            LoadingTelemetry.Complete();
             BenchmarkRecorder.Complete(source);
             Log.Message("[FixWorld] Main menu ready.");
             PreloaderPrompt.TryShow();

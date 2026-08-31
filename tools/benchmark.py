@@ -83,6 +83,29 @@ class StaticConstructorData(TypedDict):
     failures: int
 
 
+class ModLoadingData(TypedDict):
+    packageId: str
+    mod: str
+    attribution: str
+    stage: str
+    operation: str
+    calls: int
+    failures: int
+    executionMs: float
+    mainThreadMs: float
+    workerThreadMs: float
+    waitMs: float
+    wallMs: float
+
+
+class LoadingOverheadData(TypedDict):
+    operation: str
+    calls: int
+    totalMs: float
+    maxMs: float
+    estimated: bool
+
+
 class LoaderData(TypedDict):
     observedMs: float
     stages: list[LoaderStageData]
@@ -90,6 +113,8 @@ class LoaderData(TypedDict):
     delayedActions: list[DelayedActionData]
     staticConstructors: list[StaticConstructorData]
     staticConstructorTailMs: float
+    mods: list[ModLoadingData]
+    overhead: list[LoadingOverheadData]
 
 
 class FileData(TypedDict):
@@ -205,7 +230,7 @@ def wait_for_report(
 
 def validate_report(raw: object) -> BenchmarkReport:
     report = _string_dict(raw, "benchmark report")
-    if report.get("schemaVersion") != 3:
+    if report.get("schemaVersion") != 4:
         raise RuntimeError(
             f"Unsupported benchmark schema: {report.get('schemaVersion')!r}"
         )
@@ -218,6 +243,8 @@ def validate_report(raw: object) -> BenchmarkReport:
     delayed_actions = loader.get("delayedActions")
     static_constructors = loader.get("staticConstructors")
     static_constructor_tail = loader.get("staticConstructorTailMs")
+    mods = loader.get("mods")
+    overhead = loader.get("overhead")
     if (
         not isinstance(stages, list)
         or len(stages) != 5
@@ -228,6 +255,8 @@ def validate_report(raw: object) -> BenchmarkReport:
         or not isinstance(static_constructors, list)
         or not static_constructors
         or not isinstance(static_constructor_tail, (int, float))
+        or not isinstance(mods, list)
+        or not isinstance(overhead, list)
     ):
         raise RuntimeError("Benchmark report contains incomplete loader measurements.")
     for section in ("files", "texturePaths", "textures", "ddsCache"):
@@ -272,6 +301,29 @@ def write_loader_csvs(run_root: Path, report: BenchmarkReport) -> None:
         run_root / "static-constructors.csv",
         ("type", "packageId", "mod", "calls", "totalMs", "maxMs", "failures"),
         loader["staticConstructors"],
+    )
+    _write_csv(
+        run_root / "loader-mods.csv",
+        (
+            "packageId",
+            "mod",
+            "attribution",
+            "stage",
+            "operation",
+            "calls",
+            "failures",
+            "executionMs",
+            "mainThreadMs",
+            "workerThreadMs",
+            "waitMs",
+            "wallMs",
+        ),
+        loader["mods"],
+    )
+    _write_csv(
+        run_root / "fixworld-overhead.csv",
+        ("operation", "calls", "totalMs", "maxMs", "estimated"),
+        loader["overhead"],
     )
 
 
@@ -375,6 +427,9 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
             key=lambda item: float(item["totalMs"]),
             reverse=True,
         )[:5]
+        top_mod_work = sorted(
+            loader["mods"], key=lambda item: float(item["wallMs"]), reverse=True
+        )[:5]
         notes = "; ".join(
             (
                 f"activeMods={active_mods}",
@@ -407,6 +462,17 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                     f"{constructor['packageId']}:{constructor['type']}="
                     f"{float(constructor['totalMs']):.3f}ms"
                     for constructor in top_static_constructors
+                ),
+                "topModWork="
+                + "|".join(
+                    f"{work['packageId']}:{work['operation']}="
+                    f"{float(work['wallMs']):.3f}ms/{work['attribution']}"
+                    for work in top_mod_work
+                ),
+                "fixWorldOverhead="
+                + "|".join(
+                    f"{item['operation']}={float(item['totalMs']):.3f}ms"
+                    for item in loader["overhead"]
                 ),
             )
         )

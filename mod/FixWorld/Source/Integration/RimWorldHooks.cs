@@ -129,7 +129,7 @@ namespace FixWorld.Integration
             [HarmonyPrefix]
             private static void Prefix(string label)
             {
-                LoadingSession.Begin(label);
+                LoadingTelemetry.BeginProfiler(label);
             }
         }
 
@@ -139,7 +139,7 @@ namespace FixWorld.Integration
             [HarmonyPrefix]
             private static void Prefix()
             {
-                LoadingSession.End();
+                LoadingTelemetry.EndProfiler();
             }
         }
 
@@ -209,8 +209,8 @@ namespace FixWorld.Integration
                 deadlinePassed.labels.AddRange(branch.labels);
                 deadlinePassed.blocks.AddRange(branch.blocks);
                 MethodInfo shouldStop = AccessTools.Method(
-                    typeof(StagedLoadingRunner),
-                    nameof(StagedLoadingRunner.ConsumeFrameBoundaryRequest));
+                    typeof(LoadingScheduler),
+                    nameof(LoadingScheduler.ConsumeFrameBoundaryRequest));
                 rewritten.RemoveAt(branchIndex);
                 rewritten.InsertRange(
                     branchIndex,

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using FixWorld.Caching;
 using FixWorld.Loading;
@@ -17,13 +16,7 @@ namespace FixWorld.Diagnostics
         private const string OutputEnvironmentVariable = "FIXWORLD_BENCHMARK_OUTPUT";
 
         private static readonly object CompletionSync = new object();
-        private static readonly object DelayedActionSync = new object();
-        private static readonly object StaticConstructorSync = new object();
         private static readonly object TexturePathSync = new object();
-        private static readonly Dictionary<string, DelayedActionStats> DelayedActions =
-            new Dictionary<string, DelayedActionStats>(StringComparer.Ordinal);
-        private static readonly Dictionary<string, StaticConstructorStats> StaticConstructors =
-            new Dictionary<string, StaticConstructorStats>(StringComparer.Ordinal);
         private static readonly Dictionary<string, List<TextureOwner>> OwnersByPath =
             new Dictionary<string, List<TextureOwner>>(StringComparer.Ordinal);
 
@@ -37,7 +30,6 @@ namespace FixWorld.Diagnostics
         private static long textureFileCalls;
         private static long textureFilesFound;
         private static long textureFileTicks;
-        private static long staticConstructorTailTicks;
 
         internal static bool Enabled => !string.IsNullOrWhiteSpace(OutputPath);
 
@@ -78,72 +70,6 @@ namespace FixWorld.Diagnostics
             ObserveTexturePaths(mod, contentPath, files);
         }
 
-        internal static void ObserveDelayedAction(
-            Action action,
-            string method,
-            long elapsedTicks)
-        {
-            if (!Enabled)
-            {
-                return;
-            }
-
-            DelayedActionOwner owner = FindDelayedActionOwner(action);
-            string key = owner.PackageId + "\n" + method;
-            lock (DelayedActionSync)
-            {
-                if (!DelayedActions.TryGetValue(key, out DelayedActionStats stats))
-                {
-                    stats = new DelayedActionStats(method, owner);
-                    DelayedActions.Add(key, stats);
-                }
-
-                stats.Calls++;
-                stats.TotalTicks += elapsedTicks;
-                stats.MaxTicks = Math.Max(stats.MaxTicks, elapsedTicks);
-            }
-        }
-
-        internal static void ObserveStaticConstructor(
-            StaticConstructorTarget target,
-            long elapsedTicks,
-            bool succeeded)
-        {
-            if (!Enabled)
-            {
-                return;
-            }
-
-            string typeName = target.Type.FullName ?? target.Type.Name;
-            string key = target.PackageId + "\n" + typeName;
-            lock (StaticConstructorSync)
-            {
-                if (!StaticConstructors.TryGetValue(
-                        key,
-                        out StaticConstructorStats stats))
-                {
-                    stats = new StaticConstructorStats(typeName, target);
-                    StaticConstructors.Add(key, stats);
-                }
-
-                stats.Calls++;
-                stats.TotalTicks += elapsedTicks;
-                stats.MaxTicks = Math.Max(stats.MaxTicks, elapsedTicks);
-                if (!succeeded)
-                {
-                    stats.Failures++;
-                }
-            }
-        }
-
-        internal static void ObserveStaticConstructorTail(long elapsedTicks)
-        {
-            if (Enabled)
-            {
-                Interlocked.Add(ref staticConstructorTailTicks, elapsedTicks);
-            }
-        }
-
         internal static void Complete(string source)
         {
             if (!Enabled)
@@ -165,10 +91,7 @@ namespace FixWorld.Diagnostics
             {
                 BenchmarkReport report = BenchmarkReport.Create(
                     source,
-                    LoadingSession.GetMeasurement(),
-                    GetDelayedActionSnapshot(),
-                    GetStaticConstructorSnapshot(),
-                    ToMilliseconds(Interlocked.Read(ref staticConstructorTailTicks)),
+                    LoadingTelemetry.GetMeasurement(),
                     GetFileDiscoverySnapshot(),
                     GetTexturePathSnapshot(),
                     TextureProbe.GetSnapshot(),
@@ -221,89 +144,6 @@ namespace FixWorld.Diagnostics
                     owners.Add(new TextureOwner(mod.PackageId, mod.loadOrder, item.Value.Length));
                 }
             }
-        }
-
-        private static IReadOnlyList<DelayedActionSnapshot> GetDelayedActionSnapshot()
-        {
-            lock (DelayedActionSync)
-            {
-                return DelayedActions.Values
-                    .OrderByDescending(item => item.TotalTicks)
-                    .Select(item => new DelayedActionSnapshot(
-                        item.Method,
-                        item.Owner.PackageId,
-                        item.Owner.ModName,
-                        item.Calls,
-                        ToMilliseconds(item.TotalTicks),
-                        ToMilliseconds(item.MaxTicks)))
-                    .ToList();
-            }
-        }
-
-        private static IReadOnlyList<StaticConstructorSnapshot>
-            GetStaticConstructorSnapshot()
-        {
-            lock (StaticConstructorSync)
-            {
-                return StaticConstructors.Values
-                    .OrderByDescending(item => item.TotalTicks)
-                    .Select(item => new StaticConstructorSnapshot(
-                        item.TypeName,
-                        item.Target.PackageId,
-                        item.Target.ModName,
-                        item.Calls,
-                        ToMilliseconds(item.TotalTicks),
-                        ToMilliseconds(item.MaxTicks),
-                        item.Failures))
-                    .ToList();
-            }
-        }
-
-        private static DelayedActionOwner FindDelayedActionOwner(Action action)
-        {
-            ModContentPack targetMod = FindTargetMod(action.Target);
-            Assembly assembly = action.Method.DeclaringType?.Assembly ??
-                                action.Method.Module.Assembly;
-            ModContentPack assemblyMod = targetMod ??
-                                         LoadedModManager.RunningModsListForReading
-                                             .FirstOrDefault(mod =>
-                                                 mod.assemblies.loadedAssemblies.Contains(assembly));
-            if (assemblyMod != null)
-            {
-                return new DelayedActionOwner(assemblyMod.PackageId, assemblyMod.Name);
-            }
-
-            if (assembly == typeof(LongEventHandler).Assembly)
-            {
-                return new DelayedActionOwner(ModContentPack.CoreModPackageId, "RimWorld");
-            }
-
-            string assemblyName = assembly.GetName().Name ?? "unknown";
-            return new DelayedActionOwner(assemblyName, assemblyName);
-        }
-
-        private static ModContentPack FindTargetMod(object target)
-        {
-            if (target is ModContentPack directMod)
-            {
-                return directMod;
-            }
-
-            if (target == null)
-            {
-                return null;
-            }
-
-            foreach (FieldInfo field in target.GetType().GetFields(
-                         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
-            {
-                if (typeof(ModContentPack).IsAssignableFrom(field.FieldType))
-                {
-                    return field.GetValue(target) as ModContentPack;
-                }
-            }
-
-            return null;
         }
 
         private static FileDiscoverySnapshot GetFileDiscoverySnapshot()
@@ -382,51 +222,6 @@ namespace FixWorld.Diagnostics
                 : assetPath.Substring(0, assetPath.Length - extension.Length);
         }
 
-        private sealed class DelayedActionStats
-        {
-            internal readonly string Method;
-            internal readonly DelayedActionOwner Owner;
-            internal long Calls;
-            internal long TotalTicks;
-            internal long MaxTicks;
-
-            internal DelayedActionStats(string method, DelayedActionOwner owner)
-            {
-                Method = method;
-                Owner = owner;
-            }
-        }
-
-        private sealed class StaticConstructorStats
-        {
-            internal readonly string TypeName;
-            internal readonly StaticConstructorTarget Target;
-            internal long Calls;
-            internal long TotalTicks;
-            internal long MaxTicks;
-            internal long Failures;
-
-            internal StaticConstructorStats(
-                string typeName,
-                StaticConstructorTarget target)
-            {
-                TypeName = typeName;
-                Target = target;
-            }
-        }
-
-        private readonly struct DelayedActionOwner
-        {
-            internal readonly string PackageId;
-            internal readonly string ModName;
-
-            internal DelayedActionOwner(string packageId, string modName)
-            {
-                PackageId = packageId;
-                ModName = modName;
-            }
-        }
-
         private sealed class TextureOwner
         {
             internal readonly string PackageId;
@@ -439,61 +234,6 @@ namespace FixWorld.Diagnostics
                 LoadOrder = loadOrder;
                 Bytes = bytes;
             }
-        }
-    }
-
-    internal readonly struct DelayedActionSnapshot
-    {
-        internal readonly string Method;
-        internal readonly string PackageId;
-        internal readonly string ModName;
-        internal readonly long Calls;
-        internal readonly double TotalMilliseconds;
-        internal readonly double MaxMilliseconds;
-
-        internal DelayedActionSnapshot(
-            string method,
-            string packageId,
-            string modName,
-            long calls,
-            double totalMilliseconds,
-            double maxMilliseconds)
-        {
-            Method = method;
-            PackageId = packageId;
-            ModName = modName;
-            Calls = calls;
-            TotalMilliseconds = totalMilliseconds;
-            MaxMilliseconds = maxMilliseconds;
-        }
-    }
-
-    internal readonly struct StaticConstructorSnapshot
-    {
-        internal readonly string TypeName;
-        internal readonly string PackageId;
-        internal readonly string ModName;
-        internal readonly long Calls;
-        internal readonly double TotalMilliseconds;
-        internal readonly double MaxMilliseconds;
-        internal readonly long Failures;
-
-        internal StaticConstructorSnapshot(
-            string typeName,
-            string packageId,
-            string modName,
-            long calls,
-            double totalMilliseconds,
-            double maxMilliseconds,
-            long failures)
-        {
-            TypeName = typeName;
-            PackageId = packageId;
-            ModName = modName;
-            Calls = calls;
-            TotalMilliseconds = totalMilliseconds;
-            MaxMilliseconds = maxMilliseconds;
-            Failures = failures;
         }
     }
 

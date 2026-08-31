@@ -1,6 +1,6 @@
 # TODO
 
-Aktuell: **Statische Konstruktoren und weitere blockierende Stufen messen und zerlegen**
+Aktuell: **Worker-sichere Datei- und Byte-Arbeit messen und als ersten parallelen Slice auswählen**
 
 ## Erledigter Stand
 
@@ -29,16 +29,25 @@ Aktuell: **Statische Konstruktoren und weitere blockierende Stufen messen und ze
 - [x] vollständige Modliste, Quarry und warmen DDS-Cache erneut testen
 - [x] Laufzeit gegen den aktuellen Runner-Baselinebereich von 24,8 bis 27,6 Sekunden vergleichen
 
-## Nächster Slice: weitere blockierende Stufen
+## Erledigt: Loader-Grundlage
 
 - [x] 589 statische Konstruktoren einzeln messen und als Enumerator ausführen
 - [x] Lunars `CallAll`-Postfix als eigene Unterstufe messen: 3.529 bis 3.584 ms, davon 676 bis 768 ms Harmony-Wrapper und etwa 2.816 bis 2.853 ms Framework-/Komponenteninitialisierung
-- [ ] Ausführungszeit, Renderpausen und reine Wall-Time pro framefähiger Stage getrennt berichten
-- [ ] Content- und Finalize-Pipeline auf einen kleinen gemeinsamen Work-Item-Vertrag reduzieren
-- [ ] gemeinsamen Scheduler nach Zeitbudget rendern lassen, ohne Unity-Arbeit auf Worker zu verschieben
+- [x] Content- und Finalize-Pipeline auf einen gemeinsamen Stage- und Work-Item-Vertrag umstellen
+- [x] Stage-Abhängigkeiten als validierten Graphen mit deterministischen Barrieren ausführen
+- [x] `MainThread`, `Ordered`, `Parallel` und `ParallelThenCommit` als explizite Ausführungsmodi modellieren
+- [x] Work-Items explizit als `MainThread` oder `WorkerSafe` klassifizieren
+- [x] gemeinsamen Scheduler nach Zeitbudget rendern lassen, ohne Unity-Arbeit auf Worker zu verschieben
+- [x] Ausführungs-, Hauptthread-, Worker-, Warte- und Wall-Time pro Work-Item erfassen
+- [x] Mod-Zuordnung als `Exact`, `Inferred` oder `Global` mit Zeiten pro Operation berichten
+- [x] FixWorld-Eigenaufwand für Klassifizierung, Scheduling und Telemetrie separat messen
+- [x] vollständige 88-Mod-Liste mit Stage-Graph und Quarry erneut fehlerfrei testen
+
+## Nächster Slice: erste Worker-Arbeit
+
+- [ ] Renderpausen und reine Wall-Time pro framefähiger Stage getrennt berichten
 - [ ] `ThingDef.PostLoad`, Sound-Auflösung und Atlas-Build getrennt messen
 - [ ] XML-Patches, Def-Auflösung, Reflection und Harmony-Scanning einzeln bewerten
-- [ ] Work-Items explizit als `MainThread` oder `WorkerSafe` klassifizieren
 - [ ] Discovery, Read-ahead, Cache-Validierung und reine Byte-Verarbeitung als erste Worker-Kandidaten messen
 - [ ] begrenzten Worker-Pool mit Parallelitäts-, Byte- und Queue-Limit sowie Backpressure bauen
 - [ ] Worker-Ergebnisse geordnet an den Hauptthread übergeben und Unity-Objekte nur dort erzeugen oder verändern
