@@ -158,6 +158,7 @@ namespace FixWorld.Caching
                     new TextureCacheValidationIndexEntry(
                         entry.SourceLength,
                         entry.SourceWriteTimeUtcTicks,
+                        entry.SourceHash,
                         entry.ConverterIdentity,
                         cachePath,
                         entry.CacheBytes));
@@ -682,6 +683,30 @@ namespace FixWorld.Caching
             return true;
         }
 
+        internal bool TryGetReusable(
+            string packageId,
+            string sourcePath,
+            string sourceHash,
+            string converterIdentity,
+            out string cachePath)
+        {
+            cachePath = null;
+            if (!entries.TryGetValue(
+                    GetKey(packageId, sourcePath),
+                    out TextureCacheValidationIndexEntry entry) ||
+                string.IsNullOrEmpty(entry.SourceHash) ||
+                !string.Equals(entry.SourceHash, sourceHash, StringComparison.Ordinal) ||
+                !ConverterMatches(entry.ConverterIdentity, converterIdentity) ||
+                !File.Exists(entry.CachePath) ||
+                new FileInfo(entry.CachePath).Length != entry.CacheBytes)
+            {
+                return false;
+            }
+
+            cachePath = entry.CachePath;
+            return true;
+        }
+
         private static bool ConverterMatches(string indexed, string current)
         {
             return string.IsNullOrEmpty(current) ||
@@ -703,6 +728,7 @@ namespace FixWorld.Caching
     {
         internal readonly long SourceLength;
         internal readonly long SourceWriteTimeUtcTicks;
+        internal readonly string SourceHash;
         internal readonly string ConverterIdentity;
         internal readonly string CachePath;
         internal readonly long CacheBytes;
@@ -710,12 +736,14 @@ namespace FixWorld.Caching
         internal TextureCacheValidationIndexEntry(
             long sourceLength,
             long sourceWriteTimeUtcTicks,
+            string sourceHash,
             string converterIdentity,
             string cachePath,
             long cacheBytes)
         {
             SourceLength = sourceLength;
             SourceWriteTimeUtcTicks = sourceWriteTimeUtcTicks;
+            SourceHash = sourceHash;
             ConverterIdentity = converterIdentity;
             CachePath = cachePath;
             CacheBytes = cacheBytes;

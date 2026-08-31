@@ -19,6 +19,7 @@ namespace FixWorld.Loading
             LoadingTelemetry.Complete();
             BenchmarkRecorder.Complete(source);
             Log.Message("[FixWorld] Main menu ready.");
+            TextureDdsCache.StartDeferredBuild();
             PreloaderPrompt.TryShow();
         }
     }

@@ -232,6 +232,20 @@ def wait_for_report(
     raise TimeoutError(f"RimWorld did not finish within {timeout_seconds} seconds.")
 
 
+def wait_for_json_file(
+    process: subprocess.Popen[bytes], path: Path, timeout_seconds: int
+) -> dict[str, object]:
+    started = time.monotonic()
+    while time.monotonic() - started < timeout_seconds:
+        if path.is_file():
+            with path.open("r", encoding="utf-8") as source:
+                return _string_dict(json.load(source), path.name)
+        if process.poll() is not None:
+            raise RuntimeError(f"RimWorld exited before writing {path.name}.")
+        time.sleep(0.1)
+    raise TimeoutError(f"RimWorld did not write {path.name} within the timeout.")
+
+
 def validate_report(raw: object) -> BenchmarkReport:
     report = _string_dict(raw, "benchmark report")
     if report.get("schemaVersion") != 4:
@@ -348,6 +362,7 @@ def relevant_error_count(log_path: Path) -> int:
         r"MissingMethodException",
         r"TypeLoadException",
         r"Root level exception",
+        r"Could not execute loading task",
         r"\[FixWorld\].*(?:error|exception)",
     )
     return sum(len(re.findall(pattern, log, re.IGNORECASE)) for pattern in patterns)
@@ -375,6 +390,7 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
     config = user_data / "Config"
     log_path = run_root / "Player.log"
     report_path = run_root / "profile.json"
+    background_report_path = run_root / "dds-background.json"
     config.mkdir(parents=True)
 
     active_mods = prepare_config(
@@ -393,6 +409,10 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
             "FIXWORLD_DDS_CACHE_ROOT": str(cache_root),
         }
     )
+    if args.wait_for_dds_background:
+        environment["FIXWORLD_DDS_BACKGROUND_OUTPUT"] = str(background_report_path)
+    else:
+        environment.pop("FIXWORLD_DDS_BACKGROUND_OUTPUT", None)
     if args.dds_workers is None:
         environment.pop("FIXWORLD_DDS_WORKERS", None)
     else:
@@ -414,6 +434,13 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
     try:
         wall_ms, report = wait_for_report(rimworld.process, report_path, args.timeout)
         write_loader_csvs(run_root, report)
+        background_report: dict[str, object] | None = None
+        if args.wait_for_dds_background:
+            background_report = wait_for_json_file(
+                rimworld.process,
+                background_report_path,
+                args.background_timeout,
+            )
         time.sleep(0.5)
 
         error_count = relevant_error_count(log_path)
@@ -436,7 +463,7 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
             reverse=True,
         )[:5]
         top_mod_work = sorted(
-            loader["mods"], key=lambda item: float(item["wallMs"]), reverse=True
+            loader["mods"], key=lambda item: float(item["executionMs"]), reverse=True
         )[:5]
         notes = "; ".join(
             (
@@ -456,6 +483,14 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                 f"ddsWorkerPreparedMods={cache['workerPreparedMods']}",
                 f"ddsWorkerAppliedMods={cache['workerAppliedMods']}",
                 f"ddsWorkerFallbackMods={cache['workerFallbackMods']}",
+                "ddsBackground="
+                + (
+                    "not-waited"
+                    if background_report is None
+                    else f"{background_report.get('created', 0)}/"
+                    f"{background_report.get('entries', 0)} created, "
+                    f"{background_report.get('failed', 0)} failed"
+                ),
                 "staticConstructorTailMs="
                 f"{float(loader['staticConstructorTailMs']):.3f}",
                 "topLoaderSteps="
@@ -478,7 +513,7 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                 "topModWork="
                 + "|".join(
                     f"{work['packageId']}:{work['operation']}="
-                    f"{float(work['wallMs']):.3f}ms/{work['attribution']}"
+                    f"{float(work['executionMs']):.3f}ms/{work['attribution']}"
                     for work in top_mod_work
                 ),
                 "fixWorldOverhead="
@@ -517,6 +552,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--monitor-name", default="G276HL")
     parser.add_argument("--monitor", type=bounded_int(1, 8), default=2)
     parser.add_argument("--timeout", type=bounded_int(30, 600), default=180)
+    parser.add_argument("--wait-for-dds-background", action="store_true")
+    parser.add_argument("--background-timeout", type=bounded_int(30, 1200), default=300)
     parser.add_argument("--dds-cache-root", type=Path)
     parser.add_argument(
         "--dds-workers",

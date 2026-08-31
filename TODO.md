@@ -1,6 +1,8 @@
 # TODO
 
-Aktuell: **DDS-Erzeugung als nächsten echten `ParallelThenCommit`-Slice zerlegen**
+Aktuell: **generische Cache Runtime auf dem gemeinsamen Scheduler aufbauen**
+
+Planstatus: **Scheduler-Grundlage umgesetzt und getestet, Cache-Runtime als nächster freigegebener Slice**
 
 ## Erledigter Stand
 
@@ -59,7 +61,7 @@ Aktuell: **DDS-Erzeugung als nächsten echten `ParallelThenCommit`-Slice zerlege
 - [x] DDS aus, kalten Aufbau und Warmstart vergleichen: 47,2 s, 124,5 s und 25,6 s Loaderzeit
 - [x] Workerstandard aus der Hälfte der logischen CPUs ableiten und per Umgebung überschreibbar lassen
 - [ ] Parallelität je Stage bestimmen: Validierung war mit 4 Workern schneller als mit 8
-- [ ] `texconv` und reine DDS-Erzeugung parallel ausführen, Ergebnisse atomar und geordnet veröffentlichen
+- [x] `texconv` und reine DDS-Erzeugung als Background-Job ausführen, Ergebnisse atomar und geordnet veröffentlichen
 - [ ] DDS-Build mit 2, 4 und 8 Workern vergleichen
 - [ ] Cache-Index früh auf einem Worker laden und vor der ersten DDS-Abfrage geordnet übernehmen
 - [ ] Texturvorbereitung von Unity-Erzeugung, `Apply`, Kompression und Upload trennen
@@ -68,12 +70,75 @@ Aktuell: **DDS-Erzeugung als nächsten echten `ParallelThenCommit`-Slice zerlege
 - [ ] XML-Patches, Def-Auflösung, Reflection und Harmony-Scanning einzeln bewerten
 - [ ] statische Konstruktoren weiterhin geordnet übernehmen und nur nach mod-spezifischem Nachweis optimieren
 - [ ] Discovery, Read-ahead, Cache-Validierung und reine Byte-Verarbeitung als erste Worker-Kandidaten messen
-- [ ] begrenzten Worker-Pool mit Parallelitäts-, Byte- und Queue-Limit sowie Backpressure bauen
-- [ ] Worker-Ergebnisse geordnet an den Hauptthread übergeben und Unity-Objekte nur dort erzeugen oder verändern
+- [x] begrenzten Worker-Pool mit Parallelitäts-, Byte- und Queue-Limit sowie Backpressure bauen
+- [x] Worker-Ergebnisse geordnet an den Hauptthread übergeben und Unity-Objekte nur dort erzeugen oder verändern
 - [ ] Workerfehler abbrechen oder kontrolliert auf den sequenziellen Originalpfad zurückführen
 - [ ] deterministische Ergebnis- und Commit-Reihenfolge über wiederholte Läufe prüfen
 - [ ] Worker-Anzahl gegen CPU-Kerne, Speicherdruck sowie NVMe, SATA und HDD benchmarken
 - [ ] RAM-, VRAM-, Queue- und GC-Spitzen pro Stage erfassen
+
+## Nächster Slice: Orchestrator und Scheduler
+
+Die Stage-Struktur bleibt für Reihenfolge und Barrieren zuständig. Der Scheduler entscheidet unabhängig davon, wann, wo und mit welchem Budget ein Job läuft.
+
+- [x] `LoadingScheduler` zu einem gemeinsamen FixWorld-Scheduler für Startup und laufendes Spiel erweitern
+- [x] Ausführungsmodus (`MainThread`, `Ordered`, `Parallel`, `ParallelThenCommit`) von Lebenszeit (`Critical`, `Deferred`, `Background`) trennen
+- [x] typisierte Jobs und Handles mit Zustand, Ergebnis, Fehler, Abhängigkeiten, Priorität und Abbruch modellieren
+- [x] einen begrenzten, langlebigen Worker-Pool statt eigener `Task.Run`-Logik pro Feature verwenden
+- [x] Parallelitäts-, Queue-, Byte-, CPU- und I/O-Budgets mit Backpressure unterstützen
+- [x] Main-Thread-Commits ausschließlich über einen Dispatcher und die vorhandenen Mailboxes zustellen
+- [x] Lebenszyklus, Wartezeit, Workerzeit, Commitzeit und Fehler über Mailbox und Telemetrie veröffentlichen
+- [ ] generischen Job-Fortschritt mit `current`, `total` und optionalem Detailtext über die Scheduler-Mailbox veröffentlichen
+- [x] Jobs per stabilem Schlüssel deduplizieren und wiederholte RimWorld-/Harmony-Aufrufe idempotent behandeln
+- [x] Shutdown, Abbruch und unvollständige Jobs ohne beschädigte veröffentlichte Ergebnisse behandeln
+- [ ] RimWorld- und Harmony-Hooks auf dünne Übersetzer in FixWorld-Jobs reduzieren
+- [ ] unbekannte Verträge und inkompatible fremde Patches weiterhin kontrolliert an den Originalpfad zurückgeben
+- [x] Worker von Unity, Harmony, veränderlichen Verse-Daten und direkter UI-Nutzung fernhalten
+- [ ] deterministische Scheduler-Vertragstests für Dependencies, Priorität, Concurrency-Gruppen, Byte-Budget, Abbruch vor Start und Shutdown ergänzen
+- [ ] abgeschlossene deduplizierte Handles vor hochfrequenten Runtime-Jobs über eine begrenzte Retention-Policy freigeben
+- [ ] Telemetrie-Hochrechnung gegen GC- und Scheduling-Ausreißer robust machen
+
+Akzeptanz: Die vollständige 88-Mod-Liste und Quarry laden unverändert, kritische Jobs blockieren korrekt, Background-Jobs verzögern das Hauptmenü nicht und ein Abbruch hinterlässt nur entfernbare Staging-Daten.
+
+## Nächster Slice: generische Cache Runtime
+
+Die Cache Runtime besitzt Lookup-, Snapshot-, Invalidierungs- und Veröffentlichungssemantik. Backends besitzen nur die Speicherung. Feature-Adapter erzeugen Werte und definieren fachliche Schlüssel sowie Gültigkeit. Der Scheduler führt Cache-Jobs aus.
+
+- [ ] Cache Core ohne Abhängigkeit auf RimWorld, Unity, DDS, `FileInfo` oder ein bestimmtes Backend bauen
+- [ ] Schlüssel, Wert und Versions-/Gültigkeitsstempel als getrennte generische Typen modellieren
+- [ ] Lookup-Ergebnisse explizit als `Hit`, `Miss`, `Stale` oder `Failed` zurückgeben
+- [ ] unveränderliche Cache-Snapshots für parallele Reader bereitstellen
+- [ ] Änderungen als typisierte Deltas sammeln und ausschließlich über einen einzelnen Writer veröffentlichen
+- [ ] bestehende Snapshots während eines Commits unverändert lassen und danach eine neue Generation veröffentlichen
+- [ ] ein In-Memory-Backend und ein persistentes Disk-Backend gegen denselben Core-Vertrag bauen
+- [ ] Serialisierung, Dateiartefakte und atomisches Umbenennen als optionale Backend-/Codec-Fähigkeiten behandeln
+- [ ] Invalidierung, Größenlimit, Ablaufzeit und Verdrängung als austauschbare Policies modellieren
+- [ ] Cache-Misses als deduplizierbare Producer-Jobs an den gemeinsamen Scheduler übergeben
+- [ ] Cache Core frei von eigener `Task.Run`-, Thread- und UI-Logik halten
+- [ ] Treffer, Misses, Stales, Builds, Fehler, Bytes, Evictions und Buildzeit einheitlich berichten
+- [ ] Speicher- und Disk-Backend mit denselben Vertrags-, Parallelitäts- und Abbruchtests prüfen
+
+Akzeptanz: Derselbe fachliche Cache kann ohne geänderte Aufrufer im Speicher oder auf Disk liegen. Reader arbeiten nur auf einem stabilen Snapshot, Writer veröffentlichen atomar eine neue Generation und ein Abbruch macht keine unvollständigen Werte sichtbar.
+
+## DDS als erster Background-Job
+
+Der parallele, aber blockierende kalte Build brauchte mit 8 Workern 80,3 Sekunden statt 124,5 Sekunden seriell. Er bleibt trotzdem schlechter als der 47,2-Sekunden-Start ohne DDS und ist deshalb nicht der Standardpfad.
+
+- [ ] aktive Mod-Assets beim Startup einmal entdecken und als unveränderlichen Snapshot veröffentlichen
+- [ ] DDS als Adapter auf die generische Cache Runtime statt als eigener Cache-Sonderfall bauen
+- [ ] `TextureSourceKey`, `TextureFingerprint` und `TextureArtifact` als DDS-Domänentypen definieren
+- [ ] persistenten Disk-Cache einmal laden und für den Startup-Plan nur lesend verwenden
+- [ ] Dimensionen, Hashes und vorbereitete Pläne bei Bedarf über dasselbe System im Speicher cachen
+- [ ] Größe und Änderungszeit zuerst prüfen und nur neue oder geänderte Quellen hashen
+- [x] vorhandene DDS sofort verwenden, bei Misses normale Assets laden und einen deduplizierten Background-Job anlegen
+- [x] fehlende DDS nach dem kritischen Loaderpfad mit niedriger Priorität erzeugen
+- [ ] Background-Arbeit im Hauptmenü und Spiel anhand von CPU-, I/O- und TPS-Budget drosseln oder pausieren
+- [x] fertige DDS atomar veröffentlichen und über einen einzelnen Index-Writer übernehmen
+- [ ] Index regelmäßig atomar checkpointen, ohne den unveränderlichen Startup-Snapshot zu verändern
+- [ ] nach Abbruch vorhandene fertige Artefakte beim nächsten Start wiedererkennen
+- [ ] Background-Fortschritt und verbleibende Assets für UI, Logs und Benchmarks bereitstellen
+- [x] leeren Erststart, abgeschlossenen Background-Build und folgenden Warmstart getrennt messen
+- [ ] verwaiste `.staging-*`-Verzeichnisse eines abgebrochenen Prozesses beim nächsten Start kontrolliert bereinigen
 
 ## Benchmark
 

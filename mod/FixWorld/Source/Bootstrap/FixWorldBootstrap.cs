@@ -4,6 +4,7 @@ using FixWorld.Diagnostics;
 using FixWorld.Integration;
 using FixWorld.Loading;
 using FixWorld.Preloader;
+using FixWorld.Scheduling;
 using Verse;
 
 namespace FixWorld
@@ -25,6 +26,7 @@ namespace FixWorld
                     return;
                 }
 
+                FixWorldScheduler.Initialize();
                 LoadingSession.Start(true);
                 LoadingTelemetry.Start(BenchmarkRecorder.Enabled);
                 bool hooksInstalled = RimWorldHooks.Install(BenchmarkRecorder.Enabled);
@@ -40,6 +42,7 @@ namespace FixWorld
                 Log.Message(
                     "[FixWorld] Initialized; hooks=" + hooksInstalled +
                     ", benchmark=" + BenchmarkRecorder.Enabled +
+                    ", workers=" + FixWorldScheduler.WorkerCount +
                     ", earlyLoader=" + earlyLoader + ".");
             }
         }

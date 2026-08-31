@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 
 namespace FixWorld.Caching
 {
@@ -32,21 +33,37 @@ namespace FixWorld.Caching
 
         internal CacheBuildResult Build(IReadOnlyList<TextureCacheEntry> entries)
         {
+            return Publish(Prepare(entries, CancellationToken.None));
+        }
+
+        internal CacheBuildPreparation Prepare(IReadOnlyList<TextureCacheEntry> entries)
+        {
+            return Prepare(entries, CancellationToken.None);
+        }
+
+        internal CacheBuildPreparation Prepare(
+            IReadOnlyList<TextureCacheEntry> entries,
+            CancellationToken cancellationToken)
+        {
             if (entries.Count == 0)
             {
-                return CacheBuildResult.Empty;
+                return CacheBuildPreparation.Empty;
             }
 
             if (!Available)
             {
-                return new CacheBuildResult(0, 0L, entries.Count, 0.0, null);
+                return new CacheBuildPreparation(
+                    null,
+                    Array.Empty<CacheBuildArtifact>(),
+                    entries.Count,
+                    0.0,
+                    null);
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            int created = 0;
-            long createdBytes = 0L;
             int failed = 0;
             List<string> errors = [];
+            List<CacheBuildArtifact> artifacts = new List<CacheBuildArtifact>(entries.Count);
             string stagingRoot = Path.Combine(
                 cacheRoot,
                 ".staging-" + Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture) + "-" +
@@ -57,6 +74,7 @@ namespace FixWorld.Caching
             {
                 foreach (TextureCacheEntry entry in entries)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     string inputDirectory = Path.Combine(stagingRoot, "input", entry.MipCount.ToString(CultureInfo.InvariantCulture));
                     Directory.CreateDirectory(inputDirectory);
                     string inputPath = Path.Combine(inputDirectory, entry.Hash + entry.Source.Extension.ToLowerInvariant());
@@ -65,12 +83,17 @@ namespace FixWorld.Caching
 
                 foreach (IGrouping<int, TextureCacheEntry> group in entries.GroupBy(entry => entry.MipCount))
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     string groupName = group.Key.ToString(CultureInfo.InvariantCulture);
                     string inputPattern = Path.Combine(stagingRoot, "input", groupName, "*.*");
                     string outputDirectory = Path.Combine(stagingRoot, "output", groupName);
                     Directory.CreateDirectory(outputDirectory);
 
-                    string error = RunTexconv(inputPattern, outputDirectory, group.Key);
+                    string error = RunTexconv(
+                        inputPattern,
+                        outputDirectory,
+                        group.Key,
+                        cancellationToken);
                     if (error != null)
                     {
                         int groupCount = group.Count();
@@ -89,42 +112,82 @@ namespace FixWorld.Caching
                             continue;
                         }
 
-                        Directory.CreateDirectory(entry.FinalDirectory);
-                        if (File.Exists(entry.FinalPath))
-                        {
-                            File.Delete(convertedPath);
-                        }
-                        else
-                        {
-                            File.Move(convertedPath, entry.FinalPath);
-                            created++;
-                            createdBytes += new FileInfo(entry.FinalPath).Length;
-                        }
+                        artifacts.Add(new CacheBuildArtifact(entry, convertedPath));
                     }
                 }
             }
+            catch (OperationCanceledException)
+            {
+                DeleteStagingDirectory(stagingRoot);
+                throw;
+            }
             catch (Exception exception)
             {
-                failed = Math.Max(failed, entries.Count - created);
+                failed = Math.Max(failed, entries.Count - artifacts.Count);
                 errors.Add(exception.Message);
             }
             finally
             {
                 stopwatch.Stop();
-                if (Directory.Exists(stagingRoot))
+            }
+
+            return new CacheBuildPreparation(
+                stagingRoot,
+                artifacts,
+                failed,
+                stopwatch.Elapsed.TotalMilliseconds,
+                errors.Count == 0 ? null : string.Join(" | ", errors.Take(3)));
+        }
+
+        internal CacheBuildResult Publish(CacheBuildPreparation preparation)
+        {
+            if (preparation == null)
+            {
+                throw new ArgumentNullException(nameof(preparation));
+            }
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            int created = 0;
+            long createdBytes = 0L;
+            int failed = preparation.Failed;
+            List<string> errors = new List<string>();
+            if (preparation.Error != null)
+            {
+                errors.Add(preparation.Error);
+            }
+
+            try
+            {
+                foreach (CacheBuildArtifact artifact in preparation.Artifacts)
                 {
                     try
                     {
-                        Directory.Delete(stagingRoot, true);
+                        TextureCacheEntry entry = artifact.Entry;
+                        Directory.CreateDirectory(entry.FinalDirectory);
+                        if (File.Exists(entry.FinalPath))
+                        {
+                            File.Delete(artifact.StagedPath);
+                            continue;
+                        }
+
+                        File.Move(artifact.StagedPath, entry.FinalPath);
+                        created++;
+                        createdBytes += new FileInfo(entry.FinalPath).Length;
                     }
-                    catch (IOException exception)
+                    catch (Exception exception)
                     {
-                        errors.Add("The staging directory could not be deleted: " + exception.Message);
+                        failed++;
+                        errors.Add(exception.Message);
                     }
-                    catch (UnauthorizedAccessException exception)
-                    {
-                        errors.Add("The staging directory could not be deleted: " + exception.Message);
-                    }
+                }
+            }
+            finally
+            {
+                stopwatch.Stop();
+                string cleanupError = DeleteStagingDirectory(preparation.StagingRoot);
+                if (cleanupError != null)
+                {
+                    errors.Add(cleanupError);
                 }
             }
 
@@ -132,11 +195,37 @@ namespace FixWorld.Caching
                 created,
                 createdBytes,
                 failed,
-                stopwatch.Elapsed.TotalMilliseconds,
+                preparation.Milliseconds + stopwatch.Elapsed.TotalMilliseconds,
                 errors.Count == 0 ? null : string.Join(" | ", errors.Take(3)));
         }
 
-        private string RunTexconv(string inputPattern, string outputDirectory, int mipCount)
+        private static string DeleteStagingDirectory(string stagingRoot)
+        {
+            if (string.IsNullOrEmpty(stagingRoot) || !Directory.Exists(stagingRoot))
+            {
+                return null;
+            }
+
+            try
+            {
+                Directory.Delete(stagingRoot, true);
+                return null;
+            }
+            catch (IOException exception)
+            {
+                return "The staging directory could not be deleted: " + exception.Message;
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                return "The staging directory could not be deleted: " + exception.Message;
+            }
+        }
+
+        private string RunTexconv(
+            string inputPattern,
+            string outputDirectory,
+            int mipCount,
+            CancellationToken cancellationToken)
         {
             ProcessStartInfo startInfo = new()
             {
@@ -169,10 +258,20 @@ namespace FixWorld.Caching
             process.Start();
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
-            if (!process.WaitForExit(ConversionTimeoutMilliseconds))
+            Stopwatch timeout = Stopwatch.StartNew();
+            while (!process.WaitForExit(100))
             {
-                process.Kill();
-                return "texconv exceeded its time limit";
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    TryKill(process);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
+                if (timeout.ElapsedMilliseconds >= ConversionTimeoutMilliseconds)
+                {
+                    TryKill(process);
+                    return "texconv exceeded its time limit";
+                }
             }
 
             process.WaitForExit();
@@ -184,6 +283,22 @@ namespace FixWorld.Caching
             }
 
             return null;
+        }
+
+        private static void TryKill(Process process)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill();
+                    process.WaitForExit();
+                }
+            }
+            catch
+            {
+                // The process may exit between the state check and Kill().
+            }
         }
 
         private static string FindTexconv(string modRoot)
@@ -331,6 +446,48 @@ namespace FixWorld.Caching
             EstimatedCacheBytes = estimatedCacheBytes;
             FinalDirectory = finalDirectory;
             FinalPath = finalPath;
+        }
+    }
+
+    internal sealed class CacheBuildPreparation
+    {
+        internal static readonly CacheBuildPreparation Empty = new(
+            null,
+            Array.Empty<CacheBuildArtifact>(),
+            0,
+            0.0,
+            null);
+
+        internal readonly string StagingRoot;
+        internal readonly IReadOnlyList<CacheBuildArtifact> Artifacts;
+        internal readonly int Failed;
+        internal readonly double Milliseconds;
+        internal readonly string Error;
+
+        internal CacheBuildPreparation(
+            string stagingRoot,
+            IReadOnlyList<CacheBuildArtifact> artifacts,
+            int failed,
+            double milliseconds,
+            string error)
+        {
+            StagingRoot = stagingRoot;
+            Artifacts = artifacts;
+            Failed = failed;
+            Milliseconds = milliseconds;
+            Error = error;
+        }
+    }
+
+    internal readonly struct CacheBuildArtifact
+    {
+        internal readonly TextureCacheEntry Entry;
+        internal readonly string StagedPath;
+
+        internal CacheBuildArtifact(TextureCacheEntry entry, string stagedPath)
+        {
+            Entry = entry;
+            StagedPath = stagedPath;
         }
     }
 

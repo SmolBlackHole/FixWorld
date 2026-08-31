@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
-using System.Threading.Tasks;
+using FixWorld.Scheduling;
 using Verse;
 
 namespace FixWorld.Loading
@@ -13,18 +13,20 @@ namespace FixWorld.Loading
         private const int UiRefreshMilliseconds = 150;
         private static readonly long UiRefreshTicks =
             Math.Max(1L, Stopwatch.Frequency * UiRefreshMilliseconds / 1000L);
-        private static readonly int DefaultWorkerCount =
-            Math.Max(1, Environment.ProcessorCount - 1);
-
+        private static long nextRunId;
         private static bool running;
         private static bool frameBoundaryRequested;
 
+        private long runId;
+        private long currentPlanId;
         private long nextRefreshAt;
-        private long currentPlanExecutionTicks;
+        private long currentPlanStartedAt;
         private bool currentStageSucceeded;
 
         internal static bool ConsumeFrameBoundaryRequest()
         {
+            FixWorldScheduler.BindMainThread();
+            FixWorldScheduler.PumpMainThread();
             LoadingStageMailbox.Drain();
             if (!running)
             {
@@ -39,6 +41,8 @@ namespace FixWorld.Loading
 
         internal void BeginRun()
         {
+            runId = Interlocked.Increment(ref nextRunId);
+            currentPlanId = 0L;
             nextRefreshAt = 0L;
             frameBoundaryRequested = false;
             running = true;
@@ -55,7 +59,8 @@ namespace FixWorld.Loading
             int currentAction,
             int totalActions)
         {
-            currentPlanExecutionTicks = 0L;
+            currentPlanId++;
+            currentPlanStartedAt = Stopwatch.GetTimestamp();
             DeepProfiler.Start(plan.Label);
             try
             {
@@ -95,7 +100,9 @@ namespace FixWorld.Loading
             }
             finally
             {
-                LoadingTelemetry.ObserveDelayedAction(plan, currentPlanExecutionTicks);
+                LoadingTelemetry.ObserveDelayedAction(
+                    plan,
+                    Stopwatch.GetTimestamp() - currentPlanStartedAt);
                 DeepProfiler.End();
             }
         }
@@ -133,7 +140,6 @@ namespace FixWorld.Loading
                 }
 
                 WorkExecution result = ExecuteOnMainThread(item);
-                currentPlanExecutionTicks += result.ExecutionTicks;
                 LoadingTelemetry.ObserveWork(
                     item,
                     result.ExecutionTicks,
@@ -160,54 +166,85 @@ namespace FixWorld.Loading
             int totalActions)
         {
             LoadingStageMailbox.ReportStage(stage, 0, stage.TaskCount);
-            ParallelWorkResult[] results = new ParallelWorkResult[stage.TaskCount];
             long queuedAt = Stopwatch.GetTimestamp();
-            int nextTask = -1;
-            int completedTasks = 0;
             int workerLimit = stage.MaxParallelism > 0
                 ? stage.MaxParallelism
-                : DefaultWorkerCount;
-            int workers = Math.Min(workerLimit, stage.TaskCount);
-            Task[] workerTasks = new Task[workers];
+                : FixWorldScheduler.WorkerCount;
+            string concurrencyKey =
+                "loader/" + runId + "/" + currentPlanId + "/" + stage.Id;
+            ScheduledJobHandle<PreparedLoadingWork>[] handles =
+                new ScheduledJobHandle<PreparedLoadingWork>[stage.TaskCount];
 
-            for (int worker = 0; worker < workers; worker++)
+            for (int taskIndex = 0; taskIndex < stage.TaskCount; taskIndex++)
             {
-                workerTasks[worker] = Task.Run(() =>
-                {
-                    while (true)
-                    {
-                        int taskIndex = Interlocked.Increment(ref nextTask);
-                        if (taskIndex >= stage.TaskCount)
+                int scheduledTaskIndex = taskIndex;
+                LoadingWorkItem item = stage.GetTask(taskIndex);
+                string jobKey = concurrencyKey + "/" + taskIndex;
+                handles[taskIndex] = FixWorldScheduler.Schedule(
+                    new SchedulerJob<PreparedLoadingWork>(
+                        jobKey,
+                        item.Subject,
+                        SchedulerJobLifetime.Critical,
+                        SchedulerJobPriority.High,
+                        SchedulerResourceClass.Mixed,
+                        cancellationToken =>
                         {
-                            return;
-                        }
+                            cancellationToken.ThrowIfCancellationRequested();
+                            LoadingWorkItem scheduledItem =
+                                stage.GetTask(scheduledTaskIndex);
+                            if (stage.ExecutionMode ==
+                                LoadingExecutionMode.ParallelThenCommit)
+                            {
+                                return scheduledItem.Prepare();
+                            }
 
-                        LoadingWorkItem item = stage.GetTask(taskIndex);
-                        results[taskIndex] = ExecuteOnWorker(
-                            stage.ExecutionMode,
-                            item,
-                            queuedAt);
-                        Interlocked.Increment(ref completedTasks);
-                    }
-                });
+                            scheduledItem.Execute();
+                            return null;
+                        },
+                        concurrencyKey: concurrencyKey,
+                        maxConcurrency: Math.Min(workerLimit, stage.TaskCount)));
             }
 
-            Task barrier = Task.WhenAll(workerTasks);
-            while (!barrier.IsCompleted)
+            while (true)
             {
+                int completedTasks = 0;
+                for (int taskIndex = 0; taskIndex < handles.Length; taskIndex++)
+                {
+                    if (handles[taskIndex].IsTerminal)
+                    {
+                        completedTasks++;
+                    }
+                }
+
                 LoadingStageMailbox.ReportStage(
                     stage,
-                    Volatile.Read(ref completedTasks),
+                    completedTasks,
                     stage.TaskCount);
+                if (completedTasks == stage.TaskCount)
+                {
+                    break;
+                }
+
+                FixWorldScheduler.PumpMainThread();
                 RequestFrame();
                 yield return null;
             }
 
-            barrier.GetAwaiter().GetResult();
             for (int taskIndex = 0; taskIndex < stage.TaskCount; taskIndex++)
             {
                 LoadingWorkItem item = stage.GetTask(taskIndex);
-                ParallelWorkResult result = results[taskIndex];
+                ScheduledJobHandle<PreparedLoadingWork> handle = handles[taskIndex];
+                ParallelWorkResult result = new ParallelWorkResult
+                {
+                    Succeeded = handle.State == SchedulerJobState.Completed,
+                    Exception = handle.Exception,
+                    Prepared = handle.State == SchedulerJobState.Completed
+                        ? handle.Result
+                        : null,
+                    WorkerThreadTicks = handle.ExecutionTicks,
+                    WaitTicks = handle.WaitTicks,
+                    WallTicks = handle.WallTicks
+                };
                 LoadingStageMailbox.ReportWork(item, currentAction, totalActions);
 
                 if (result.Exception != null)
@@ -223,26 +260,26 @@ namespace FixWorld.Loading
                         yield return null;
                     }
 
-                    long commitStartedAt = Stopwatch.GetTimestamp();
-                    try
-                    {
-                        result.Prepared.Commit();
-                    }
-                    catch (Exception exception)
+                    FixWorldScheduler.BindMainThread();
+                    MainThreadActionHandle commit = FixWorldScheduler.Dispatch(
+                        concurrencyKey + "/commit/" + taskIndex,
+                        "Commit " + item.Subject,
+                        result.Prepared.Commit);
+                    FixWorldScheduler.PumpMainThread(1, int.MaxValue);
+                    result.MainThreadTicks += commit.ExecutionTicks;
+                    result.WallTicks = Stopwatch.GetTimestamp() - queuedAt;
+                    if (commit.State != SchedulerJobState.Completed)
                     {
                         result.Succeeded = false;
-                        LogFailure(item, exception);
-                    }
-                    finally
-                    {
-                        result.MainThreadTicks +=
-                            Stopwatch.GetTimestamp() - commitStartedAt;
-                        result.WallTicks = Stopwatch.GetTimestamp() - queuedAt;
+                        result.Exception = commit.Exception ??
+                            new InvalidOperationException(
+                                "Main-thread commit did not complete; state=" +
+                                commit.State + ".");
+                        LogFailure(item, result.Exception);
                     }
                 }
 
                 long executionTicks = result.WorkerThreadTicks + result.MainThreadTicks;
-                currentPlanExecutionTicks += executionTicks;
                 LoadingTelemetry.ObserveWork(
                     item,
                     executionTicks,
@@ -296,43 +333,6 @@ namespace FixWorld.Loading
                     DeepProfiler.End();
                 }
             }
-        }
-
-        private static ParallelWorkResult ExecuteOnWorker(
-            LoadingExecutionMode mode,
-            LoadingWorkItem item,
-            long queuedAt)
-        {
-            long startedAt = Stopwatch.GetTimestamp();
-            ParallelWorkResult result = new ParallelWorkResult
-            {
-                Succeeded = true,
-                WaitTicks = startedAt - queuedAt
-            };
-            try
-            {
-                if (mode == LoadingExecutionMode.ParallelThenCommit)
-                {
-                    result.Prepared = item.Prepare();
-                }
-                else
-                {
-                    item.Execute();
-                }
-            }
-            catch (Exception exception)
-            {
-                result.Succeeded = false;
-                result.Exception = exception;
-            }
-            finally
-            {
-                long completedAt = Stopwatch.GetTimestamp();
-                result.WorkerThreadTicks = completedAt - startedAt;
-                result.WallTicks = completedAt - queuedAt;
-            }
-
-            return result;
         }
 
         private bool RequestFrameIfDue()

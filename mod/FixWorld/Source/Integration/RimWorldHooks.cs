@@ -8,6 +8,7 @@ using System.Reflection.Emit;
 using FixWorld.Caching;
 using FixWorld.Diagnostics;
 using FixWorld.Loading;
+using FixWorld.Scheduling;
 using FixWorld.UI;
 using HarmonyLib;
 using RimWorld.IO;
@@ -28,6 +29,8 @@ namespace FixWorld.Integration
             typeof(DeepProfilerEndPatch),
             typeof(DelayedInitializationPatch),
             typeof(EnumeratorFrameBoundaryPatch),
+            typeof(SchedulerPumpPatch),
+            typeof(SchedulerShutdownPatch),
             typeof(LoaderCompletionPatch),
             typeof(LoadingOverlayPatch)
         };
@@ -305,6 +308,28 @@ namespace FixWorld.Integration
                         new CodeInstruction(OpCodes.Brfalse, loopStart)
                     });
                 return rewritten;
+            }
+        }
+
+        [HarmonyPatch(typeof(Root), nameof(Root.Update))]
+        private static class SchedulerPumpPatch
+        {
+            [HarmonyPrefix]
+            private static void Prefix()
+            {
+                FixWorldScheduler.BindMainThread();
+                FixWorldScheduler.PumpMainThread();
+                LoadingStageMailbox.Drain();
+            }
+        }
+
+        [HarmonyPatch(typeof(Root), nameof(Root.Shutdown))]
+        private static class SchedulerShutdownPatch
+        {
+            [HarmonyPrefix]
+            private static void Prefix()
+            {
+                FixWorldScheduler.Shutdown();
             }
         }
 

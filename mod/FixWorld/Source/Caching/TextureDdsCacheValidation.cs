@@ -14,6 +14,8 @@ namespace FixWorld.Caching
         private static readonly Dictionary<string, TextureCacheValidationResult>
             PreparedValidations =
                 new Dictionary<string, TextureCacheValidationResult>(StringComparer.Ordinal);
+        private static readonly List<TextureCacheEntry> DeferredBuildEntries =
+            new List<TextureCacheEntry>();
 
         internal static bool TryCreateValidationPlan(
             IReadOnlyList<ModContentPack> mods,
@@ -23,6 +25,7 @@ namespace FixWorld.Caching
             if (!enabled ||
                 workerCount <= 0 ||
                 index == null ||
+                index.RecoveryRequired ||
                 !Prefs.TextureCompression ||
                 mods == null ||
                 mods.Count == 0)
@@ -32,20 +35,27 @@ namespace FixWorld.Caching
 
             TextureCacheValidationIndex validationIndex;
             TextureCacheValidationTarget[] targets;
+            TextureCacheBuildBudget buildBudget;
             lock (Sync)
             {
                 validationIndex = index.CreateValidationSnapshot();
                 targets = mods
                     .Select(CreateValidationTarget)
                     .ToArray();
+                buildBudget = new TextureCacheBuildBudget(
+                    index.CurrentBytes,
+                    new DriveInfo(Path.GetPathRoot(cacheRoot)).AvailableFreeSpace,
+                    maxCacheBytes,
+                    minimumFreeBytes,
+                    builder.Available);
             }
 
-            LoadingWorkItem[] tasks = new LoadingWorkItem[targets.Length];
+            LoadingWorkItem[] validationTasks = new LoadingWorkItem[targets.Length];
             for (int targetIndex = 0; targetIndex < targets.Length; targetIndex++)
             {
                 TextureCacheValidationTarget target = targets[targetIndex];
                 int current = targetIndex + 1;
-                tasks[targetIndex] = LoadingWorkItem.CreateParallelThenCommit(
+                validationTasks[targetIndex] = LoadingWorkItem.CreateParallelThenCommit(
                     LoadingStage.Content,
                     LoadingStep.ValidateTextureCache,
                     "Prepare texture cache",
@@ -56,7 +66,7 @@ namespace FixWorld.Caching
                     targets.Length,
                     continueOnFailure: true,
                     prepare: () => PrepareValidation(target, validationIndex),
-                    commit: StorePreparedValidation);
+                    commit: result => StorePreparedValidation(result, buildBudget));
             }
 
             LoadingPipelineStage stage = new LoadingPipelineStage(
@@ -65,8 +75,8 @@ namespace FixWorld.Caching
                 LoadingStage.Content,
                 LoadingStep.ValidateTextureCache,
                 LoadingExecutionMode.ParallelThenCommit,
-                tasks,
-                maxParallelism: workerCount);
+                validationTasks,
+                maxParallelism: Math.Min(workerCount, 4));
             plan = new LoadingActionPlan(
                 "FixWorld texture discovery and DDS validation",
                 LoadingModAttribution.Global,
@@ -141,8 +151,8 @@ namespace FixWorld.Caching
                     StringComparer.Ordinal);
                 List<TextureCacheValidationDecision> decisions =
                     new List<TextureCacheValidationDecision>();
+                List<TextureCacheEntry> missingEntries = new List<TextureCacheEntry>();
                 List<KeyValuePair<string, FileInfo>> sourceFiles = files.ToList();
-                bool complete = true;
 
                 for (int sourceIndex = 0; sourceIndex < sourceFiles.Count; sourceIndex++)
                 {
@@ -189,7 +199,8 @@ namespace FixWorld.Caching
                         continue;
                     }
 
-                    if (dimensions.GetBc3MipCount() == 0)
+                    int mipCount = dimensions.GetBc3MipCount();
+                    if (mipCount == 0)
                     {
                         decisions.Add(TextureCacheValidationDecision.Excluded(
                             item.Key,
@@ -198,19 +209,55 @@ namespace FixWorld.Caching
                         continue;
                     }
 
-                    complete = false;
-                    break;
-                }
-
-                if (complete)
-                {
-                    foreach (TextureCacheValidationDecision decision in decisions)
+                    string sourceHash = GetFileHash(source.FullName);
+                    if (validationIndex.TryGetReusable(
+                            target.PackageId,
+                            sourcePath,
+                            sourceHash,
+                            target.ConverterIdentity,
+                            out string reusablePath))
                     {
-                        if (decision.Kind == TextureCacheValidationKind.Fresh)
-                        {
-                            files[decision.SourceKey] = new FileInfo(decision.CachePath);
-                        }
+                        decisions.Add(TextureCacheValidationDecision.Reused(
+                            item.Key,
+                            source,
+                            sourcePath,
+                            sourceHash,
+                            reusablePath));
+                        continue;
                     }
+
+                    string cacheKey = GetContentCacheKey(
+                        sourcePath,
+                        sourceHash,
+                        target.ConverterIdentity);
+                    string finalDirectory = Path.Combine(
+                        cacheRoot,
+                        SanitizePathSegment(target.PackageId),
+                        cacheKey);
+                    string finalPath = Path.Combine(
+                        finalDirectory,
+                        Path.GetFileNameWithoutExtension(source.Name) + ".dds");
+                    TextureCacheEntry entry = new TextureCacheEntry(
+                        item.Key,
+                        target.PackageId,
+                        sourcePath,
+                        sourceHash,
+                        target.ConverterIdentity,
+                        source,
+                        cacheKey,
+                        mipCount,
+                        dimensions.GetBc3FileSize(mipCount),
+                        finalDirectory,
+                        finalPath);
+                    if (File.Exists(finalPath))
+                    {
+                        decisions.Add(TextureCacheValidationDecision.Existing(entry));
+                        continue;
+                    }
+
+                    decisions.Add(TextureCacheValidationDecision.Missing(entry));
+                    missingEntries.Add(entry);
+                    Interlocked.Increment(ref missCount);
                 }
 
                 return new TextureCacheValidationResult(
@@ -218,7 +265,8 @@ namespace FixWorld.Caching
                     target.ModRoot,
                     files,
                     decisions,
-                    complete);
+                    missingEntries,
+                    complete: missingEntries.Count == 0);
             }
             catch
             {
@@ -231,10 +279,26 @@ namespace FixWorld.Caching
             }
         }
 
-        private static void StorePreparedValidation(TextureCacheValidationResult result)
+        private static void StorePreparedValidation(
+            TextureCacheValidationResult result,
+            TextureCacheBuildBudget buildBudget)
         {
             lock (Sync)
             {
+                IReadOnlyList<TextureCacheEntry> selected =
+                    buildBudget.Select(result.MissingEntries);
+                Interlocked.Add(
+                    ref budgetSkippedCount,
+                    result.MissingEntries.Count - selected.Count);
+                DeferredBuildEntries.AddRange(selected);
+                result = result.DeferBuildEntries();
+                foreach (TextureCacheValidationDecision decision in result.Decisions)
+                {
+                    if (decision.UsesCache)
+                    {
+                        result.Files[decision.SourceKey] = new FileInfo(decision.CachePath);
+                    }
+                }
                 PreparedValidations[result.PackageId] = result;
                 Interlocked.Increment(ref workerPreparedMods);
             }
@@ -318,6 +382,27 @@ namespace FixWorld.Caching
                         desiredDirectories.Add(Path.GetDirectoryName(decision.CachePath));
                         Interlocked.Increment(ref hitCount);
                         break;
+                    case TextureCacheValidationKind.Reused:
+                    case TextureCacheValidationKind.Existing:
+                        if (!ReferenceEquals(files, prepared.Files))
+                        {
+                            files[commit.Key] = new FileInfo(decision.CachePath);
+                        }
+                        index.RegisterExisting(
+                            prepared.PackageId,
+                            decision.SourcePath,
+                            new FileInfo(decision.SourceFullPath),
+                            decision.SourceHash,
+                            builder.Identity,
+                            decision.CachePath,
+                            createdAfterOpen: false);
+                        retainedSourcePaths.Add(decision.SourcePath);
+                        desiredDirectories.Add(Path.GetDirectoryName(decision.CachePath));
+                        Interlocked.Increment(ref hitCount);
+                        break;
+                    case TextureCacheValidationKind.Original:
+                        index.RemoveSource(prepared.PackageId, decision.SourcePath);
+                        break;
                     case TextureCacheValidationKind.Excluded:
                         index.RemoveSource(prepared.PackageId, decision.SourcePath);
                         Interlocked.Increment(ref excludedCount);
@@ -383,6 +468,7 @@ namespace FixWorld.Caching
                         out TextureCacheValidationDecision decision) ||
                     decision.SourceLength != source.Length ||
                     decision.SourceWriteTimeUtcTicks != source.LastWriteTimeUtc.Ticks ||
+                    decision.UsesCache && !File.Exists(decision.CachePath) ||
                     decision.Kind == TextureCacheValidationKind.Fresh &&
                     !index.MatchesPrepared(
                         prepared.PackageId,
@@ -424,6 +510,13 @@ namespace FixWorld.Caching
             PreparedValidations.Clear();
         }
 
+        private static IReadOnlyList<TextureCacheEntry> TakeDeferredBuildEntries()
+        {
+            TextureCacheEntry[] entries = DeferredBuildEntries.ToArray();
+            DeferredBuildEntries.Clear();
+            return entries;
+        }
+
         private sealed class TextureCacheValidationTarget
         {
             internal readonly string PackageId;
@@ -456,6 +549,7 @@ namespace FixWorld.Caching
             internal readonly string ModRoot;
             internal readonly Dictionary<string, FileInfo> Files;
             internal readonly IReadOnlyList<TextureCacheValidationDecision> Decisions;
+            internal readonly IReadOnlyList<TextureCacheEntry> MissingEntries;
             internal readonly bool Complete;
 
             internal TextureCacheValidationResult(
@@ -463,19 +557,42 @@ namespace FixWorld.Caching
                 string modRoot,
                 Dictionary<string, FileInfo> files,
                 IReadOnlyList<TextureCacheValidationDecision> decisions,
+                IReadOnlyList<TextureCacheEntry> missingEntries,
                 bool complete)
             {
                 PackageId = packageId;
                 ModRoot = modRoot;
                 Files = files;
                 Decisions = decisions;
+                MissingEntries = missingEntries;
                 Complete = complete;
+            }
+
+            internal TextureCacheValidationResult DeferBuildEntries()
+            {
+                TextureCacheValidationDecision[] updated = Decisions
+                    .Select(decision =>
+                        decision.Kind == TextureCacheValidationKind.Missing
+                            ? decision.AsOriginal()
+                            : decision)
+                    .ToArray();
+                return new TextureCacheValidationResult(
+                    PackageId,
+                    ModRoot,
+                    Files,
+                    updated,
+                    Array.Empty<TextureCacheEntry>(),
+                    complete: true);
             }
         }
 
         private enum TextureCacheValidationKind
         {
             Fresh,
+            Reused,
+            Existing,
+            Missing,
+            Original,
             Excluded,
             Unsupported
         }
@@ -487,23 +604,34 @@ namespace FixWorld.Caching
             internal readonly string SourcePath;
             internal readonly long SourceLength;
             internal readonly long SourceWriteTimeUtcTicks;
+            internal readonly string SourceHash;
             internal readonly string CachePath;
             internal readonly TextureCacheValidationKind Kind;
+            internal readonly TextureCacheEntry Entry;
+
+            internal bool UsesCache =>
+                Kind == TextureCacheValidationKind.Fresh ||
+                Kind == TextureCacheValidationKind.Reused ||
+                Kind == TextureCacheValidationKind.Existing;
 
             private TextureCacheValidationDecision(
                 string sourceKey,
                 FileInfo source,
                 string sourcePath,
+                string sourceHash,
                 string cachePath,
-                TextureCacheValidationKind kind)
+                TextureCacheValidationKind kind,
+                TextureCacheEntry entry = null)
             {
                 SourceKey = sourceKey;
                 SourceFullPath = source.FullName;
                 SourcePath = sourcePath;
                 SourceLength = source.Length;
                 SourceWriteTimeUtcTicks = source.LastWriteTimeUtc.Ticks;
+                SourceHash = sourceHash;
                 CachePath = cachePath;
                 Kind = kind;
+                Entry = entry;
             }
 
             internal static TextureCacheValidationDecision Fresh(
@@ -516,8 +644,56 @@ namespace FixWorld.Caching
                     sourceKey,
                     source,
                     sourcePath,
+                    null,
                     cachePath,
                     TextureCacheValidationKind.Fresh);
+            }
+
+            internal static TextureCacheValidationDecision Reused(
+                string sourceKey,
+                FileInfo source,
+                string sourcePath,
+                string sourceHash,
+                string cachePath)
+            {
+                return new TextureCacheValidationDecision(
+                    sourceKey,
+                    source,
+                    sourcePath,
+                    sourceHash,
+                    cachePath,
+                    TextureCacheValidationKind.Reused);
+            }
+
+            internal static TextureCacheValidationDecision Existing(
+                TextureCacheEntry entry)
+            {
+                return FromEntry(entry, TextureCacheValidationKind.Existing);
+            }
+
+            internal static TextureCacheValidationDecision Missing(
+                TextureCacheEntry entry)
+            {
+                return FromEntry(entry, TextureCacheValidationKind.Missing);
+            }
+
+            internal TextureCacheValidationDecision AsOriginal()
+            {
+                return FromEntry(Entry, TextureCacheValidationKind.Original);
+            }
+
+            private static TextureCacheValidationDecision FromEntry(
+                TextureCacheEntry entry,
+                TextureCacheValidationKind kind)
+            {
+                return new TextureCacheValidationDecision(
+                    entry.Key,
+                    entry.Source,
+                    entry.SourcePath,
+                    entry.SourceHash,
+                    entry.FinalPath,
+                    kind,
+                    entry);
             }
 
             internal static TextureCacheValidationDecision Excluded(
@@ -529,6 +705,7 @@ namespace FixWorld.Caching
                     sourceKey,
                     source,
                     sourcePath,
+                    null,
                     null,
                     TextureCacheValidationKind.Excluded);
             }
@@ -543,8 +720,65 @@ namespace FixWorld.Caching
                     source,
                     sourcePath,
                     null,
+                    null,
                     TextureCacheValidationKind.Unsupported);
             }
         }
+
+        private sealed class TextureCacheBuildBudget
+        {
+            private readonly long availableFreeBytes;
+            private readonly long maximumCacheBytes;
+            private readonly long minimumFreeBytes;
+            private readonly bool builderAvailable;
+
+            private long projectedCacheBytes;
+            private long projectedTemporaryBytes;
+
+            internal TextureCacheBuildBudget(
+                long currentCacheBytes,
+                long availableFreeBytes,
+                long maximumCacheBytes,
+                long minimumFreeBytes,
+                bool builderAvailable)
+            {
+                projectedCacheBytes = currentCacheBytes;
+                this.availableFreeBytes = availableFreeBytes;
+                this.maximumCacheBytes = maximumCacheBytes;
+                this.minimumFreeBytes = minimumFreeBytes;
+                this.builderAvailable = builderAvailable;
+            }
+
+            internal IReadOnlyList<TextureCacheEntry> Select(
+                IReadOnlyList<TextureCacheEntry> entries)
+            {
+                if (!builderAvailable || entries.Count == 0)
+                {
+                    return Array.Empty<TextureCacheEntry>();
+                }
+
+                List<TextureCacheEntry> selected =
+                    new List<TextureCacheEntry>(entries.Count);
+                foreach (TextureCacheEntry entry in entries)
+                {
+                    long temporaryBytes = entry.Source.Length + entry.EstimatedCacheBytes;
+                    if ((maximumCacheBytes > 0L &&
+                         projectedCacheBytes + entry.EstimatedCacheBytes >
+                         maximumCacheBytes) ||
+                        availableFreeBytes - projectedTemporaryBytes - temporaryBytes <
+                        minimumFreeBytes)
+                    {
+                        continue;
+                    }
+
+                    selected.Add(entry);
+                    projectedCacheBytes += entry.EstimatedCacheBytes;
+                    projectedTemporaryBytes += temporaryBytes;
+                }
+
+                return selected;
+            }
+        }
+
     }
 }

@@ -184,6 +184,7 @@ namespace FixWorld.Caching
                 try
                 {
                     PruneAndSave();
+                    QueueDeferredBuild(TakeDeferredBuildEntries());
                 }
                 catch (Exception exception)
                 {
