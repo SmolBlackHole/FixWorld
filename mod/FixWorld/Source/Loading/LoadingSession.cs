@@ -287,6 +287,27 @@ namespace FixWorld.Loading
             }
         }
 
+        internal static void ReportFinalization(string stepName, string activity)
+        {
+            if (!active)
+            {
+                return;
+            }
+
+            lock (Sync)
+            {
+                if (!active)
+                {
+                    return;
+                }
+
+                ClearDetail();
+                currentStage = LoadingStage.Finalize;
+                currentStepName = stepName;
+                currentActivity = activity;
+            }
+        }
+
         internal static bool TryGetSnapshot(out LoadingSnapshot snapshot)
         {
             lock (Sync)

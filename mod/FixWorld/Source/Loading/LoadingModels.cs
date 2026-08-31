@@ -38,6 +38,8 @@ namespace FixWorld.Loading
         LoadBios,
         InjectLanguage,
         RunStaticConstructors,
+        FinalizeStaticInitialization,
+        CheckStaticConstructorAttributes,
         BakeAtlases,
         GarbageCollection
     }

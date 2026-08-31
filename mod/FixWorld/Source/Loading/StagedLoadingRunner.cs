@@ -382,13 +382,37 @@ namespace FixWorld.Loading
                         yield return null;
                     }
 
+                    LoadingSession.ReportFinalization(
+                        "Finalizing mod frameworks",
+                        pipeline.CallAllPostfixOwners == null
+                            ? "Completing RimWorld static initialization"
+                            : "Harmony postfixes: " + pipeline.CallAllPostfixOwners);
+                    yield return null;
+
                     FinalizationStepResult finishResult = RunFinalizationStep(
-                        FinalizationPipeline.FinishStaticInitialization,
-                        null);
+                        FinalizationPipeline.CompleteStaticInitialization,
+                        "Finalize static initialization");
                     executionTicks += finishResult.ElapsedTicks;
                     BenchmarkRecorder.ObserveStaticConstructorTail(
                         finishResult.ElapsedTicks);
                     staticInitializationSucceeded = finishResult.Succeeded;
+
+                    if (staticInitializationSucceeded &&
+                        pipeline.ShouldCheckMissingAttributes)
+                    {
+                        LoadingSession.ReportFinalization(
+                            "Checking startup attributes",
+                            "Developer-mode validation");
+                        yield return null;
+
+                        FinalizationStepResult attributeCheckResult =
+                            RunFinalizationStep(
+                                FinalizationPipeline.CheckMissingAttributes,
+                                "Check static constructor attributes");
+                        executionTicks += attributeCheckResult.ElapsedTicks;
+                        staticInitializationSucceeded =
+                            attributeCheckResult.Succeeded;
+                    }
                 }
                 finally
                 {

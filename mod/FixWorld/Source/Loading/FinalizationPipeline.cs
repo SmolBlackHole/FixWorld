@@ -34,12 +34,15 @@ namespace FixWorld.Loading
             nameof(Resources.UnloadUnusedAssets));
 
         internal IReadOnlyList<StaticConstructorTarget> Constructors { get; }
+        internal string CallAllPostfixOwners { get; }
+        internal bool ShouldCheckMissingAttributes => Prefs.DevMode;
 
         private FinalizationPipeline()
         {
             Constructors = GenTypes.AllTypesWithAttribute<StaticConstructorOnStartup>()
                 .Select(StaticConstructorTarget.Create)
                 .ToList();
+            CallAllPostfixOwners = GetHarmonyPostfixOwners(CallAllMethod);
         }
 
         internal static bool TryCreate(Action action, out FinalizationPipeline pipeline)
@@ -81,13 +84,14 @@ namespace FixWorld.Loading
             RuntimeHelpers.RunClassConstructor(target.Type.TypeHandle);
         }
 
-        internal static void FinishStaticInitialization()
+        internal static void CompleteStaticInitialization()
         {
             StaticConstructorOnStartupUtility.CallAll();
-            if (Prefs.DevMode)
-            {
-                StaticConstructorOnStartupUtility.ReportProbablyMissingAttributes();
-            }
+        }
+
+        internal static void CheckMissingAttributes()
+        {
+            StaticConstructorOnStartupUtility.ReportProbablyMissingAttributes();
         }
 
         internal static void InitializeFloatMenus()

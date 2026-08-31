@@ -115,6 +115,18 @@ namespace FixWorld.Loading
                 case "StaticConstructorOnStartupUtility.CallAll()":
                     descriptor = Step(LoadingStep.RunStaticConstructors, LoadingStage.Finalize, "Calling static constructors");
                     return true;
+                case "Finalize static initialization":
+                    descriptor = Step(
+                        LoadingStep.FinalizeStaticInitialization,
+                        LoadingStage.Finalize,
+                        "Finalize mod frameworks");
+                    return true;
+                case "Check static constructor attributes":
+                    descriptor = Step(
+                        LoadingStep.CheckStaticConstructorAttributes,
+                        LoadingStage.Finalize,
+                        "Check startup attributes");
+                    return true;
                 case "Atlas baking.":
                     descriptor = Step(LoadingStep.BakeAtlases, LoadingStage.Finalize, "Bake atlases");
                     return true;

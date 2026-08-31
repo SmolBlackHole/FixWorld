@@ -32,7 +32,7 @@ Aktuell: **Statische Konstruktoren und weitere blockierende Stufen messen und ze
 ## Nächster Slice: weitere blockierende Stufen
 
 - [x] 589 statische Konstruktoren einzeln messen und als Enumerator ausführen
-- [ ] Lunars erhaltenen `CallAll`-Postfix als eigene, aktuell etwa 3,4 Sekunden lange Unterstufe untersuchen
+- [x] Lunars `CallAll`-Postfix als eigene Unterstufe messen: 3.529 bis 3.584 ms, davon 676 bis 768 ms Harmony-Wrapper und etwa 2.816 bis 2.853 ms Framework-/Komponenteninitialisierung
 - [ ] Ausführungszeit, Renderpausen und reine Wall-Time pro framefähiger Stage getrennt berichten
 - [ ] Content- und Finalize-Pipeline auf einen kleinen gemeinsamen Work-Item-Vertrag reduzieren
 - [ ] gemeinsamen Scheduler nach Zeitbudget rendern lassen, ohne Unity-Arbeit auf Worker zu verschieben
