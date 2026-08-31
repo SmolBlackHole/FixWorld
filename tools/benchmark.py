@@ -64,10 +64,32 @@ class LoaderStepData(TypedDict):
     workerThreadMs: float
 
 
+class DelayedActionData(TypedDict):
+    method: str
+    packageId: str
+    mod: str
+    calls: int
+    totalMs: float
+    maxMs: float
+
+
+class StaticConstructorData(TypedDict):
+    type: str
+    packageId: str
+    mod: str
+    calls: int
+    totalMs: float
+    maxMs: float
+    failures: int
+
+
 class LoaderData(TypedDict):
     observedMs: float
     stages: list[LoaderStageData]
     steps: list[LoaderStepData]
+    delayedActions: list[DelayedActionData]
+    staticConstructors: list[StaticConstructorData]
+    staticConstructorTailMs: float
 
 
 class FileData(TypedDict):
@@ -183,21 +205,29 @@ def wait_for_report(
 
 def validate_report(raw: object) -> BenchmarkReport:
     report = _string_dict(raw, "benchmark report")
-    if report.get("schemaVersion") != 1:
+    if report.get("schemaVersion") != 3:
         raise RuntimeError(
             f"Unsupported benchmark schema: {report.get('schemaVersion')!r}"
         )
     completion = _string_dict(report.get("completion"), "completion")
     loader = _string_dict(report.get("loader"), "loader")
-    if completion.get("source") != "play-data-clear-cache":
+    if completion.get("source") != "staged-runner":
         raise RuntimeError(f"Unexpected completion data: {completion!r}")
     stages = loader.get("stages")
     steps = loader.get("steps")
+    delayed_actions = loader.get("delayedActions")
+    static_constructors = loader.get("staticConstructors")
+    static_constructor_tail = loader.get("staticConstructorTailMs")
     if (
         not isinstance(stages, list)
         or len(stages) != 5
         or not isinstance(steps, list)
         or not steps
+        or not isinstance(delayed_actions, list)
+        or not delayed_actions
+        or not isinstance(static_constructors, list)
+        or not static_constructors
+        or not isinstance(static_constructor_tail, (int, float))
     ):
         raise RuntimeError("Benchmark report contains incomplete loader measurements.")
     for section in ("files", "texturePaths", "textures", "ddsCache"):
@@ -232,6 +262,16 @@ def write_loader_csvs(run_root: Path, report: BenchmarkReport) -> None:
             "workerThreadMs",
         ),
         loader["steps"],
+    )
+    _write_csv(
+        run_root / "delayed-actions.csv",
+        ("method", "packageId", "mod", "calls", "totalMs", "maxMs"),
+        loader["delayedActions"],
+    )
+    _write_csv(
+        run_root / "static-constructors.csv",
+        ("type", "packageId", "mod", "calls", "totalMs", "maxMs", "failures"),
+        loader["staticConstructors"],
     )
 
 
@@ -325,6 +365,16 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
         top_steps = sorted(
             loader["steps"], key=lambda item: float(item["exclusiveMs"]), reverse=True
         )[:5]
+        top_delayed_actions = sorted(
+            loader["delayedActions"],
+            key=lambda item: float(item["totalMs"]),
+            reverse=True,
+        )[:5]
+        top_static_constructors = sorted(
+            loader["staticConstructors"],
+            key=lambda item: float(item["totalMs"]),
+            reverse=True,
+        )[:5]
         notes = "; ".join(
             (
                 f"activeMods={active_mods}",
@@ -339,10 +389,24 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                 f"duplicateTexturePaths={paths['duplicatePaths']}",
                 f"ddsCacheHits={cache['hits']}",
                 f"ddsCacheMisses={cache['misses']}",
+                "staticConstructorTailMs="
+                f"{float(loader['staticConstructorTailMs']):.3f}",
                 "topLoaderSteps="
                 + "|".join(
                     f"{step['id']}={float(step['exclusiveMs']):.3f}ms"
                     for step in top_steps
+                ),
+                "topDelayedActions="
+                + "|".join(
+                    f"{action['packageId']}:{action['method']}="
+                    f"{float(action['totalMs']):.3f}ms"
+                    for action in top_delayed_actions
+                ),
+                "topStaticConstructors="
+                + "|".join(
+                    f"{constructor['packageId']}:{constructor['type']}="
+                    f"{float(constructor['totalMs']):.3f}ms"
+                    for constructor in top_static_constructors
                 ),
             )
         )

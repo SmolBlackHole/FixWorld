@@ -8,7 +8,6 @@ using System.Reflection.Emit;
 using FixWorld.Caching;
 using FixWorld.Diagnostics;
 using FixWorld.Loading;
-using FixWorld.Preloader;
 using FixWorld.UI;
 using HarmonyLib;
 using RimWorld.IO;
@@ -231,14 +230,12 @@ namespace FixWorld.Integration
             [HarmonyPostfix]
             private static void Postfix()
             {
-                if (!LoadingSession.TryComplete())
+                if (StagedLoadingRunner.IsRunning)
                 {
                     return;
                 }
 
-                BenchmarkRecorder.Complete("play-data-clear-cache");
-                Log.Message("[FixWorld] Main menu ready.");
-                PreloaderPrompt.TryShow();
+                LoaderCompletion.Complete("play-data-clear-cache");
             }
         }
 

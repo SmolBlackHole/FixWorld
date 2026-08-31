@@ -13,7 +13,7 @@ namespace FixWorld.Diagnostics
     [DataContract]
     internal sealed class BenchmarkReport
     {
-        private const int CurrentSchemaVersion = 1;
+        private const int CurrentSchemaVersion = 3;
 
         [DataMember(Name = "schemaVersion", Order = 1)]
         public int SchemaVersion { get; private set; }
@@ -46,6 +46,9 @@ namespace FixWorld.Diagnostics
         internal static BenchmarkReport Create(
             string completionSource,
             LoadingMeasurement loading,
+            IReadOnlyList<DelayedActionSnapshot> delayedActions,
+            IReadOnlyList<StaticConstructorSnapshot> staticConstructors,
+            double staticConstructorTailMilliseconds,
             FileDiscoverySnapshot files,
             TexturePathSnapshot texturePaths,
             TextureProbeSnapshot textures,
@@ -70,7 +73,12 @@ namespace FixWorld.Diagnostics
                 Loader = new LoaderReport(
                     loading.ObservedMilliseconds,
                     stages,
-                    steps),
+                    steps,
+                    delayedActions.Select(item => new DelayedActionReport(item)).ToList(),
+                    staticConstructors
+                        .Select(item => new StaticConstructorReport(item))
+                        .ToList(),
+                    staticConstructorTailMilliseconds),
                 Files = new FileDiscoveryReport(files),
                 TexturePaths = new TexturePathReport(texturePaths),
                 Textures = new TextureReport(textures),
@@ -147,14 +155,97 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "steps", Order = 3)]
         public List<LoaderStepReport> Steps { get; private set; }
 
+        [DataMember(Name = "delayedActions", Order = 4)]
+        public List<DelayedActionReport> DelayedActions { get; private set; }
+
+        [DataMember(Name = "staticConstructors", Order = 5)]
+        public List<StaticConstructorReport> StaticConstructors { get; private set; }
+
+        [DataMember(Name = "staticConstructorTailMs", Order = 6)]
+        public double StaticConstructorTailMilliseconds { get; private set; }
+
         internal LoaderReport(
             double observedMilliseconds,
             List<LoaderStageReport> stages,
-            List<LoaderStepReport> steps)
+            List<LoaderStepReport> steps,
+            List<DelayedActionReport> delayedActions,
+            List<StaticConstructorReport> staticConstructors,
+            double staticConstructorTailMilliseconds)
         {
             ObservedMilliseconds = observedMilliseconds;
             Stages = stages;
             Steps = steps;
+            DelayedActions = delayedActions;
+            StaticConstructors = staticConstructors;
+            StaticConstructorTailMilliseconds = staticConstructorTailMilliseconds;
+        }
+    }
+
+    [DataContract]
+    internal sealed class DelayedActionReport
+    {
+        [DataMember(Name = "method", Order = 1)]
+        public string Method { get; private set; }
+
+        [DataMember(Name = "packageId", Order = 2)]
+        public string PackageId { get; private set; }
+
+        [DataMember(Name = "mod", Order = 3)]
+        public string ModName { get; private set; }
+
+        [DataMember(Name = "calls", Order = 4)]
+        public long Calls { get; private set; }
+
+        [DataMember(Name = "totalMs", Order = 5)]
+        public double TotalMilliseconds { get; private set; }
+
+        [DataMember(Name = "maxMs", Order = 6)]
+        public double MaxMilliseconds { get; private set; }
+
+        internal DelayedActionReport(DelayedActionSnapshot action)
+        {
+            Method = action.Method;
+            PackageId = action.PackageId;
+            ModName = action.ModName;
+            Calls = action.Calls;
+            TotalMilliseconds = action.TotalMilliseconds;
+            MaxMilliseconds = action.MaxMilliseconds;
+        }
+    }
+
+    [DataContract]
+    internal sealed class StaticConstructorReport
+    {
+        [DataMember(Name = "type", Order = 1)]
+        public string TypeName { get; private set; }
+
+        [DataMember(Name = "packageId", Order = 2)]
+        public string PackageId { get; private set; }
+
+        [DataMember(Name = "mod", Order = 3)]
+        public string ModName { get; private set; }
+
+        [DataMember(Name = "calls", Order = 4)]
+        public long Calls { get; private set; }
+
+        [DataMember(Name = "totalMs", Order = 5)]
+        public double TotalMilliseconds { get; private set; }
+
+        [DataMember(Name = "maxMs", Order = 6)]
+        public double MaxMilliseconds { get; private set; }
+
+        [DataMember(Name = "failures", Order = 7)]
+        public long Failures { get; private set; }
+
+        internal StaticConstructorReport(StaticConstructorSnapshot constructor)
+        {
+            TypeName = constructor.TypeName;
+            PackageId = constructor.PackageId;
+            ModName = constructor.ModName;
+            Calls = constructor.Calls;
+            TotalMilliseconds = constructor.TotalMilliseconds;
+            MaxMilliseconds = constructor.MaxMilliseconds;
+            Failures = constructor.Failures;
         }
     }
 

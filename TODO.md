@@ -1,6 +1,6 @@
 # TODO
 
-Aktuell: **Die übernommene Startpipeline in messbare Teilpipelines zerlegen**
+Aktuell: **Statische Konstruktoren und weitere blockierende Stufen messen und zerlegen**
 
 ## Erledigter Stand
 
@@ -17,25 +17,32 @@ Aktuell: **Die übernommene Startpipeline in messbare Teilpipelines zerlegen**
 - [x] 10.460 warme DDS-Treffer ohne Cache-Miss laden
 - [x] `texconv` für Windows x64 mit Lizenz bündeln
 
-## Nächster Slice: Content-Pipeline
+## Erledigt: Content-Pipeline
 
-- [ ] verzögerte Aufgaben nach Methode, Mod, Aufrufen und exklusiver Zeit auswerten
-- [ ] `ModContentPack.ReloadContentInt` und vorhandene Harmony-Patches als Vertrag prüfen
-- [ ] eine `ContentLoadingPipeline` in ursprünglicher Mod-Reihenfolge bauen
-- [ ] pro Mod `Audio -> Textures -> Strings -> Asset bundles` als echte Unterstufen ausführen
-- [ ] Fortschritt und aktuelle Mod direkt melden, nicht aus `DeepProfiler` erraten
-- [ ] spätestens vor bekannten langen Unterstufen einen Frame ermöglichen
-- [ ] Unity-Objekte und Uploads weiterhin ausschließlich auf dem Hauptthread ausführen
-- [ ] vollständige Modliste, Quarry und warmen DDS-Cache erneut testen
-- [ ] Laufzeit gegen den aktuellen Runner-Baselinebereich von 24,8 bis 27,6 Sekunden vergleichen
+- [x] verzögerte Aufgaben nach Methode, Mod, Aufrufen und exklusiver Zeit auswerten
+- [x] `ModContentPack.ReloadContentInt` und vorhandene Harmony-Patches als Vertrag prüfen
+- [x] eine `ContentLoadingPipeline` in ursprünglicher Mod-Reihenfolge bauen
+- [x] pro Mod `Audio -> Textures -> Strings -> Asset bundles` als echte Unterstufen ausführen
+- [x] Fortschritt und aktuelle Mod direkt melden, nicht aus `DeepProfiler` erraten
+- [x] spätestens vor bekannten langen Unterstufen einen Frame ermöglichen
+- [x] Unity-Objekte und Uploads weiterhin ausschließlich auf dem Hauptthread ausführen
+- [x] vollständige Modliste, Quarry und warmen DDS-Cache erneut testen
+- [x] Laufzeit gegen den aktuellen Runner-Baselinebereich von 24,8 bis 27,6 Sekunden vergleichen
 
-## Danach: weitere blockierende Stufen
+## Nächster Slice: weitere blockierende Stufen
 
-- [ ] statische Konstruktoren einzeln messen und als Enumerator ausführen
+- [x] 589 statische Konstruktoren einzeln messen und als Enumerator ausführen
+- [ ] Lunars erhaltenen `CallAll`-Postfix als eigene, aktuell etwa 3,4 Sekunden lange Unterstufe untersuchen
+- [ ] Ausführungszeit, Renderpausen und reine Wall-Time pro framefähiger Stage getrennt berichten
+- [ ] Content- und Finalize-Pipeline auf einen kleinen gemeinsamen Work-Item-Vertrag reduzieren
+- [ ] gemeinsamen Scheduler nach Zeitbudget rendern lassen, ohne Unity-Arbeit auf Worker zu verschieben
 - [ ] `ThingDef.PostLoad`, Sound-Auflösung und Atlas-Build getrennt messen
 - [ ] XML-Patches, Def-Auflösung, Reflection und Harmony-Scanning einzeln bewerten
-- [ ] nur nach einem reproduzierbaren Engpass sichere I/O-Arbeit in Worker-Batches verschieben
-- [ ] Worker-Pipeline mit Byte-Limit und Backpressure statt unbegrenzter Parallelität bauen
+- [ ] Work-Items explizit als `MainThread` oder `WorkerSafe` klassifizieren
+- [ ] Discovery, Read-ahead, Cache-Validierung und reine Byte-Verarbeitung als erste Worker-Kandidaten messen
+- [ ] begrenzten Worker-Pool mit Parallelitäts-, Byte- und Queue-Limit sowie Backpressure bauen
+- [ ] Worker-Ergebnisse geordnet an den Hauptthread übergeben und Unity-Objekte nur dort erzeugen oder verändern
+- [ ] Worker-Anzahl gegen CPU-Kerne, Speicherdruck sowie NVMe, SATA und HDD benchmarken
 - [ ] RAM-, VRAM-, Queue- und GC-Spitzen pro Stage erfassen
 
 ## Benchmark

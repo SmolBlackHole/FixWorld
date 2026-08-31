@@ -227,6 +227,66 @@ namespace FixWorld.Loading
             }
         }
 
+        internal static void ReportContentLoading(
+            string modName,
+            string activity,
+            int currentStep,
+            int totalSteps)
+        {
+            if (!active)
+            {
+                return;
+            }
+
+            lock (Sync)
+            {
+                if (!active)
+                {
+                    return;
+                }
+
+                ClearDetail();
+                currentStage = LoadingStage.Content;
+                currentStepName = "Loading content for " + modName;
+                currentActivity = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0}   {1} / {2}",
+                    activity,
+                    currentStep,
+                    totalSteps);
+            }
+        }
+
+        internal static void ReportStaticConstructor(
+            string typeName,
+            string modName,
+            int current,
+            int total)
+        {
+            if (!active)
+            {
+                return;
+            }
+
+            lock (Sync)
+            {
+                if (!active)
+                {
+                    return;
+                }
+
+                ClearDetail();
+                currentStage = LoadingStage.Finalize;
+                currentStepName = "Initializing " + modName;
+                currentActivity = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0}   {1:N0} / {2:N0}",
+                    typeName,
+                    current,
+                    total);
+            }
+        }
+
         internal static bool TryGetSnapshot(out LoadingSnapshot snapshot)
         {
             lock (Sync)
