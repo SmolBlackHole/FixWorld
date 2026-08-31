@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using FixWorld.Caching;
@@ -26,6 +27,8 @@ namespace FixWorld.Integration
             typeof(ModFileLoaderPatch),
             typeof(DeepProfilerStartPatch),
             typeof(DeepProfilerEndPatch),
+            typeof(DelayedInitializationPatch),
+            typeof(EnumeratorFrameBoundaryPatch),
             typeof(LoaderCompletionPatch),
             typeof(LoadingOverlayPatch)
         };
@@ -138,6 +141,87 @@ namespace FixWorld.Integration
             private static void Prefix()
             {
                 LoadingSession.End();
+            }
+        }
+
+        [HarmonyPatch]
+        private static class DelayedInitializationPatch
+        {
+            private static MethodBase TargetMethod()
+            {
+                return AccessTools.Method(
+                    typeof(LongEventHandler),
+                    "ExecuteToExecuteWhenFinished") ??
+                       throw new MissingMethodException(
+                           typeof(LongEventHandler).FullName,
+                           "ExecuteToExecuteWhenFinished");
+            }
+
+            [HarmonyPrefix]
+            private static bool Prefix()
+            {
+                return StagedLoadingRunner.ShouldRunOriginal();
+            }
+        }
+
+        [HarmonyPatch]
+        private static class EnumeratorFrameBoundaryPatch
+        {
+            private static MethodBase TargetMethod()
+            {
+                return AccessTools.Method(
+                    typeof(LongEventHandler),
+                    "UpdateCurrentEnumeratorEvent") ??
+                       throw new MissingMethodException(
+                           typeof(LongEventHandler).FullName,
+                           "UpdateCurrentEnumeratorEvent");
+            }
+
+            [HarmonyTranspiler]
+            private static IEnumerable<CodeInstruction> Transpiler(
+                IEnumerable<CodeInstruction> instructions,
+                ILGenerator generator)
+            {
+                List<CodeInstruction> rewritten = instructions.ToList();
+                List<int> loopBranches = rewritten
+                    .Select((instruction, index) => new { instruction, index })
+                    .Where(item =>
+                        item.instruction.opcode == OpCodes.Bgt_Un_S ||
+                        item.instruction.opcode == OpCodes.Bgt_Un)
+                    .Select(item => item.index)
+                    .ToList();
+                if (loopBranches.Count != 1 || loopBranches[0] + 1 >= rewritten.Count)
+                {
+                    Log.Error(
+                        "[FixWorld] Could not add the staged-loader frame boundary; " +
+                        "RimWorld's enumerator loop has an unexpected shape.");
+                    return rewritten;
+                }
+
+                int branchIndex = loopBranches[0];
+                CodeInstruction branch = rewritten[branchIndex];
+                Label loopStart = (Label)branch.operand;
+                Label exitLoop = generator.DefineLabel();
+                rewritten[branchIndex + 1].labels.Add(exitLoop);
+
+                CodeInstruction deadlinePassed = new CodeInstruction(
+                    OpCodes.Ble_Un,
+                    exitLoop);
+                deadlinePassed.labels.AddRange(branch.labels);
+                deadlinePassed.blocks.AddRange(branch.blocks);
+                MethodInfo shouldStop = AccessTools.Method(
+                    typeof(StagedLoadingRunner),
+                    nameof(StagedLoadingRunner.ConsumeFrameBoundaryRequest));
+                rewritten.RemoveAt(branchIndex);
+                rewritten.InsertRange(
+                    branchIndex,
+                    new[]
+                    {
+                        deadlinePassed,
+                        new CodeInstruction(OpCodes.Call, shouldStop),
+                        new CodeInstruction(OpCodes.Brfalse, loopStart)
+                    });
+                return rewritten;
             }
         }
 

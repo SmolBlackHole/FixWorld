@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using Verse;
@@ -32,6 +33,8 @@ namespace FixWorld.Loading
 
         [ThreadStatic]
         private static Stack<Scope> scopes;
+
+        internal static bool IsActive => active;
 
         internal static void Start(bool readEstimate)
         {
@@ -194,6 +197,34 @@ namespace FixWorld.Loading
 
             LoadingEstimateStore.Write(observedMilliseconds);
             return true;
+        }
+
+        internal static void ReportDelayedInitialization(
+            string label,
+            int currentTask,
+            int totalTasks)
+        {
+            if (!active)
+            {
+                return;
+            }
+
+            lock (Sync)
+            {
+                if (!active)
+                {
+                    return;
+                }
+
+                ClearDetail();
+                currentStage = LoadingStage.Content;
+                currentStepName = LoaderStepCatalog.GetDisplayName(label);
+                currentActivity = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "Delayed initialization task {0:N0} / {1:N0}",
+                    currentTask,
+                    totalTasks);
+            }
         }
 
         internal static bool TryGetSnapshot(out LoadingSnapshot snapshot)

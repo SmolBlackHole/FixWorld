@@ -14,8 +14,8 @@ eingefroren und Dubs Performance Analyzer ist installiert.
 
 Den Vanilla-Start in `Bootstrap`, `XML & Patches`, `Definitions`, `Content` und
 `Finalize` messen. Danach den größten reproduzierbaren Anteil mit genau einer
-kleinen Änderung per A/B-Test bewerten. Die spätere optimierte Content-Pipeline
-bekommt eigene Stages und wird nicht mit der Vanilla-Reihenfolge vermischt.
+kleinen Änderung per A/B-Test bewerten. Die optimierte Content-Pipeline bekommt
+eigene Stages und behält die ursprüngliche Mod-Reihenfolge bei.
 
 ## 3. Ingame-Performance
 
@@ -30,7 +30,7 @@ Unklare oder unwirksame Änderungen werden vollständig zurückgebaut.
 ## Später
 
 DDS-Packs, OBST als mögliches Packformat und der Linux-Konverter folgen erst,
-wenn der staged Loader eine direkte Byte-/Stream-Ladegrenze besitzt.
+wenn der Staged Loader eine direkte Byte-/Stream-Ladegrenze besitzt.
 
 ## Grenzen
 

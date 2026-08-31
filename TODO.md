@@ -1,124 +1,86 @@
 # TODO
 
-Aktuell: **Staged Loader: nächsten messbaren Engpass auswählen**
+Aktuell: **Die übernommene Startpipeline in messbare Teilpipelines zerlegen**
 
-## Einmalig
+## Erledigter Stand
 
-- [x] Repo vereinfachen
-- [x] `spoon-spring-v1` einfrieren
-- [x] Dubs Performance Analyzer installieren
-- [ ] Dubs beim nächsten Spielstart aktivieren
-- [x] bereinigten Stand committen
-- [x] Mod und Package-ID vollständig auf FixWorld umstellen
+- [x] FixWorld, Build, Profiler und typisierten Loader-Benchmark aufsetzen
+- [x] Start in `Bootstrap`, `XML`, `Definitions`, `Content` und `Finalize` gliedern
+- [x] eigene Ladeanzeige aus demselben Loader-Zustand zeichnen
+- [x] `ExecuteToExecuteWhenFinished()` während des Starts übernehmen
+- [x] 13.707 verzögerte Aufgaben in Vanilla-Reihenfolge framefähig ausführen
+- [x] UI zwischen Aufgaben mindestens etwa alle 100 bis 150 ms rendern lassen
+- [x] vollständige Liste mit 88 aktiven Mods bis zum Hauptmenü testen
+- [x] Quarry innerhalb des FixWorld-Runners erfolgreich initialisieren
+- [x] warmen DDS-Start mit Runner messen: 24,8 bis 27,6 Sekunden
+- [x] automatischen, invalidierbaren DDS-Cache für geeignete Mod-Texturen bauen
+- [x] 10.460 warme DDS-Treffer ohne Cache-Miss laden
+- [x] `texconv` für Windows x64 mit Lizenz bündeln
 
-## Mod-Loading
+## Nächster Slice: Content-Pipeline
 
-- [x] zwei unveränderte Starts messen
-- [x] Texturpfad messen: 1,44 s Lesen, 20,19 s Verarbeitung
-- [x] Hauptthread messen: `LoadImage` 16,35 s, `Apply` 2,60 s, `FastCompressDXT` 0,48 s
-- [x] reine `FastCompressDXT`-Mikrobatches verwerfen: der Anteil ist zu klein
-- [x] Texturkompression ausschalten: nur etwa 0,76 s im Texturpfad gespart
-- [x] Read-ahead zurückbauen: nur etwa 1,3 s Datei-I/O gegenüber 16 s `LoadImage`
-- [x] DDS-PoC nur für Vanilla Textures Expanded und Clean Textures: Texturpfad 20,71 s auf 13,85 s, rund 33 % schneller
-- [x] Vollcache messen: 10.461 erzeugte DDS, 162 ungeeignete Abmessungen, 4 Hospitality-PSD, 0 Fehler
-- [x] automatischen, invalidierbaren DDS-Cache für alle geeigneten aktiven Mod-Texturen bauen
-- [x] DDS A/B testen: Texturpfad 21,16 s ohne Cache gegenüber 2,24 bis 2,51 s mit warmem Vollcache
-- [x] `texconv` für Windows x64 inklusive Lizenz und Prüfsumme bündeln
-- [x] Cache ohne künstliches Standardlimit aufbauen und mindestens 10 GiB freien Plattenplatz reservieren
-- [x] Budget-Fallback testen: 19 DDS bis exakt 1 MiB, 10.442 übersprungen, Spielstart gültig
+- [ ] verzögerte Aufgaben nach Methode, Mod, Aufrufen und exklusiver Zeit auswerten
+- [ ] `ModContentPack.ReloadContentInt` und vorhandene Harmony-Patches als Vertrag prüfen
+- [ ] eine `ContentLoadingPipeline` in ursprünglicher Mod-Reihenfolge bauen
+- [ ] pro Mod `Audio -> Textures -> Strings -> Asset bundles` als echte Unterstufen ausführen
+- [ ] Fortschritt und aktuelle Mod direkt melden, nicht aus `DeepProfiler` erraten
+- [ ] spätestens vor bekannten langen Unterstufen einen Frame ermöglichen
+- [ ] Unity-Objekte und Uploads weiterhin ausschließlich auf dem Hauptthread ausführen
+- [ ] vollständige Modliste, Quarry und warmen DDS-Cache erneut testen
+- [ ] Laufzeit gegen den aktuellen Runner-Baselinebereich von 24,8 bis 27,6 Sekunden vergleichen
 
-## Staged Loader (aktuell)
+## Danach: weitere blockierende Stufen
 
-- [x] normalen Mod und optionalen frühen Doorstop-Bootstrap klar trennen
-- [x] Doorstop nur nach Opt-in installieren und fremde Proxy-Dateien niemals überschreiben
-- [x] Doorstop von RimWorld und Harmony entkoppeln und die Installationslogik zwischen Mod und CLI teilen
-- [x] normale FixWorld-Patches beim Laden von `FixWorld.dll` zentral über Harmony registrieren
-- [ ] vollständiges Assembly-Laden später über den optionalen Preloader messen
-- [x] reinen Doorstop-Prozesseinstieg bis zum Hauptmenü verifizieren
-- [ ] korrekten frühen RimWorld-Hookpunkt belegen, bevor dort Harmony-Patches registriert werden
-- [ ] Absturz der vollständigen isolierten Mod-Fixture bei Quarry unabhängig von Preloader und FixWorld-Runner klären
-- [x] Vanilla-Start in `Bootstrap -> XML & Patches -> Definitions -> Content -> Finalize` zerlegen
-- [x] zentralen Loader-Observer statt einer großen Methoden-Patchliste bauen
-- [x] eigene FixWorld-Ladeanzeige aus demselben Loader-Snapshot zeichnen
-- [x] FixWorld-Anzeige bei verzögerten Initialisierungsaufgaben und statischen Konstruktoren testen
-- [x] typisierten C#-Report und kleines Python-Benchmarktool bauen
-- [ ] `LoadTextures` und statische Konstruktoren als nächste Engpässe getrennt untersuchen
-- [x] parallele Discovery auf NVMe vorerst zurückstellen: nur 74,8 ms Gesamtpotenzial
-- [ ] Überschreibungen vor Dekodierung auflösen, damit Verlierer gar nicht vorbereitet werden
-- [x] Cache-Artefakte inkrementell anhand Quellpfad, Größe, Änderungszeit und Cacheformat aktualisieren
-- [ ] Cache-Schlüssel aus Quellinhalt, Loader-Version, Plattform und Zielformat bilden
-- [ ] PNG-Dekodierung, Mipmaps und BC3-Kompression in begrenzten Worker-Batches vorbereiten
-- [x] Cache-Ergebnisse erst nach erfolgreicher Konvertierung atomar veröffentlichen
-- [ ] Hauptthread nur fertige DDS-/Raw-Artefakte in ursprünglicher Mod-Reihenfolge übernehmen lassen
-- [ ] Worker-Pipeline mit fester Obergrenze und Backpressure statt unbegrenzter Parallelität bauen
-- [ ] RAM- und VRAM-Budget in Bytes statt nur eine feste Anzahl Dateien begrenzen
-- [ ] Puffer wiederverwenden und Allokationen sowie GC-Pausen pro Stage messen
-- [ ] heiße Texturen vorladen und seltene Texturen optional lazy laden
-- [ ] Zeit, Trefferquote, Queue-Stalls, RAM, VRAM und Cachegröße pro Stage messen
+- [ ] statische Konstruktoren einzeln messen und als Enumerator ausführen
+- [ ] `ThingDef.PostLoad`, Sound-Auflösung und Atlas-Build getrennt messen
+- [ ] XML-Patches, Def-Auflösung, Reflection und Harmony-Scanning einzeln bewerten
+- [ ] nur nach einem reproduzierbaren Engpass sichere I/O-Arbeit in Worker-Batches verschieben
+- [ ] Worker-Pipeline mit Byte-Limit und Backpressure statt unbegrenzter Parallelität bauen
+- [ ] RAM-, VRAM-, Queue- und GC-Spitzen pro Stage erfassen
 
-## DDS-Messmatrix
+## Benchmark
 
-- [ ] PNG/JPG ohne DDS-Cache mit kaltem OS-Dateicache messen
-- [ ] PNG/JPG ohne DDS-Cache mit warmem OS-Dateicache messen
-- [x] erstmaligen DDS-Build getrennt messen: 10.461 DDS in 91,0 s, Gesamtstart 143,1 s
-- [ ] vorhandenen DDS-Cache mit kaltem OS-Dateicache messen
-- [x] vorhandenen DDS-Cache mit warmem OS-Dateicache messen: 34,4 s und 38,8 s Gesamtstart
-- [x] nach dem DDS-Build keinen vermeintlich kalten Start messen: der Generator wärmt bereits den OS-Cache
-- [x] bisherige A/B-Paare mit identischer 89-Mod-Fixture und explizit aktiviertem/deaktiviertem Anwendungscache messen
+- [x] normales Mod-Loading mit und ohne DDS reproduzierbar messen
+- [x] vollständige aktive Modliste über `--live-mods` testen
+- [ ] Preloader-Modus im Report als `on` oder `off` speichern
+- [ ] Preloader für Benchmarks explizit schaltbar machen, statt den Installationszustand zu erben
+- [ ] Preloader `off` und `on` erst vergleichen, sobald der frühe Einstieg echte Arbeit übernimmt
+- [ ] PNG/JPG sowie DDS jeweils mit kaltem und warmem OS-Dateicache messen
 - [ ] NVMe, SATA-SSD und HDD als getrennte Hardwareprofile behandeln
+- [ ] Pilotlauf auf der HDD und großen Modliste des Testnutzers durchführen
 
-## Weitere Loader-Experimente
+## DDS-Cache
 
-- [x] DDS-Pack/Seeking auf NVMe zurückstellen: der Vollcache lädt warm 1,77 GB in 1,94 bis 2,18 s
-- [x] Duplikate zählen: 60 Pfade, 66 überschattete Dateien, knapp 5 MB
-- [x] Skip überschatteter Texturen verwerfen: kleiner Gewinn, aber Risiko für `GetAllInFolder`
-- [ ] BC3-DDS gegen unkomprimierte DDS vergleichen: CPU-Zeit, Dateigröße und Ladezeit
-- [ ] PNG/JPG per Worker dekodieren und nur `Texture2D`/Upload auf dem Hauptthread ausführen
-- [ ] begrenzte Dekodierpipeline mit Batchgrößen 4, 16 und 64 vergleichen
-- [x] Dateikatalog auf NVMe messen: 358 Scans und 11.560 Dateien brauchen nur 74,8 ms
-- [ ] Dateikatalog und parallele Discovery auf HDD/SATA mit kaltem Dateisystem-Cache messen
-- [ ] Lazy Loading für selten oder nie verwendete Texturen untersuchen
-- [ ] statische Konstruktoren und langsame Mod-Konstruktoren einzeln messen
-- [ ] `ThingDef.PostLoad`, Sound-Auflösung und XML-Patches getrennt messen
-- [ ] Assembly-Scanning, Reflection und Harmony-Patching auf wiederholbare Arbeit prüfen
+- [x] Quellpfad, Größe, Änderungszeit und Cacheformat zur Invalidierung verwenden
+- [x] Cache-Dateien erst nach erfolgreicher Konvertierung atomar veröffentlichen
+- [x] umgedrehte DDS-Texturen durch das korrigierte Cacheformat invalidieren
+- [ ] maximale Cachegröße konfigurierbar begrenzen und alte Einträge bereinigen
+- [ ] Cache-Schlüssel um Quellinhalt, Loader-Version, Plattform und Zielformat erweitern
+- [ ] erstmaligen DDS-Build beschleunigen, ohne den normalen Start zu blockieren
+- [ ] BC3-DDS gegen unkomprimierte DDS vergleichen
+- [ ] PNG/JPG begrenzt parallel dekodieren und nur fertige Daten geordnet übernehmen
 
-## GPU-Texturpipeline
+## Optionaler Preloader
 
-- [ ] `LoadImage` in Dekodierung, Mipmaps, Kompression und GPU-Upload zerlegen, bevor wir Hardware auswählen
-- [ ] CPU-Worker-Dekodierung plus gebündelten GPU-Upload als kleinsten staged PoC testen
-- [ ] Mipmap-Erzeugung auf der GPU gegen CPU/Unity vergleichen
-- [x] Vanilla prüfen: `FastCompressDXT` nutzt auf unterstützten GPUs bereits den Compute Shader `EncodeBCn`
-- [ ] prüfen, ob sich das vorhandene GPU-BC3-Ergebnis ohne teuren Readback als Cache-Artefakt exportieren lässt
-- [ ] GPU-Ergebnisse direkt resident halten und teuren Readback zur CPU vermeiden
-- [ ] Uploads nach Byte-Budget batchen und VRAM-Spitzen messen
-- [ ] Feature-Erkennung und sauberen CPU-Fallback für ungeeignete GPUs vorsehen
-- [ ] GPU-Pfad auf integrierter GPU, Mittelklasse und viel VRAM getrennt bewerten
-- [ ] DirectStorage oder GPU-native Container erst prüfen, wenn DDS-I/O auf HDD/kaltem Cache wirklich dominiert
+- [x] Doorstop nur nach Opt-in installieren
+- [x] fremde Proxy-DLLs und Konfigurationen niemals überschreiben
+- [x] Installation, Deaktivierung und Entfernung über das mitgelieferte Tool unterstützen
+- [x] Preloader und normalen FixWorld-Mod voneinander entkoppeln
+- [ ] frühen Hookpunkt belegen, bevor dort RimWorld- oder Harmony-Arbeit übernommen wird
+- [ ] vollständiges Assembly-Laden erst danach messen
 
-## Fenster und Monitor
+Der Preloader ist für den aktuellen Staged Loader nicht erforderlich und bleibt vorerst optional.
 
-- [x] Benchmark und lokalen Launcher standardmäßig maximiert auf dem G276HL starten
-- [x] G276HL anhand Hardware-ID/Friendly Name statt nur anhand des Monitorindex finden
-- [x] Unity-Monitor per Startargument setzen, gespeicherte Registry-Werte unberührt lassen
-- [x] Fenster erst verschieben, dann maximieren und tatsächlichen Monitor über `MonitorFromWindow` verifizieren
-- [x] Fallback für ausgeschalteten oder getrennten Zielmonitor testen
-- [x] Vollbild-, Borderless- und Fenstermodus nicht dauerhaft überschreiben
-- [ ] später als Mod-Einstellung produktisieren, falls auch normale Steam-Starts korrigiert werden sollen
+## Ingame
 
-## Ingame-TPS
-
-- [ ] Save zweimal mit dem eingebauten Benchmark messen
-- [ ] mit Dubs den dominanten Tick-Pfad finden
-- [ ] genau eine Optimierung testen
-- [ ] A/B vergleichen, behalten oder zurückbauen
+- [ ] eingefrorenen komplexen Save zweimal messen
+- [ ] mit Dubs den dominanten Tick-Pfad bestimmen
+- [ ] genau eine Optimierung implementieren und per A/B-Test bewerten
 
 ## Später
 
-- [ ] parallele Discovery, Read-ahead und Look-ahead auf HDD/SATA gesondert testen
+- [ ] parallele Discovery und Read-ahead auf HDD/SATA testen
 - [ ] DDS-Pack erst nach einer direkten Byte-/Stream-Ladegrenze erneut bewerten
-- [ ] OBST als konformes Packformat mit rebuildbarem Sidecar-Index prüfen
-- [ ] pro Mod eine `.fwp`-Datendatei und einen atomaren `.fwi`-Index bauen
-- [ ] geänderte Texturen nur anhängen, entfernte Einträge aus dem Index löschen
-- [ ] Packdatei ab 25 % ungenutzten Daten budgetabhängig kompaktieren
-- [ ] LRU-Bereinigung innerhalb des Cache-Budgets untersuchen
-- [ ] Linux-Konverter bauen und Originaltextur-Fallback beibehalten
+- [ ] OBST als mögliches Packformat mit Sidecar-Index prüfen
+- [ ] GPU-Dekodierung, Mipmaps und Uploads erst nach sauberer CPU-Aufteilung bewerten
+- [ ] Linux-Konverter und Plattform-Fallback bauen
