@@ -16,6 +16,28 @@
   <loadAfter>
     <li>brrainz.harmony</li>
   </loadAfter>
-  <description>Private RimWorld performance mod focused on faster loading and behavior-preserving
-    runtime optimizations.</description>
+  <description>
+    FixWorld is an experimental performance and runtime optimization mod for RimWorld.
+
+    Its goal is to improve performance without changing gameplay behavior. FixWorld replaces or
+    restructures selected internal systems where measurable improvements are possible, while keeping
+    compatibility and correctness as primary constraints.
+
+    Current areas of work include:
+    - Faster mod and content loading
+    - Staged and parallelized initialization
+    - Persistent texture caching
+    - Reduced startup overhead
+    - Improved loading diagnostics and progress reporting
+    - Behavior-preserving runtime optimizations
+
+    Future work may extend into map generation, pathfinding, simulation hot paths, caching,
+    scheduling, and other performance-critical systems.
+
+    FixWorld does not aim to alter game balance or mechanics. Optimizations are introduced only
+    where they can be measured, validated, and kept functionally equivalent to vanilla behavior.
+
+    This project is under active development and may make deep changes to RimWorld's internal
+    execution paths.
+</description>
 </ModMetaData>
