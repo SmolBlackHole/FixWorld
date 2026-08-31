@@ -52,8 +52,13 @@ namespace FixWorld.Scheduling
             int executed = current.PumpMainThread(
                 maximumActions,
                 maximumMilliseconds);
-            SchedulerMailbox.Drain();
+            EventMailboxPump.DrainAll();
             return executed;
+        }
+
+        internal static int DrainEvents()
+        {
+            return EventMailboxPump.DrainAll();
         }
 
         internal static void Cancel(ScheduledJobHandle handle)

@@ -1,9 +1,5 @@
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Threading;
 
 namespace FixWorld.Scheduling
 {
@@ -76,34 +72,17 @@ namespace FixWorld.Scheduling
     internal static class SchedulerMailbox
     {
         private const int MaximumEventsPerDrain = 2048;
-        private static readonly ConcurrentQueue<SchedulerEvent> Events =
-            new ConcurrentQueue<SchedulerEvent>();
-        private static readonly object SubscriberSync = new object();
-        private static readonly List<Action<SchedulerEvent>> Subscribers =
-            new List<Action<SchedulerEvent>>();
-
-        private static Action<SchedulerEvent>[] subscriberSnapshot =
-            Array.Empty<Action<SchedulerEvent>>();
+        private static readonly EventMailbox<SchedulerEvent> Events =
+            new EventMailbox<SchedulerEvent>(MaximumEventsPerDrain);
 
         internal static IDisposable Subscribe(Action<SchedulerEvent> subscriber)
         {
-            if (subscriber == null)
-            {
-                throw new ArgumentNullException(nameof(subscriber));
-            }
-
-            lock (SubscriberSync)
-            {
-                Subscribers.Add(subscriber);
-                subscriberSnapshot = Subscribers.ToArray();
-            }
-
-            return new Subscription(subscriber);
+            return Events.Subscribe(subscriber);
         }
 
         internal static void Publish(ScheduledJobHandle handle, SchedulerEventKind kind)
         {
-            Events.Enqueue(new SchedulerEvent(
+            Events.Publish(new SchedulerEvent(
                 kind,
                 SchedulerEventSource.Worker,
                 handle.Key,
@@ -120,7 +99,7 @@ namespace FixWorld.Scheduling
 
         internal static void Publish(MainThreadActionHandle handle, SchedulerEventKind kind)
         {
-            Events.Enqueue(new SchedulerEvent(
+            Events.Publish(new SchedulerEvent(
                 kind,
                 SchedulerEventSource.MainThread,
                 handle.Key,
@@ -135,59 +114,5 @@ namespace FixWorld.Scheduling
                 handle.Exception));
         }
 
-        internal static int Drain()
-        {
-            Action<SchedulerEvent>[] subscribers =
-                Volatile.Read(ref subscriberSnapshot);
-            int drained = 0;
-            while (drained < MaximumEventsPerDrain &&
-                   Events.TryDequeue(out SchedulerEvent item))
-            {
-                foreach (Action<SchedulerEvent> subscriber in subscribers)
-                {
-                    try
-                    {
-                        subscriber(item);
-                    }
-                    catch
-                    {
-                        // Observers cannot break scheduler progress.
-                    }
-                }
-
-                drained++;
-            }
-
-            return drained;
-        }
-
-        private static void Unsubscribe(Action<SchedulerEvent> subscriber)
-        {
-            lock (SubscriberSync)
-            {
-                Subscribers.Remove(subscriber);
-                subscriberSnapshot = Subscribers.ToArray();
-            }
-        }
-
-        private sealed class Subscription : IDisposable
-        {
-            private Action<SchedulerEvent> subscriber;
-
-            internal Subscription(Action<SchedulerEvent> subscriber)
-            {
-                this.subscriber = subscriber;
-            }
-
-            public void Dispose()
-            {
-                Action<SchedulerEvent> current =
-                    Interlocked.Exchange(ref subscriber, null);
-                if (current != null)
-                {
-                    Unsubscribe(current);
-                }
-            }
-        }
     }
 }

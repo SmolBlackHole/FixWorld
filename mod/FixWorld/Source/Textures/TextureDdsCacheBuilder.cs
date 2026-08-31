@@ -8,7 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 
-namespace FixWorld.Caching
+namespace FixWorld.Textures
 {
     internal sealed class TextureDdsCacheBuilder
     {
@@ -30,11 +30,6 @@ namespace FixWorld.Caching
         internal string TexconvPath => texconvPath;
 
         internal string Identity => identity;
-
-        internal CacheBuildResult Build(IReadOnlyList<TextureCacheEntry> entries)
-        {
-            return Publish(Prepare(entries, CancellationToken.None));
-        }
 
         internal CacheBuildPreparation Prepare(IReadOnlyList<TextureCacheEntry> entries)
         {

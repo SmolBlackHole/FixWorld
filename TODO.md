@@ -1,8 +1,8 @@
 # TODO
 
-Aktuell: **generische Cache Runtime auf dem gemeinsamen Scheduler aufbauen**
+Aktuell: **`LoadModXML()` als nächsten vollständig kontrollierten Loader-Slice vorbereiten**
 
-Planstatus: **Scheduler-Grundlage umgesetzt und getestet, Cache-Runtime als nächster freigegebener Slice**
+Planstatus: **Scheduler, Cache-Grundlage und DDS-Background-Pipeline umgesetzt; frühe RimWorld-Loading-Flächen auditiert**
 
 ## Erledigter Stand
 
@@ -47,11 +47,29 @@ Planstatus: **Scheduler-Grundlage umgesetzt und getestet, Cache-Runtime als näc
 - [x] Stage-, Work-Item-, Profiler- und Cache-Zustände über eine gemeinsame Mailbox an UI und Telemetrie verteilen
 - [x] häufige UI-Zwischenstände zusammenfassen und Start-/Abschluss-/Fehlerereignisse verlustfrei erhalten
 
-## Nächster Slice: erste Worker-Arbeit
+## Audit: offene Loading-Kontrolle
+
+- [x] Besitzgrenzen der aktuellen Pipeline gegen den dekompilierten RimWorld-Loader prüfen
+- [x] normalen FixWorld-Einstieg einordnen: erst während `CreateModClasses()`, nach Mod-Metadaten, `ModContentPack`-Erzeugung und Assembly-Loading
+- [x] aktuelle Kontrolle festhalten: Delayed Actions, kompatibles per-Mod-Content, Dateisuche, DDS und Teile der Finalisierung
+- [x] verzögerte Actions, unterstütztes per-Mod-Content, Dateisuche und Finalisierung mit kontrolliertem Original-Fallback übernehmen
+- [x] Loader-Abschluss erst nach erfolgreichem `uiRoot.Init()` und beendetem `InitializingInterface`-LongEvent melden
+- [ ] `LoadedModManager.LoadModXML()` ohne Doorstop als ersten vollständigen neuen FixWorld-Slice übernehmen: begrenzt parallel lesen und parsen, strikt geordnet committen
+- [ ] XML-Kombination, Patch-Operationen, Def-Erzeugung und Def-Auflösung zunächst getrennt messen
+- [ ] vorhandene RimWorld-Parallelisierung im Def-Aufbau erfassen, bevor FixWorld dort zusätzliche Worker einsetzt
+- [ ] private Queue-Felder, Closure-Namen, IL-Shape und Harmony-Verträge pro unterstützter RimWorld-Version prüfen und mit Original-Fallback absichern
+- [ ] frühen Doorstop-Einstieg für Mod-Metadaten, Assembly-Loading, Mod-Konstruktoren und Harmony-Zeiten instrumentieren
+- [ ] Ursache des mehrminütigen frühen `...`-Abschnitts erst mit dieser Telemetrie belegen
+- [ ] Assembly- und Harmony-Reihenfolge erst nach belastbaren Messungen übernehmen, bis dahin unverändert delegieren
+- [ ] `GetAllFilesForModPreserveOrder()` und Assembly-Discovery beobachten oder indexieren, noch nicht ersetzen
+- [ ] LongEvent-Thread, synchrone Events, Szenenwechsel und Exception-Lebenszyklus vor einer möglichen Übernahme als eigenen Vertrag erfassen
+- [ ] veraltete Module-Initializer-Aussage in `docs/windows-preloader.md` korrigieren
+
+## Worker-Arbeit
 
 - [x] Worker-Ausführung für `Parallel` und `ParallelThenCommit` im gemeinsamen Scheduler bereitstellen
 - [x] Harmony für den unterstützten Dateiladevertrag nur als Einstieg verwenden und Discovery, DDS-Validierung sowie Commit vollständig über FixWorld ausführen
-- [ ] bei fremden inkompatiblen Patches oder einem nicht unterstützten Vertrag kontrolliert RimWorlds Originalpfad verwenden
+- [x] bei fremden inkompatiblen Patches oder einem nicht unterstützten Vertrag kontrolliert RimWorlds Originalpfad verwenden
 - [x] DDS-Validierung pro Mod in unveränderliche Worker-Eingaben und geordnete Main-Thread-Commits teilen
 - [x] DDS-Validierung in Mod-Batches ausführen, nicht als Task pro Textur
 - [x] sequenziellen Fallback und expliziten A/B-Schalter für den DDS-Worker-Pfad bereitstellen
@@ -66,7 +84,7 @@ Planstatus: **Scheduler-Grundlage umgesetzt und getestet, Cache-Runtime als näc
 - [ ] Cache-Index früh auf einem Worker laden und vor der ersten DDS-Abfrage geordnet übernehmen
 - [ ] Texturvorbereitung von Unity-Erzeugung, `Apply`, Kompression und Upload trennen
 - [ ] Renderpausen und reine Wall-Time pro framefähiger Stage getrennt berichten
-- [ ] `ThingDef.PostLoad`, Sound-Auflösung und Atlas-Build getrennt messen
+- [x] `ThingDef.PostLoad`, Sound-Auflösung und Atlas-Build getrennt messen (Benchmark-Telemetrie)
 - [ ] XML-Patches, Def-Auflösung, Reflection und Harmony-Scanning einzeln bewerten
 - [ ] statische Konstruktoren weiterhin geordnet übernehmen und nur nach mod-spezifischem Nachweis optimieren
 - [ ] Discovery, Read-ahead, Cache-Validierung und reine Byte-Verarbeitung als erste Worker-Kandidaten messen
@@ -77,7 +95,7 @@ Planstatus: **Scheduler-Grundlage umgesetzt und getestet, Cache-Runtime als näc
 - [ ] Worker-Anzahl gegen CPU-Kerne, Speicherdruck sowie NVMe, SATA und HDD benchmarken
 - [ ] RAM-, VRAM-, Queue- und GC-Spitzen pro Stage erfassen
 
-## Nächster Slice: Orchestrator und Scheduler
+## Orchestrator und Scheduler
 
 Die Stage-Struktur bleibt für Reihenfolge und Barrieren zuständig. Der Scheduler entscheidet unabhängig davon, wann, wo und mit welchem Budget ein Job läuft.
 
@@ -92,7 +110,7 @@ Die Stage-Struktur bleibt für Reihenfolge und Barrieren zuständig. Der Schedul
 - [x] Jobs per stabilem Schlüssel deduplizieren und wiederholte RimWorld-/Harmony-Aufrufe idempotent behandeln
 - [x] Shutdown, Abbruch und unvollständige Jobs ohne beschädigte veröffentlichte Ergebnisse behandeln
 - [ ] RimWorld- und Harmony-Hooks auf dünne Übersetzer in FixWorld-Jobs reduzieren
-- [ ] unbekannte Verträge und inkompatible fremde Patches weiterhin kontrolliert an den Originalpfad zurückgeben
+- [x] unbekannte Verträge und inkompatible fremde Patches weiterhin kontrolliert an den Originalpfad zurückgeben
 - [x] Worker von Unity, Harmony, veränderlichen Verse-Daten und direkter UI-Nutzung fernhalten
 - [ ] deterministische Scheduler-Vertragstests für Dependencies, Priorität, Concurrency-Gruppen, Byte-Budget, Abbruch vor Start und Shutdown ergänzen
 - [ ] abgeschlossene deduplizierte Handles vor hochfrequenten Runtime-Jobs über eine begrenzte Retention-Policy freigeben
@@ -100,21 +118,21 @@ Die Stage-Struktur bleibt für Reihenfolge und Barrieren zuständig. Der Schedul
 
 Akzeptanz: Die vollständige 88-Mod-Liste und Quarry laden unverändert, kritische Jobs blockieren korrekt, Background-Jobs verzögern das Hauptmenü nicht und ein Abbruch hinterlässt nur entfernbare Staging-Daten.
 
-## Nächster Slice: generische Cache Runtime
+## Generische Cache Runtime
 
 Die Cache Runtime besitzt Lookup-, Snapshot-, Invalidierungs- und Veröffentlichungssemantik. Backends besitzen nur die Speicherung. Feature-Adapter erzeugen Werte und definieren fachliche Schlüssel sowie Gültigkeit. Der Scheduler führt Cache-Jobs aus.
 
-- [ ] Cache Core ohne Abhängigkeit auf RimWorld, Unity, DDS, `FileInfo` oder ein bestimmtes Backend bauen
-- [ ] Schlüssel, Wert und Versions-/Gültigkeitsstempel als getrennte generische Typen modellieren
-- [ ] Lookup-Ergebnisse explizit als `Hit`, `Miss`, `Stale` oder `Failed` zurückgeben
-- [ ] unveränderliche Cache-Snapshots für parallele Reader bereitstellen
-- [ ] Änderungen als typisierte Deltas sammeln und ausschließlich über einen einzelnen Writer veröffentlichen
-- [ ] bestehende Snapshots während eines Commits unverändert lassen und danach eine neue Generation veröffentlichen
+- [x] Cache Core ohne Abhängigkeit auf RimWorld, Unity, DDS, `FileInfo` oder ein bestimmtes Backend bauen
+- [x] Schlüssel, Wert und Versions-/Gültigkeitsstempel als getrennte generische Typen modellieren
+- [x] Lookup-Ergebnisse explizit als `Hit`, `Miss`, `Stale` oder `Failed` zurückgeben
+- [x] unveränderliche Cache-Snapshots für parallele Reader bereitstellen
+- [x] Änderungen als typisierte Deltas sammeln und ausschließlich über einen einzelnen Writer veröffentlichen
+- [x] bestehende Snapshots während eines Commits unverändert lassen und danach eine neue Generation veröffentlichen
 - [ ] ein In-Memory-Backend und ein persistentes Disk-Backend gegen denselben Core-Vertrag bauen
 - [ ] Serialisierung, Dateiartefakte und atomisches Umbenennen als optionale Backend-/Codec-Fähigkeiten behandeln
 - [ ] Invalidierung, Größenlimit, Ablaufzeit und Verdrängung als austauschbare Policies modellieren
 - [ ] Cache-Misses als deduplizierbare Producer-Jobs an den gemeinsamen Scheduler übergeben
-- [ ] Cache Core frei von eigener `Task.Run`-, Thread- und UI-Logik halten
+- [x] Cache Core frei von eigener `Task.Run`-, Thread- und UI-Logik halten
 - [ ] Treffer, Misses, Stales, Builds, Fehler, Bytes, Evictions und Buildzeit einheitlich berichten
 - [ ] Speicher- und Disk-Backend mit denselben Vertrags-, Parallelitäts- und Abbruchtests prüfen
 
@@ -124,21 +142,21 @@ Akzeptanz: Derselbe fachliche Cache kann ohne geänderte Aufrufer im Speicher od
 
 Der parallele, aber blockierende kalte Build brauchte mit 8 Workern 80,3 Sekunden statt 124,5 Sekunden seriell. Er bleibt trotzdem schlechter als der 47,2-Sekunden-Start ohne DDS und ist deshalb nicht der Standardpfad.
 
-- [ ] aktive Mod-Assets beim Startup einmal entdecken und als unveränderlichen Snapshot veröffentlichen
-- [ ] DDS als Adapter auf die generische Cache Runtime statt als eigener Cache-Sonderfall bauen
-- [ ] `TextureSourceKey`, `TextureFingerprint` und `TextureArtifact` als DDS-Domänentypen definieren
-- [ ] persistenten Disk-Cache einmal laden und für den Startup-Plan nur lesend verwenden
+- [x] aktive Mod-Assets beim Startup einmal entdecken und als vorbereiteten Load-Plan ohne zweite Discovery übernehmen
+- [x] DDS-Lookups und Änderungen auf die generische Cache Runtime umstellen
+- [x] Fingerprint und Artefakt als getrennte DDS-Domänentypen modellieren und den Source-Key zentral im Store bilden
+- [x] persistenten Disk-Cache einmal laden und für den Startup-Plan über einen stabilen Snapshot lesen
 - [ ] Dimensionen, Hashes und vorbereitete Pläne bei Bedarf über dasselbe System im Speicher cachen
-- [ ] Größe und Änderungszeit zuerst prüfen und nur neue oder geänderte Quellen hashen
+- [x] Größe und Änderungszeit zuerst prüfen und nur neue oder geänderte Quellen hashen
 - [x] vorhandene DDS sofort verwenden, bei Misses normale Assets laden und einen deduplizierten Background-Job anlegen
 - [x] fehlende DDS nach dem kritischen Loaderpfad mit niedriger Priorität erzeugen
 - [ ] Background-Arbeit im Hauptmenü und Spiel anhand von CPU-, I/O- und TPS-Budget drosseln oder pausieren
 - [x] fertige DDS atomar veröffentlichen und über einen einzelnen Index-Writer übernehmen
-- [ ] Index regelmäßig atomar checkpointen, ohne den unveränderlichen Startup-Snapshot zu verändern
-- [ ] nach Abbruch vorhandene fertige Artefakte beim nächsten Start wiedererkennen
+- [x] Index im Background-Writer regelmäßig atomar checkpointen, ohne den Startup-Snapshot zu verändern
+- [x] nach Abbruch vorhandene fertige Artefakte beim nächsten Start wiedererkennen
 - [ ] Background-Fortschritt und verbleibende Assets für UI, Logs und Benchmarks bereitstellen
 - [x] leeren Erststart, abgeschlossenen Background-Build und folgenden Warmstart getrennt messen
-- [ ] verwaiste `.staging-*`-Verzeichnisse eines abgebrochenen Prozesses beim nächsten Start kontrolliert bereinigen
+- [x] verwaiste Artefakte und `.staging-*`-Verzeichnisse nach dem kritischen Loaderpfad im Background-Writer bereinigen
 
 ## Benchmark
 
@@ -162,7 +180,7 @@ Der parallele, aber blockierende kalte Build brauchte mit 8 Workern 80,3 Sekunde
 - [x] entfernte Quellen, deaktivierte Mods und die am längsten ungenutzten Einträge bereinigen
 - [x] Cache-Schlüssel um Quellinhalt, Cacheformat, Zielformat und Konverter-Identität erweitern
 - [ ] Plattform-Backend in die Identität aufnehmen, sobald neben Windows ein zweites Backend existiert
-- [ ] erstmaligen DDS-Build beschleunigen, ohne den normalen Start zu blockieren
+- [x] erstmaligen DDS-Build aus dem normalen Start entfernen und nach dem Hauptmenü als Background-Job ausführen
 - [ ] BC3-DDS gegen unkomprimierte DDS vergleichen
 - [ ] PNG/JPG begrenzt parallel dekodieren und nur fertige Daten geordnet übernehmen
 
@@ -172,8 +190,9 @@ Der parallele, aber blockierende kalte Build brauchte mit 8 Workern 80,3 Sekunde
 - [x] fremde Proxy-DLLs und Konfigurationen niemals überschreiben
 - [x] Installation, Deaktivierung und Entfernung über das mitgelieferte Tool unterstützen
 - [x] Preloader und normalen FixWorld-Mod voneinander entkoppeln
-- [ ] frühen Hookpunkt belegen, bevor dort RimWorld- oder Harmony-Arbeit übernommen wird
-- [ ] vollständiges Assembly-Laden erst danach messen
+- [x] aktuellen frühen Hookpunkt belegen: Der Preloader setzt bislang nur den Aktivstatus und greift nicht in RimWorld ein
+- [ ] dort zunächst nur Version, Verträge, immutable Indizes und Telemetrie bereitstellen
+- [ ] vollständiges Assembly- und Harmony-Laden erst danach messen
 
 Der Preloader ist für den aktuellen Staged Loader nicht erforderlich und bleibt vorerst optional.
 

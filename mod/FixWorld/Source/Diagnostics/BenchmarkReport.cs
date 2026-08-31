@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
-using FixWorld.Caching;
+using FixWorld.Textures;
 using FixWorld.Loading;
 
 namespace FixWorld.Diagnostics

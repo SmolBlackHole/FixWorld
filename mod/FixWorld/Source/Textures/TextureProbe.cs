@@ -1,11 +1,12 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
+using FixWorld.Diagnostics;
 using RimWorld.IO;
 using UnityEngine;
 using Verse;
 
-namespace FixWorld.Diagnostics
+namespace FixWorld.Textures
 {
     internal static class TextureProbe
     {

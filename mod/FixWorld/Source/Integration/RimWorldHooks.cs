@@ -5,12 +5,13 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
-using FixWorld.Caching;
 using FixWorld.Diagnostics;
 using FixWorld.Loading;
 using FixWorld.Scheduling;
+using FixWorld.Textures;
 using FixWorld.UI;
 using HarmonyLib;
+using RimWorld;
 using RimWorld.IO;
 using UnityEngine;
 using Verse;
@@ -31,7 +32,8 @@ namespace FixWorld.Integration
             typeof(EnumeratorFrameBoundaryPatch),
             typeof(SchedulerPumpPatch),
             typeof(SchedulerShutdownPatch),
-            typeof(LoaderCompletionPatch),
+            typeof(PlayDataReadyPatch),
+            typeof(InterfaceInitializedPatch),
             typeof(LoadingOverlayPatch)
         };
         private static readonly Type[] DiagnosticPatchTypes =
@@ -319,7 +321,7 @@ namespace FixWorld.Integration
             {
                 FixWorldScheduler.BindMainThread();
                 FixWorldScheduler.PumpMainThread();
-                LoadingStageMailbox.Drain();
+                LoaderCompletion.TryCompleteInterface();
             }
         }
 
@@ -334,7 +336,7 @@ namespace FixWorld.Integration
         }
 
         [HarmonyPatch(typeof(AbstractFilesystem), nameof(AbstractFilesystem.ClearAllCache))]
-        private static class LoaderCompletionPatch
+        private static class PlayDataReadyPatch
         {
             [HarmonyPostfix]
             private static void Postfix()
@@ -344,7 +346,34 @@ namespace FixWorld.Integration
                     return;
                 }
 
-                LoaderCompletion.Complete("play-data-clear-cache");
+                LoaderCompletion.NotifyPlayDataReady("play-data-clear-cache");
+            }
+        }
+
+        [HarmonyPatch]
+        private static class InterfaceInitializedPatch
+        {
+            private static IEnumerable<MethodBase> TargetMethods()
+            {
+                yield return RequireDeclaredMethod(
+                    typeof(UIRoot_Entry),
+                    nameof(UIRoot.Init));
+                yield return RequireDeclaredMethod(
+                    typeof(UIRoot_Play),
+                    nameof(UIRoot.Init));
+            }
+
+            [HarmonyPostfix]
+            private static void Postfix(UIRoot __instance)
+            {
+                LoaderCompletion.NotifyInterfaceInitialized(
+                    __instance.GetType().Name.ToLowerInvariant());
+            }
+
+            private static MethodBase RequireDeclaredMethod(Type type, string name)
+            {
+                return AccessTools.DeclaredMethod(type, name) ??
+                       throw new MissingMethodException(type.FullName, name);
             }
         }
 

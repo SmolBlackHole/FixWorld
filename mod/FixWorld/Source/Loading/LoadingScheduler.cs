@@ -27,7 +27,6 @@ namespace FixWorld.Loading
         {
             FixWorldScheduler.BindMainThread();
             FixWorldScheduler.PumpMainThread();
-            LoadingStageMailbox.Drain();
             if (!running)
             {
                 frameBoundaryRequested = false;
@@ -129,11 +128,11 @@ namespace FixWorld.Loading
             int currentAction,
             int totalActions)
         {
-            LoadingStageMailbox.ReportStage(stage, 0, stage.TaskCount);
+            LoadingEvents.ReportStage(stage, 0, stage.TaskCount);
             for (int taskIndex = 0; taskIndex < stage.TaskCount; taskIndex++)
             {
                 LoadingWorkItem item = stage.GetTask(taskIndex);
-                LoadingStageMailbox.ReportWork(item, currentAction, totalActions);
+                LoadingEvents.ReportWork(item, currentAction, totalActions);
                 if (RequestFrameIfDue())
                 {
                     yield return null;
@@ -148,7 +147,7 @@ namespace FixWorld.Loading
                     0L,
                     result.ExecutionTicks,
                     result.Succeeded);
-                LoadingStageMailbox.ReportStage(stage, taskIndex + 1, stage.TaskCount);
+                LoadingEvents.ReportStage(stage, taskIndex + 1, stage.TaskCount);
 
                 if (!result.Succeeded && !item.ContinueOnFailure)
                 {
@@ -165,7 +164,7 @@ namespace FixWorld.Loading
             int currentAction,
             int totalActions)
         {
-            LoadingStageMailbox.ReportStage(stage, 0, stage.TaskCount);
+            LoadingEvents.ReportStage(stage, 0, stage.TaskCount);
             long queuedAt = Stopwatch.GetTimestamp();
             int workerLimit = stage.MaxParallelism > 0
                 ? stage.MaxParallelism
@@ -216,7 +215,7 @@ namespace FixWorld.Loading
                     }
                 }
 
-                LoadingStageMailbox.ReportStage(
+                LoadingEvents.ReportStage(
                     stage,
                     completedTasks,
                     stage.TaskCount);
@@ -245,7 +244,7 @@ namespace FixWorld.Loading
                     WaitTicks = handle.WaitTicks,
                     WallTicks = handle.WallTicks
                 };
-                LoadingStageMailbox.ReportWork(item, currentAction, totalActions);
+                LoadingEvents.ReportWork(item, currentAction, totalActions);
 
                 if (result.Exception != null)
                 {
@@ -288,7 +287,7 @@ namespace FixWorld.Loading
                     result.WaitTicks,
                     result.WallTicks,
                     result.Succeeded);
-                LoadingStageMailbox.ReportStage(stage, taskIndex + 1, stage.TaskCount);
+                LoadingEvents.ReportStage(stage, taskIndex + 1, stage.TaskCount);
 
                 if (!result.Succeeded && !item.ContinueOnFailure)
                 {

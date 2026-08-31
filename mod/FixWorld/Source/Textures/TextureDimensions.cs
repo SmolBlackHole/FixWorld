@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace FixWorld.Caching
+namespace FixWorld.Textures
 {
     internal readonly struct TextureDimensions
     {

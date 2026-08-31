@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using FixWorld.Caching;
+using FixWorld.Textures;
 using Verse;
 
 namespace FixWorld.Loading

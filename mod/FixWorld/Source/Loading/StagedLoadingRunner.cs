@@ -84,7 +84,7 @@ namespace FixWorld.Loading
                 scheduled = false;
             }
 
-            LoaderCompletion.Complete("staged-runner");
+            LoaderCompletion.NotifyPlayDataReady("staged-runner");
         }
 
         private static void PrependLongEvent(IEnumerable action)

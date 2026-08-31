@@ -1,8 +1,7 @@
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using FixWorld.Scheduling;
 using Verse;
 
 namespace FixWorld.Loading
@@ -98,28 +97,23 @@ namespace FixWorld.Loading
         }
     }
 
-    internal static class LoadingStageMailbox
+    internal static class LoadingEvents
     {
         private const int MaximumEventsPerDrain = 1024;
-        private static readonly ConcurrentQueue<LoadingStageEvent> Events =
-            new ConcurrentQueue<LoadingStageEvent>();
-        private static readonly object SubscriberSync = new object();
-        private static readonly object LatestSync = new object();
-        private static readonly List<Action<LoadingStageEvent>> Subscribers =
-            new List<Action<LoadingStageEvent>>();
+        private const string ProgressEventKey = "loading/progress";
+        private const string DetailEventKey = "loading/detail";
+        private static readonly EventMailbox<LoadingStageEvent> Events =
+            new EventMailbox<LoadingStageEvent>(
+                MaximumEventsPerDrain,
+                exception => Log.Error(
+                    "[FixWorld] Loading event hook failed: " + exception));
 
         private static long nextOperationId;
-        private static Action<LoadingStageEvent>[] subscriberSnapshot =
-            Array.Empty<Action<LoadingStageEvent>>();
-        private static bool hasLatest;
-        private static LoadingStageEvent latest;
-        private static bool hasLatestDetail;
-        private static LoadingStageEvent latestDetail;
 
-        internal static LoadingStageOperation Begin(LoadingStageEventDescriptor descriptor)
+        internal static LoadingOperation Begin(LoadingStageEventDescriptor descriptor)
         {
             long operationId = Interlocked.Increment(ref nextOperationId);
-            LoadingStageOperation operation = new LoadingStageOperation(
+            LoadingOperation operation = new LoadingOperation(
                 operationId,
                 descriptor,
                 Stopwatch.GetTimestamp(),
@@ -130,32 +124,17 @@ namespace FixWorld.Loading
 
         internal static IDisposable Subscribe(Action<LoadingStageEvent> subscriber)
         {
-            if (subscriber == null)
-            {
-                throw new ArgumentNullException(nameof(subscriber));
-            }
-
-            lock (SubscriberSync)
-            {
-                Subscribers.Add(subscriber);
-                subscriberSnapshot = Subscribers.ToArray();
-            }
-
-            return new Subscription(subscriber);
+            return Events.Subscribe(subscriber);
         }
 
         internal static void Publish(LoadingStageEvent stageEvent)
         {
-            Events.Enqueue(stageEvent);
+            Events.Publish(stageEvent);
         }
 
         internal static void PublishLatest(LoadingStageEvent stageEvent)
         {
-            lock (LatestSync)
-            {
-                latest = stageEvent;
-                hasLatest = true;
-            }
+            Events.PublishLatest(ProgressEventKey, stageEvent);
         }
 
         internal static void ReportStage(
@@ -247,9 +226,9 @@ namespace FixWorld.Loading
 
         internal static void ReportProfilerDetail(string label)
         {
-            lock (LatestSync)
-            {
-                latestDetail = new LoadingStageEvent(
+            Events.PublishLatest(
+                DetailEventKey,
+                new LoadingStageEvent(
                     0L,
                     LoadingStageEventKind.Detail,
                     LoadingStageEventSource.RimWorld,
@@ -263,115 +242,12 @@ namespace FixWorld.Loading
                     true,
                     0,
                     0,
-                    0L);
-                hasLatestDetail = true;
-            }
+                    0L));
         }
 
-        internal static int Drain()
-        {
-            if (!UnityData.IsInMainThread)
-            {
-                return 0;
-            }
-
-            Action<LoadingStageEvent>[] subscribers =
-                Volatile.Read(ref subscriberSnapshot);
-
-            int drained = 0;
-            while (drained < MaximumEventsPerDrain && Events.TryDequeue(out LoadingStageEvent item))
-            {
-                Notify(subscribers, item);
-                drained++;
-            }
-
-            LoadingStageEvent latestItem = default;
-            bool deliverLatest;
-            lock (LatestSync)
-            {
-                deliverLatest = hasLatest;
-                if (deliverLatest)
-                {
-                    latestItem = latest;
-                    hasLatest = false;
-                }
-            }
-
-            if (deliverLatest)
-            {
-                Notify(subscribers, latestItem);
-                drained++;
-            }
-
-            LoadingStageEvent detailItem = default;
-            bool deliverDetail;
-            lock (LatestSync)
-            {
-                deliverDetail = hasLatestDetail;
-                if (deliverDetail)
-                {
-                    detailItem = latestDetail;
-                    hasLatestDetail = false;
-                }
-            }
-
-            if (deliverDetail)
-            {
-                Notify(subscribers, detailItem);
-                drained++;
-            }
-
-            return drained;
-        }
-
-        private static void Notify(
-            Action<LoadingStageEvent>[] subscribers,
-            LoadingStageEvent item)
-        {
-            foreach (Action<LoadingStageEvent> subscriber in subscribers)
-            {
-                try
-                {
-                    subscriber(item);
-                }
-                catch (Exception exception)
-                {
-                    Log.Error("[FixWorld] Loading stage event hook failed: " + exception);
-                }
-            }
-        }
-
-        private static void Unsubscribe(Action<LoadingStageEvent> subscriber)
-        {
-            lock (SubscriberSync)
-            {
-                Subscribers.Remove(subscriber);
-                subscriberSnapshot = Subscribers.ToArray();
-            }
-        }
-
-        private sealed class Subscription : IDisposable
-        {
-            private Action<LoadingStageEvent> subscriber;
-
-            internal Subscription(Action<LoadingStageEvent> subscriber)
-            {
-                this.subscriber = subscriber;
-            }
-
-            public void Dispose()
-            {
-                Action<LoadingStageEvent> current =
-                    Interlocked.Exchange(ref subscriber, null);
-                if (current != null)
-                {
-                    Unsubscribe(current);
-                }
-            }
-        }
     }
 
-    internal sealed class LoadingStageOperation : IDisposable
+    internal sealed class LoadingOperation : IDisposable
     {
         private static readonly long ProgressIntervalTicks =
             Math.Max(1L, Stopwatch.Frequency * 150L / 1000L);
@@ -382,7 +258,7 @@ namespace FixWorld.Loading
         private int completed;
         private long nextProgressAt;
 
-        internal LoadingStageOperation(
+        internal LoadingOperation(
             long operationId,
             LoadingStageEventDescriptor descriptor,
             long startedAt,
@@ -410,7 +286,7 @@ namespace FixWorld.Loading
 
             Interlocked.Exchange(ref nextProgressAt, now + ProgressIntervalTicks);
 
-            LoadingStageMailbox.PublishLatest(new LoadingStageEvent(
+            LoadingEvents.PublishLatest(new LoadingStageEvent(
                 operationId,
                 LoadingStageEventKind.Progress,
                 descriptor.Source,
@@ -467,7 +343,7 @@ namespace FixWorld.Loading
                 return;
             }
 
-            LoadingStageMailbox.Publish(CreateEvent(
+            LoadingEvents.Publish(CreateEvent(
                 kind,
                 1,
                 1,

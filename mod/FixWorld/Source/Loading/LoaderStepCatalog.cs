@@ -133,6 +133,12 @@ namespace FixWorld.Loading
                 case "Garbage Collection":
                     descriptor = Step(LoadingStep.GarbageCollection, LoadingStage.Finalize, "Clean up");
                     return true;
+                case "Misc Init (InitializingInterface)":
+                    descriptor = Step(
+                        LoadingStep.InitializeInterface,
+                        LoadingStage.Finalize,
+                        "Initialize interface");
+                    return true;
             }
 
             if (StartsWith(label, "Resolve cross-references"))

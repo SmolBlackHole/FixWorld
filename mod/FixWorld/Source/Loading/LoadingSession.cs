@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
+using FixWorld.Scheduling;
 
 namespace FixWorld.Loading
 {
@@ -45,14 +46,14 @@ namespace FixWorld.Loading
                 estimatedDurationMilliseconds = previousDuration;
                 currentActivity = null;
                 currentSource = LoadingStageEventSource.FixWorld;
-                stageSubscription = LoadingStageMailbox.Subscribe(ConsumeStageEvent);
+                stageSubscription = LoadingEvents.Subscribe(ConsumeStageEvent);
                 active = true;
             }
         }
 
         internal static bool TryComplete()
         {
-            LoadingStageMailbox.Drain();
+            FixWorldScheduler.DrainEvents();
             double observedMilliseconds;
             IDisposable subscription;
             lock (Sync)
@@ -81,7 +82,7 @@ namespace FixWorld.Loading
 
         internal static bool TryGetSnapshot(out LoadingSnapshot snapshot)
         {
-            LoadingStageMailbox.Drain();
+            FixWorldScheduler.DrainEvents();
             lock (Sync)
             {
                 if (!active)

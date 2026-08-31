@@ -1,10 +1,10 @@
 using System;
-using FixWorld.Caching;
 using FixWorld.Diagnostics;
 using FixWorld.Integration;
 using FixWorld.Loading;
 using FixWorld.Preloader;
 using FixWorld.Scheduling;
+using FixWorld.Textures;
 using Verse;
 
 namespace FixWorld

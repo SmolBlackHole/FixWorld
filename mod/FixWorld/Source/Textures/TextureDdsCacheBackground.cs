@@ -12,7 +12,7 @@ using System.Threading;
 using FixWorld.Scheduling;
 using Verse;
 
-namespace FixWorld.Caching
+namespace FixWorld.Textures
 {
     internal static partial class TextureDdsCache
     {
@@ -48,32 +48,34 @@ namespace FixWorld.Caching
                 pendingDeferredBuild = Array.Empty<TextureCacheEntry>();
             }
 
-            if (entries.Count == 0)
-            {
-                string reportError = WriteDeferredReport(
-                    new DeferredTextureCacheReport(
-                        0,
-                        0,
-                        0,
-                        0.0,
-                        FixWorldScheduler.WorkerCount));
-                if (reportError != null)
-                {
-                    Log.Warning(reportError);
-                }
-
-                return;
-            }
-
+            long backgroundStartedAt = Stopwatch.GetTimestamp();
             TextureCacheEntry[][] batches = entries
                 .GroupBy(entry => entry.PackageId, StringComparer.Ordinal)
                 .Select(group => group.ToArray())
                 .ToArray();
-            long backgroundStartedAt = Stopwatch.GetTimestamp();
             string buildIdentity = GetDeferredBuildIdentity(entries);
             int parallelism = Math.Max(
                 1,
                 Math.Min(workerCount, FixWorldScheduler.WorkerCount));
+
+            if (entries.Count == 0)
+            {
+                FixWorldScheduler.Schedule(
+                    new SchedulerJob<DeferredTextureCacheReport>(
+                        "dds/maintenance/" + buildIdentity,
+                        "Clean deferred DDS cache",
+                        SchedulerJobLifetime.Background,
+                        SchedulerJobPriority.Low,
+                        SchedulerResourceClass.Io,
+                        cancellationToken => RunDeferredMaintenance(
+                            buildIdentity,
+                            backgroundStartedAt,
+                            cancellationToken),
+                        concurrencyKey: "dds-cache-writer",
+                        maxConcurrency: 1));
+                return;
+            }
+
             ScheduledJobHandle<CacheBuildPreparation>[] preparations =
                 new ScheduledJobHandle<CacheBuildPreparation>[batches.Length];
             for (int batchIndex = 0; batchIndex < batches.Length; batchIndex++)
@@ -110,8 +112,57 @@ namespace FixWorld.Caching
                         backgroundStartedAt,
                         cancellationToken),
                     dependencies: preparations,
-                    concurrencyKey: "dds-index-writer",
+                    concurrencyKey: "dds-cache-writer",
                     maxConcurrency: 1));
+        }
+
+        private static DeferredTextureCacheReport RunDeferredMaintenance(
+            string buildIdentity,
+            long backgroundStartedAt,
+            CancellationToken cancellationToken)
+        {
+            int removedOrphans = 0;
+            Exception terminalError = null;
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                removedOrphans = cacheStore.SweepOrphans();
+                cacheStore.Save();
+                Interlocked.Add(ref invalidatedCount, removedOrphans);
+                Interlocked.Exchange(ref currentCacheBytes, cacheStore.CurrentBytes);
+            }
+            catch (Exception exception)
+            {
+                terminalError = exception;
+            }
+            finally
+            {
+                DeferredTextureCacheReport report = CreateDeferredReport(
+                    0,
+                    0,
+                    terminalError == null ? 0 : 1,
+                    removedOrphans,
+                    backgroundStartedAt);
+                string reportError = WriteDeferredReport(report);
+                QueueDeferredCompletionLog(
+                    buildIdentity,
+                    report,
+                    Array.Empty<string>(),
+                    terminalError,
+                    reportError);
+            }
+
+            if (terminalError != null)
+            {
+                throw terminalError;
+            }
+
+            return CreateDeferredReport(
+                0,
+                0,
+                0,
+                removedOrphans,
+                backgroundStartedAt);
         }
 
         private static DeferredTextureCacheReport RunDeferredBuild(
@@ -124,53 +175,51 @@ namespace FixWorld.Caching
         {
             int created = 0;
             int failed = 0;
+            int removedOrphans = 0;
             Exception terminalError = null;
             List<string> warnings = new List<string>();
             try
             {
-                using (TextureCacheIndex backgroundIndex =
-                       TextureCacheIndex.Open(cacheRoot, CacheIdentityVersion))
+                for (int batchIndex = 0; batchIndex < batches.Count; batchIndex++)
                 {
-                    for (int batchIndex = 0; batchIndex < batches.Count; batchIndex++)
+                    cancellationToken.ThrowIfCancellationRequested();
+                    TextureCacheEntry[] batch = batches[batchIndex];
+                    CacheBuildResult result = builder.Publish(
+                        preparations[batchIndex].Result);
+                    created += result.Created;
+                    failed += result.Failed;
+                    if (result.Error != null)
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        TextureCacheEntry[] batch = batches[batchIndex];
-                        CacheBuildResult result = builder.Publish(
-                            preparations[batchIndex].Result);
-                        created += result.Created;
-                        failed += result.Failed;
-                        if (result.Error != null)
-                        {
-                            warnings.Add(
-                                batch[0].PackageId + ": " + result.Error);
-                        }
-
-                        foreach (TextureCacheEntry entry in batch)
-                        {
-                            if (!File.Exists(entry.FinalPath))
-                            {
-                                continue;
-                            }
-
-                            backgroundIndex.RegisterExisting(
-                                entry.PackageId,
-                                entry.SourcePath,
-                                entry.Source,
-                                entry.SourceHash,
-                                entry.ConverterIdentity,
-                                entry.FinalPath,
-                                createdAfterOpen: true);
-                        }
-
-                        if ((batchIndex + 1) % 8 == 0)
-                        {
-                            backgroundIndex.Save();
-                        }
+                        warnings.Add(batch[0].PackageId + ": " + result.Error);
                     }
 
-                    backgroundIndex.Save();
-                    Interlocked.Exchange(ref currentCacheBytes, backgroundIndex.CurrentBytes);
+                    foreach (TextureCacheEntry entry in batch)
+                    {
+                        if (!File.Exists(entry.FinalPath))
+                        {
+                            continue;
+                        }
+
+                        cacheStore.RegisterExisting(
+                            entry.PackageId,
+                            entry.SourcePath,
+                            entry.Source,
+                            entry.SourceHash,
+                            entry.ConverterIdentity,
+                            entry.FinalPath,
+                            createdAfterOpen: true);
+                    }
+
+                    if ((batchIndex + 1) % 8 == 0)
+                    {
+                        cacheStore.Save();
+                    }
                 }
+
+                removedOrphans = cacheStore.SweepOrphans();
+                cacheStore.Save();
+                Interlocked.Add(ref invalidatedCount, removedOrphans);
+                Interlocked.Exchange(ref currentCacheBytes, cacheStore.CurrentBytes);
             }
             catch (Exception exception)
             {
@@ -179,9 +228,8 @@ namespace FixWorld.Caching
             }
             finally
             {
-                double backgroundMilliseconds =
-                    (Stopwatch.GetTimestamp() - backgroundStartedAt) *
-                    1000.0 / Stopwatch.Frequency;
+                double backgroundMilliseconds = GetElapsedMilliseconds(
+                    backgroundStartedAt);
                 Interlocked.Add(ref createdCount, created);
                 Interlocked.Add(ref failedCount, failed);
                 Interlocked.Add(
@@ -193,9 +241,10 @@ namespace FixWorld.Caching
                         created,
                         failed,
                         backgroundMilliseconds,
-                        Math.Max(
-                            1,
-                            Math.Min(workerCount, FixWorldScheduler.WorkerCount)));
+                        Math.Max(1, Math.Min(
+                            workerCount,
+                            FixWorldScheduler.WorkerCount)),
+                        removedOrphans);
                 string reportError = WriteDeferredReport(report);
                 QueueDeferredCompletionLog(
                     buildIdentity,
@@ -210,13 +259,36 @@ namespace FixWorld.Caching
                 throw terminalError;
             }
 
-            return new DeferredTextureCacheReport(
+            return CreateDeferredReport(
                 entries.Count,
                 created,
                 failed,
-                (Stopwatch.GetTimestamp() - backgroundStartedAt) *
-                1000.0 / Stopwatch.Frequency,
-                Math.Max(1, Math.Min(workerCount, FixWorldScheduler.WorkerCount)));
+                removedOrphans,
+                backgroundStartedAt);
+        }
+
+        private static DeferredTextureCacheReport CreateDeferredReport(
+            int entries,
+            int created,
+            int failed,
+            int removedOrphans,
+            long backgroundStartedAt)
+        {
+            return new DeferredTextureCacheReport(
+                entries,
+                created,
+                failed,
+                GetElapsedMilliseconds(backgroundStartedAt),
+                Math.Max(1, Math.Min(
+                    workerCount,
+                    FixWorldScheduler.WorkerCount)),
+                removedOrphans);
+        }
+
+        private static double GetElapsedMilliseconds(long startedAt)
+        {
+            return (Stopwatch.GetTimestamp() - startedAt) *
+                   1000.0 / Stopwatch.Frequency;
         }
 
         private static string WriteDeferredReport(DeferredTextureCacheReport report)
@@ -314,7 +386,10 @@ namespace FixWorld.Caching
                             (report.Milliseconds / 1000.0).ToString(
                                 "F1",
                                 CultureInfo.InvariantCulture) +
-                            " s.");
+                            " s, " +
+                            report.RemovedOrphans.ToString(
+                                CultureInfo.InvariantCulture) +
+                            " orphan files removed.");
                     });
             }
             catch (ObjectDisposedException)
@@ -364,18 +439,23 @@ namespace FixWorld.Caching
         [DataMember(Name = "workers", Order = 5)]
         public int Workers { get; private set; }
 
+        [DataMember(Name = "removedOrphans", Order = 6)]
+        public int RemovedOrphans { get; private set; }
+
         internal DeferredTextureCacheReport(
             int entries,
             int created,
             int failed,
             double milliseconds,
-            int workers)
+            int workers,
+            int removedOrphans)
         {
             Entries = entries;
             Created = created;
             Failed = failed;
             Milliseconds = milliseconds;
             Workers = workers;
+            RemovedOrphans = removedOrphans;
         }
     }
 }

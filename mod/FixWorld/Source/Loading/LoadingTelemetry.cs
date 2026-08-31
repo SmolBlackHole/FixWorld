@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using FixWorld.Scheduling;
 using Verse;
 
 namespace FixWorld.Loading
@@ -60,14 +61,14 @@ namespace FixWorld.Loading
                 startedAt = Stopwatch.GetTimestamp();
                 completedAt = 0L;
                 staticConstructorTailTicks = 0L;
-                stageEventSubscription = LoadingStageMailbox.Subscribe(ConsumeStageEvent);
+                stageEventSubscription = LoadingEvents.Subscribe(ConsumeStageEvent);
                 active = true;
             }
         }
 
         internal static void Complete()
         {
-            LoadingStageMailbox.Drain();
+            FixWorldScheduler.DrainEvents();
             IDisposable subscription;
             lock (Sync)
             {
@@ -117,11 +118,11 @@ namespace FixWorld.Loading
 
                 if (recognized)
                 {
-                    LoadingStageMailbox.ReportProfilerStep(descriptor);
+                    LoadingEvents.ReportProfilerStep(descriptor);
                 }
                 else
                 {
-                    LoadingStageMailbox.ReportProfilerDetail(label);
+                    LoadingEvents.ReportProfilerDetail(label);
                 }
             }
             finally
@@ -192,11 +193,11 @@ namespace FixWorld.Loading
                 bool hasParent = TryFindParentDescriptor(out StepDescriptor parentDescriptor);
                 if (hasParent)
                 {
-                    LoadingStageMailbox.ReportProfilerStep(parentDescriptor);
+                    LoadingEvents.ReportProfilerStep(parentDescriptor);
                 }
                 else
                 {
-                    LoadingStageMailbox.ReportStageFallback(scope.Descriptor.Stage);
+                    LoadingEvents.ReportStageFallback(scope.Descriptor.Stage);
                 }
             }
             finally

@@ -254,27 +254,27 @@ def validate_report(raw: object) -> BenchmarkReport:
         )
     completion = _string_dict(report.get("completion"), "completion")
     loader = _string_dict(report.get("loader"), "loader")
-    if completion.get("source") != "staged-runner":
+    if completion.get("source") != "staged-runner+uiroot_entry":
         raise RuntimeError(f"Unexpected completion data: {completion!r}")
-    stages = loader.get("stages")
-    steps = loader.get("steps")
-    delayed_actions = loader.get("delayedActions")
-    static_constructors = loader.get("staticConstructors")
+    stages = _object_list(loader.get("stages"))
+    steps = _object_list(loader.get("steps"))
+    delayed_actions = _object_list(loader.get("delayedActions"))
+    static_constructors = _object_list(loader.get("staticConstructors"))
     static_constructor_tail = loader.get("staticConstructorTailMs")
-    mods = loader.get("mods")
-    overhead = loader.get("overhead")
+    mods = _object_list(loader.get("mods"))
+    overhead = _object_list(loader.get("overhead"))
     if (
-        not isinstance(stages, list)
+        stages is None
         or len(stages) != 5
-        or not isinstance(steps, list)
+        or steps is None
         or not steps
-        or not isinstance(delayed_actions, list)
+        or delayed_actions is None
         or not delayed_actions
-        or not isinstance(static_constructors, list)
+        or static_constructors is None
         or not static_constructors
         or not isinstance(static_constructor_tail, (int, float))
-        or not isinstance(mods, list)
-        or not isinstance(overhead, list)
+        or mods is None
+        or overhead is None
     ):
         raise RuntimeError("Benchmark report contains incomplete loader measurements.")
     for section in ("files", "texturePaths", "textures", "ddsCache"):
@@ -283,9 +283,18 @@ def validate_report(raw: object) -> BenchmarkReport:
 
 
 def _string_dict(value: object, name: str) -> dict[str, object]:
-    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+    if not isinstance(value, dict):
         raise RuntimeError(f"Benchmark report contains no valid {name} section.")
-    return cast(dict[str, object], value)
+    candidate = cast(dict[object, object], value)
+    if not all(isinstance(key, str) for key in candidate):
+        raise RuntimeError(f"Benchmark report contains no valid {name} section.")
+    return cast(dict[str, object], candidate)
+
+
+def _object_list(value: object) -> list[object] | None:
+    if not isinstance(value, list):
+        return None
+    return cast(list[object], value)
 
 
 def write_loader_csvs(run_root: Path, report: BenchmarkReport) -> None:
@@ -489,7 +498,8 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                     if background_report is None
                     else f"{background_report.get('created', 0)}/"
                     f"{background_report.get('entries', 0)} created, "
-                    f"{background_report.get('failed', 0)} failed"
+                    f"{background_report.get('failed', 0)} failed, "
+                    f"{background_report.get('removedOrphans', 0)} orphans removed"
                 ),
                 "staticConstructorTailMs="
                 f"{float(loader['staticConstructorTailMs']):.3f}",

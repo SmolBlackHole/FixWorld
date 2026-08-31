@@ -2,7 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
-using FixWorld.Caching;
+using FixWorld.Textures;
 using Verse;
 
 namespace FixWorld.Loading
