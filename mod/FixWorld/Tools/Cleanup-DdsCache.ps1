@@ -12,6 +12,7 @@ $ErrorActionPreference = 'Stop'
 $cacheDirectoryName = 'dds-v1'
 $hashDirectoryPattern = '^[0-9a-f]{64}$'
 $stagingDirectoryPattern = '^\.staging-[0-9]+-[0-9a-f]{32}$'
+$indexFilePattern = '^index(?:\.backup)?\.json$|^index\.json\.tmp-[0-9a-f]{32}$|^index\.lock$'
 $comparison = [StringComparison]::OrdinalIgnoreCase
 
 function Test-ReparsePoint {
@@ -156,6 +157,7 @@ try {
     $resolvedRoot = Resolve-CacheRoot $CacheRoot
     $ddsFiles = New-Object 'System.Collections.Generic.List[System.IO.FileInfo]'
     $stagingFiles = New-Object 'System.Collections.Generic.List[System.IO.FileInfo]'
+    $indexFiles = New-Object 'System.Collections.Generic.List[System.IO.FileInfo]'
     $directories = New-Object 'System.Collections.Generic.List[System.IO.DirectoryInfo]'
     $unknownFiles = 0
 
@@ -174,7 +176,12 @@ try {
                 throw "Refusing reparse point inside cache: $($packageEntry.FullName)"
             }
             if ($packageEntry -is [System.IO.FileInfo]) {
-                $unknownFiles++
+                if ($packageEntry.Name -match $indexFilePattern) {
+                    $indexFiles.Add($packageEntry)
+                }
+                else {
+                    $unknownFiles++
+                }
                 continue
             }
             if (-not ($packageEntry -is [System.IO.DirectoryInfo])) {
@@ -229,7 +236,7 @@ try {
         }
     }
 
-    $removableFiles = @($ddsFiles) + @($stagingFiles)
+    $removableFiles = @($ddsFiles) + @($stagingFiles) + @($indexFiles)
     [long]$removableBytes = 0
     foreach ($file in $removableFiles) {
         $removableBytes += $file.Length
@@ -239,6 +246,7 @@ try {
     Write-Host ('Mode: ' + $(if ($Delete) { 'DELETE' } else { 'DRY RUN' }))
     Write-Host "DDS files: $($ddsFiles.Count)"
     Write-Host "Staging files: $($stagingFiles.Count)"
+    Write-Host "Index files: $($indexFiles.Count)"
     Write-Host "Removable size: $(Format-ByteSize $removableBytes)"
     Write-Host "Unknown files left untouched: $unknownFiles"
 

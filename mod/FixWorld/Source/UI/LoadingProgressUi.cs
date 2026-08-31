@@ -83,6 +83,13 @@ namespace FixWorld.UI
             Widgets.Label(
                 new Rect(content.x, content.y + 38f, 300f, 24f),
                 (int)snapshot.Stage + " / 5   " + snapshot.StageName);
+            Text.Font = GameFont.Tiny;
+            Text.Anchor = TextAnchor.UpperRight;
+            Widgets.Label(
+                new Rect(content.x + 300f, content.y + 40f, content.width - 300f, 20f),
+                snapshot.Source == LoadingStageEventSource.FixWorld
+                    ? "FixWorld pipeline"
+                    : "RimWorld runtime");
 
             Text.Font = GameFont.Small;
             Text.Anchor = TextAnchor.UpperLeft;

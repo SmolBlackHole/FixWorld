@@ -11,16 +11,15 @@ namespace FixWorld.Loading
     {
         private const int TelemetrySampleRate = 128;
         private const int ProfilerLabelCacheLimit = 4096;
-        private static readonly object Sync = new object();
-        private static readonly Dictionary<LoadingStep, StepStats> StepStatistics =
-            new Dictionary<LoadingStep, StepStats>();
+        private static readonly object Sync = new();
+        private static readonly Dictionary<LoadingStep, StepStats> StepStatistics = [];
         private static readonly Dictionary<string, DelayedActionStats> DelayedActions =
-            new Dictionary<string, DelayedActionStats>(StringComparer.Ordinal);
+            new(StringComparer.Ordinal);
         private static readonly Dictionary<string, StaticConstructorStats>
             StaticConstructors =
-                new Dictionary<string, StaticConstructorStats>(StringComparer.Ordinal);
+                new(StringComparer.Ordinal);
         private static readonly Dictionary<string, ModLoadingStats> ModStatistics =
-            new Dictionary<string, ModLoadingStats>(StringComparer.Ordinal);
+            new(StringComparer.Ordinal);
         private static readonly long[] OverheadCalls = new long[3];
         private static readonly long[] OverheadTotalTicks = new long[3];
         private static readonly long[] OverheadMaxTicks = new long[3];
@@ -30,6 +29,7 @@ namespace FixWorld.Loading
         private static long startedAt;
         private static long completedAt;
         private static long staticConstructorTailTicks;
+        private static IDisposable stageEventSubscription;
 
         [ThreadStatic]
         private static List<ProfilerScope> profilerScopes;
@@ -60,12 +60,15 @@ namespace FixWorld.Loading
                 startedAt = Stopwatch.GetTimestamp();
                 completedAt = 0L;
                 staticConstructorTailTicks = 0L;
+                stageEventSubscription = LoadingStageMailbox.Subscribe(ConsumeStageEvent);
                 active = true;
             }
         }
 
         internal static void Complete()
         {
+            LoadingStageMailbox.Drain();
+            IDisposable subscription;
             lock (Sync)
             {
                 if (!active)
@@ -75,7 +78,11 @@ namespace FixWorld.Loading
 
                 completedAt = Stopwatch.GetTimestamp();
                 active = false;
+                subscription = stageEventSubscription;
+                stageEventSubscription = null;
             }
+
+            subscription?.Dispose();
         }
 
         internal static void BeginProfiler(string label)
@@ -110,11 +117,11 @@ namespace FixWorld.Loading
 
                 if (recognized)
                 {
-                    LoadingSession.ReportProfilerStep(descriptor);
+                    LoadingStageMailbox.ReportProfilerStep(descriptor);
                 }
                 else
                 {
-                    LoadingSession.ReportProfilerDetail(label);
+                    LoadingStageMailbox.ReportProfilerDetail(label);
                 }
             }
             finally
@@ -183,36 +190,18 @@ namespace FixWorld.Loading
                 }
 
                 bool hasParent = TryFindParentDescriptor(out StepDescriptor parentDescriptor);
-                LoadingSession.RestoreProfilerStep(
-                    hasParent,
-                    parentDescriptor,
-                    scope.Descriptor.Stage);
+                if (hasParent)
+                {
+                    LoadingStageMailbox.ReportProfilerStep(parentDescriptor);
+                }
+                else
+                {
+                    LoadingStageMailbox.ReportStageFallback(scope.Descriptor.Stage);
+                }
             }
             finally
             {
                 ObserveMeasuredOverhead(overheadStartedAt);
-            }
-        }
-
-        internal static void ReportStage(
-            LoadingPipelineStage stage,
-            int completedTasks,
-            int totalTasks)
-        {
-            if (active)
-            {
-                LoadingSession.ReportStage(stage, completedTasks, totalTasks);
-            }
-        }
-
-        internal static void ReportWork(
-            LoadingWorkItem item,
-            int currentAction,
-            int totalActions)
-        {
-            if (active)
-            {
-                LoadingSession.ReportWork(item, currentAction, totalActions);
             }
         }
 
@@ -521,6 +510,74 @@ namespace FixWorld.Loading
             }
         }
 
+        private static void ConsumeStageEvent(LoadingStageEvent stageEvent)
+        {
+            if (!active || stageEvent.OperationId == 0L ||
+                (stageEvent.Kind != LoadingStageEventKind.Completed &&
+                 stageEvent.Kind != LoadingStageEventKind.Failed))
+            {
+                return;
+            }
+
+            long elapsedTicks = Math.Max(0L, stageEvent.ElapsedTicks);
+            lock (Sync)
+            {
+                if (!active)
+                {
+                    return;
+                }
+
+                if (!StepStatistics.TryGetValue(stageEvent.Operation, out StepStats stepStats))
+                {
+                    stepStats = new StepStats(new StepDescriptor(
+                        stageEvent.Operation,
+                        stageEvent.Stage,
+                        stageEvent.DisplayName));
+                    StepStatistics.Add(stageEvent.Operation, stepStats);
+                }
+
+                stepStats.Calls++;
+                stepStats.TotalTicks += elapsedTicks;
+                stepStats.ExclusiveTicks += elapsedTicks;
+                if (stageEvent.MainThread)
+                {
+                    stepStats.MainThreadTicks += elapsedTicks;
+                    stepStats.MainThreadExclusiveTicks += elapsedTicks;
+                }
+                else
+                {
+                    stepStats.WorkerThreadTicks += elapsedTicks;
+                    stepStats.WorkerThreadExclusiveTicks += elapsedTicks;
+                }
+
+                string modKey = stageEvent.Attribution.PackageId + "\n" +
+                                stageEvent.Attribution.Quality + "\n" +
+                                stageEvent.Stage + "\n" + stageEvent.Operation;
+                if (!ModStatistics.TryGetValue(modKey, out ModLoadingStats modStats))
+                {
+                    modStats = new ModLoadingStats(stageEvent);
+                    ModStatistics.Add(modKey, modStats);
+                }
+
+                modStats.Calls++;
+                modStats.ExecutionTicks += elapsedTicks;
+                modStats.WallTicks += elapsedTicks;
+                if (stageEvent.MainThread)
+                {
+                    modStats.MainThreadTicks += elapsedTicks;
+                }
+                else
+                {
+                    modStats.WorkerThreadTicks += elapsedTicks;
+                }
+
+                if (stageEvent.Kind == LoadingStageEventKind.Failed)
+                {
+                    modStats.Failures++;
+                }
+            }
+        }
+
         private struct ProfilerScope
         {
             internal readonly long StartedAt;
@@ -621,6 +678,13 @@ namespace FixWorld.Loading
                 Attribution = item.Attribution;
                 Stage = item.Stage;
                 Operation = item.Operation;
+            }
+
+            internal ModLoadingStats(LoadingStageEvent stageEvent)
+            {
+                Attribution = stageEvent.Attribution;
+                Stage = stageEvent.Stage;
+                Operation = stageEvent.Operation;
             }
         }
 

@@ -25,6 +25,7 @@ namespace FixWorld.Loading
 
         internal static bool ConsumeFrameBoundaryRequest()
         {
+            LoadingStageMailbox.Drain();
             if (!running)
             {
                 frameBoundaryRequested = false;
@@ -121,11 +122,11 @@ namespace FixWorld.Loading
             int currentAction,
             int totalActions)
         {
-            LoadingTelemetry.ReportStage(stage, 0, stage.TaskCount);
+            LoadingStageMailbox.ReportStage(stage, 0, stage.TaskCount);
             for (int taskIndex = 0; taskIndex < stage.TaskCount; taskIndex++)
             {
                 LoadingWorkItem item = stage.GetTask(taskIndex);
-                LoadingTelemetry.ReportWork(item, currentAction, totalActions);
+                LoadingStageMailbox.ReportWork(item, currentAction, totalActions);
                 if (RequestFrameIfDue())
                 {
                     yield return null;
@@ -141,7 +142,7 @@ namespace FixWorld.Loading
                     0L,
                     result.ExecutionTicks,
                     result.Succeeded);
-                LoadingTelemetry.ReportStage(stage, taskIndex + 1, stage.TaskCount);
+                LoadingStageMailbox.ReportStage(stage, taskIndex + 1, stage.TaskCount);
 
                 if (!result.Succeeded && !item.ContinueOnFailure)
                 {
@@ -158,7 +159,7 @@ namespace FixWorld.Loading
             int currentAction,
             int totalActions)
         {
-            LoadingTelemetry.ReportStage(stage, 0, stage.TaskCount);
+            LoadingStageMailbox.ReportStage(stage, 0, stage.TaskCount);
             ParallelWorkResult[] results = new ParallelWorkResult[stage.TaskCount];
             long queuedAt = Stopwatch.GetTimestamp();
             int nextTask = -1;
@@ -191,7 +192,7 @@ namespace FixWorld.Loading
             Task barrier = Task.WhenAll(workerTasks);
             while (!barrier.IsCompleted)
             {
-                LoadingTelemetry.ReportStage(
+                LoadingStageMailbox.ReportStage(
                     stage,
                     Volatile.Read(ref completedTasks),
                     stage.TaskCount);
@@ -204,7 +205,7 @@ namespace FixWorld.Loading
             {
                 LoadingWorkItem item = stage.GetTask(taskIndex);
                 ParallelWorkResult result = results[taskIndex];
-                LoadingTelemetry.ReportWork(item, currentAction, totalActions);
+                LoadingStageMailbox.ReportWork(item, currentAction, totalActions);
 
                 if (result.Exception != null)
                 {
@@ -247,7 +248,7 @@ namespace FixWorld.Loading
                     result.WaitTicks,
                     result.WallTicks,
                     result.Succeeded);
-                LoadingTelemetry.ReportStage(stage, taskIndex + 1, stage.TaskCount);
+                LoadingStageMailbox.ReportStage(stage, taskIndex + 1, stage.TaskCount);
 
                 if (!result.Succeeded && !item.ContinueOnFailure)
                 {

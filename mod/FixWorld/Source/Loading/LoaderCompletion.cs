@@ -1,3 +1,4 @@
+using FixWorld.Caching;
 using FixWorld.Diagnostics;
 using FixWorld.Preloader;
 using Verse;
@@ -8,6 +9,8 @@ namespace FixWorld.Loading
     {
         internal static void Complete(string source)
         {
+            TextureDdsCache.Complete();
+            LoadingStageMailbox.Drain();
             if (!LoadingSession.TryComplete())
             {
                 return;

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace FixWorld.Loading
@@ -37,6 +38,11 @@ namespace FixWorld.Loading
         LoadAssetBundles,
         LoadBios,
         InjectLanguage,
+        LoadTextureCacheIndex,
+        ValidateTextureCache,
+        BuildTextureCache,
+        PruneTextureCache,
+        SaveTextureCacheIndex,
         RunStaticConstructors,
         FinalizeStaticInitialization,
         CheckStaticConstructorAttributes,
@@ -52,6 +58,41 @@ namespace FixWorld.Loading
         Telemetry
     }
 
+    internal enum LoadingStageEventSource
+    {
+        RimWorld,
+        FixWorld
+    }
+
+    internal static class LoadingStageNames
+    {
+        internal static string GetName(LoadingStage stage)
+        {
+            switch (stage)
+            {
+                case LoadingStage.Bootstrap: return "Bootstrap";
+                case LoadingStage.XmlAndPatches: return "XML & patches";
+                case LoadingStage.Definitions: return "Definitions";
+                case LoadingStage.Content: return "Content";
+                case LoadingStage.Finalize: return "Finalize";
+                default: throw new ArgumentOutOfRangeException(nameof(stage), stage, null);
+            }
+        }
+
+        internal static string GetFallback(LoadingStage stage)
+        {
+            switch (stage)
+            {
+                case LoadingStage.Bootstrap: return "Preparing the mod environment";
+                case LoadingStage.XmlAndPatches: return "Processing XML and patches";
+                case LoadingStage.Definitions: return "Preparing game definitions";
+                case LoadingStage.Content: return "Preparing mod content";
+                case LoadingStage.Finalize: return "Finalizing startup";
+                default: throw new ArgumentOutOfRangeException(nameof(stage), stage, null);
+            }
+        }
+    }
+
     internal readonly struct LoadingSnapshot
     {
         internal readonly LoadingStage Stage;
@@ -62,6 +103,7 @@ namespace FixWorld.Loading
         internal readonly bool HasDurationEstimate;
         internal readonly double EstimatedTotalMilliseconds;
         internal readonly string Activity;
+        internal readonly LoadingStageEventSource Source;
 
         internal LoadingSnapshot(
             LoadingStage stage,
@@ -71,7 +113,8 @@ namespace FixWorld.Loading
             float progress,
             bool hasDurationEstimate,
             double estimatedTotalMilliseconds,
-            string activity)
+            string activity,
+            LoadingStageEventSource source)
         {
             Stage = stage;
             StageName = stageName;
@@ -81,6 +124,7 @@ namespace FixWorld.Loading
             HasDurationEstimate = hasDurationEstimate;
             EstimatedTotalMilliseconds = estimatedTotalMilliseconds;
             Activity = activity;
+            Source = source;
         }
     }
 

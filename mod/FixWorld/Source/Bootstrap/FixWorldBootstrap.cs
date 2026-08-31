@@ -28,7 +28,7 @@ namespace FixWorld
                 LoadingSession.Start(true);
                 LoadingTelemetry.Start(BenchmarkRecorder.Enabled);
                 bool hooksInstalled = RimWorldHooks.Install(BenchmarkRecorder.Enabled);
-                TextureDdsCache.Initialize(content.RootDir);
+                TextureDdsCache.Initialize(content.RootDir, settings);
                 PreloaderManager.Configure(content.RootDir);
                 PreloaderPrompt.Configure(owner, settings);
 

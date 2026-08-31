@@ -54,6 +54,20 @@ namespace FixWorld
             listing.Label(
                 "Physical removal: close RimWorld, then run " +
                 "Tools/Windows-x64/FixWorld.Preloader.Tool.exe uninstall.");
+            listing.GapLine();
+            listing.Label("DDS texture cache");
+            listing.Label(
+                "Maximum size: " + settings.DdsCacheMaxGiB.ToString("0") +
+                " GiB (applies on the next launch)");
+            float cacheLimit = Mathf.Round(listing.Slider(
+                settings.DdsCacheMaxGiB,
+                1.0f,
+                64.0f));
+            if (Math.Abs(cacheLimit - settings.DdsCacheMaxGiB) >= 0.5f)
+            {
+                settings.DdsCacheMaxGiB = cacheLimit;
+                WriteSettings();
+            }
             listing.End();
         }
     }

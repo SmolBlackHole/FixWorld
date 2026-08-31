@@ -42,6 +42,8 @@ Aktuell: **Worker-sichere Datei- und Byte-Arbeit messen und als ersten parallele
 - [x] Mod-Zuordnung als `Exact`, `Inferred` oder `Global` mit Zeiten pro Operation berichten
 - [x] FixWorld-Eigenaufwand für Klassifizierung, Scheduling und Telemetrie separat messen
 - [x] vollständige 88-Mod-Liste mit Stage-Graph und Quarry erneut fehlerfrei testen
+- [x] Stage-, Work-Item-, Profiler- und Cache-Zustände über eine gemeinsame Mailbox an UI und Telemetrie verteilen
+- [x] häufige UI-Zwischenstände zusammenfassen und Start-/Abschluss-/Fehlerereignisse verlustfrei erhalten
 
 ## Nächster Slice: erste Worker-Arbeit
 
@@ -70,8 +72,11 @@ Aktuell: **Worker-sichere Datei- und Byte-Arbeit messen und als ersten parallele
 - [x] Quellpfad, Größe, Änderungszeit und Cacheformat zur Invalidierung verwenden
 - [x] Cache-Dateien erst nach erfolgreicher Konvertierung atomar veröffentlichen
 - [x] umgedrehte DDS-Texturen durch das korrigierte Cacheformat invalidieren
-- [ ] maximale Cachegröße konfigurierbar begrenzen und alte Einträge bereinigen
-- [ ] Cache-Schlüssel um Quellinhalt, Loader-Version, Plattform und Zielformat erweitern
+- [x] maximale Cachegröße standardmäßig auf 6 GiB begrenzen und per Einstellung konfigurierbar machen
+- [x] JSON-Index atomar schreiben und nach fehlendem oder beschädigtem Index sicher rekonstruieren
+- [x] entfernte Quellen, deaktivierte Mods und die am längsten ungenutzten Einträge bereinigen
+- [x] Cache-Schlüssel um Quellinhalt, Cacheformat, Zielformat und Konverter-Identität erweitern
+- [ ] Plattform-Backend in die Identität aufnehmen, sobald neben Windows ein zweites Backend existiert
 - [ ] erstmaligen DDS-Build beschleunigen, ohne den normalen Start zu blockieren
 - [ ] BC3-DDS gegen unkomprimierte DDS vergleichen
 - [ ] PNG/JPG begrenzt parallel dekodieren und nur fertige Daten geordnet übernehmen

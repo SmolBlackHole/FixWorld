@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace FixWorld.Caching
@@ -14,16 +15,20 @@ namespace FixWorld.Caching
 
         private readonly string cacheRoot;
         private readonly string texconvPath;
+        private readonly string identity;
 
         internal TextureDdsCacheBuilder(string cacheRoot, string modRoot)
         {
             this.cacheRoot = cacheRoot;
             texconvPath = FindTexconv(modRoot);
+            identity = File.Exists(texconvPath) ? GetFileIdentity(texconvPath) : null;
         }
 
         internal bool Available => !string.IsNullOrEmpty(texconvPath);
 
         internal string TexconvPath => texconvPath;
+
+        internal string Identity => identity;
 
         internal CacheBuildResult Build(IReadOnlyList<TextureCacheEntry> entries)
         {
@@ -41,7 +46,7 @@ namespace FixWorld.Caching
             int created = 0;
             long createdBytes = 0L;
             int failed = 0;
-            List<string> errors = new List<string>();
+            List<string> errors = [];
             string stagingRoot = Path.Combine(
                 cacheRoot,
                 ".staging-" + Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture) + "-" +
@@ -133,7 +138,7 @@ namespace FixWorld.Caching
 
         private string RunTexconv(string inputPattern, string outputDirectory, int mipCount)
         {
-            ProcessStartInfo startInfo = new ProcessStartInfo
+            ProcessStartInfo startInfo = new()
             {
                 FileName = texconvPath,
                 Arguments = "-nologo -y -vflip -f BC3_UNORM -m " +
@@ -144,40 +149,38 @@ namespace FixWorld.Caching
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
-            StringBuilder output = new StringBuilder();
-            StringBuilder error = new StringBuilder();
-            using (Process process = new Process { StartInfo = startInfo })
+            StringBuilder output = new();
+            StringBuilder error = new();
+            using Process process = new() { StartInfo = startInfo };
+            process.OutputDataReceived += (_, eventArgs) =>
             {
-                process.OutputDataReceived += (_, eventArgs) =>
+                if (eventArgs.Data != null)
                 {
-                    if (eventArgs.Data != null)
-                    {
-                        output.AppendLine(eventArgs.Data);
-                    }
-                };
-                process.ErrorDataReceived += (_, eventArgs) =>
-                {
-                    if (eventArgs.Data != null)
-                    {
-                        error.AppendLine(eventArgs.Data);
-                    }
-                };
-                process.Start();
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
-                if (!process.WaitForExit(ConversionTimeoutMilliseconds))
-                {
-                    process.Kill();
-                    return "texconv exceeded its time limit";
+                    output.AppendLine(eventArgs.Data);
                 }
+            };
+            process.ErrorDataReceived += (_, eventArgs) =>
+            {
+                if (eventArgs.Data != null)
+                {
+                    error.AppendLine(eventArgs.Data);
+                }
+            };
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            if (!process.WaitForExit(ConversionTimeoutMilliseconds))
+            {
+                process.Kill();
+                return "texconv exceeded its time limit";
+            }
 
-                process.WaitForExit();
-                if (process.ExitCode != 0)
-                {
-                    string detail = error.Length > 0 ? error.ToString() : output.ToString();
-                    return "texconv failed with exit code " +
-                           process.ExitCode.ToString(CultureInfo.InvariantCulture) + ": " + detail.Trim();
-                }
+            process.WaitForExit();
+            if (process.ExitCode != 0)
+            {
+                string detail = error.Length > 0 ? error.ToString() : output.ToString();
+                return "texconv failed with exit code " +
+                       process.ExitCode.ToString(CultureInfo.InvariantCulture) + ": " + detail.Trim();
             }
 
             return null;
@@ -259,6 +262,20 @@ namespace FixWorld.Caching
                    platform == PlatformID.WinCE;
         }
 
+        private static string GetFileIdentity(string path)
+        {
+            using SHA256 sha256 = SHA256.Create();
+            using FileStream stream = new(
+                       path,
+                       FileMode.Open,
+                       FileAccess.Read,
+                       FileShare.Read);
+            byte[] hash = sha256.ComputeHash(stream);
+            return "sha256:" + BitConverter.ToString(hash)
+                .Replace("-", string.Empty)
+                .ToLowerInvariant();
+        }
+
         private static void EnsureChildPath(string parent, string child)
         {
             string resolvedParent = Path.GetFullPath(parent).TrimEnd(Path.DirectorySeparatorChar) +
@@ -279,6 +296,10 @@ namespace FixWorld.Caching
     internal sealed class TextureCacheEntry
     {
         internal readonly string Key;
+        internal readonly string PackageId;
+        internal readonly string SourcePath;
+        internal readonly string SourceHash;
+        internal readonly string ConverterIdentity;
         internal readonly FileInfo Source;
         internal readonly string Hash;
         internal readonly int MipCount;
@@ -288,6 +309,10 @@ namespace FixWorld.Caching
 
         internal TextureCacheEntry(
             string key,
+            string packageId,
+            string sourcePath,
+            string sourceHash,
+            string converterIdentity,
             FileInfo source,
             string hash,
             int mipCount,
@@ -296,6 +321,10 @@ namespace FixWorld.Caching
             string finalPath)
         {
             Key = key;
+            PackageId = packageId;
+            SourcePath = sourcePath;
+            SourceHash = sourceHash;
+            ConverterIdentity = converterIdentity;
             Source = source;
             Hash = hash;
             MipCount = mipCount;
@@ -307,7 +336,7 @@ namespace FixWorld.Caching
 
     internal readonly struct CacheBuildResult
     {
-        internal static readonly CacheBuildResult Empty = new CacheBuildResult(0, 0L, 0, 0.0, null);
+        internal static readonly CacheBuildResult Empty = new(0, 0L, 0, 0.0, null);
 
         internal readonly int Created;
         internal readonly long CreatedBytes;

@@ -8,10 +8,10 @@ unkontrolliert Speicherplatz belegen.
 
 ## Gemessener Stand
 
-- 10.461 erzeugte DDS bei 89 aktiven Mods
+- 10.460 wiederverwendete DDS bei 88 aktiven Mods
 - Texturpfad ohne Cache: 21,16 s
 - Texturpfad mit warmem Vollcache: 2,24 bis 2,51 s
-- warmer Gesamtstart: 34,4 bis 38,8 s
+- warmer Gesamtstart mit Stage-Runner und JSON-Index: 27,5 s im aktuellen Referenzlauf
 - Vollcache: rund 1,59 GiB
 
 Der erstmalige Cache-Build ist mit rund 91 s bewusst teurer. Der Gewinn entsteht bei
@@ -19,19 +19,31 @@ allen folgenden Starts.
 
 ## Gültigkeit und Plattenbudget
 
-Ein Cacheeintrag hängt derzeit von Cacheformat, relativem Quellpfad, Dateigröße und
-Änderungszeit ab. Neue oder geänderte Quellen werden neu erzeugt, veraltete Einträge
-werden entfernt.
+`index.json` ordnet jeder Quelle ihre DDS-Datei, Dateigröße, Änderungszeit,
+Inhalts-Hash, Konverter-Identität und letzte Verwendung zu. Größe und Änderungszeit
+bilden den schnellen Startpfad. Ändert sich eine dieser Angaben, vergleicht FixWorld
+den SHA-256-Inhalts-Hash und konvertiert nur bei einer tatsächlichen Änderung neu.
+
+Der Index wird über eine temporäre Datei mit Flush und atomarem Austausch geschrieben.
+Der vorherige Stand bleibt als `index.backup.json` erhalten. Ein fehlender oder
+beschädigter Index wird aus vorhandenen DDS-Dateien rekonstruiert, statt den Cache
+pauschal zu löschen.
 
 PNG- und JPG-Quellen werden beim DirectXTex-Export vertikal gespiegelt, damit RimWorlds
 direkter DDS-Raw-Load dieselbe Ausrichtung wie Unitys normaler Bildpfad erhält. Die
 Cacheformat-Version invalidiert ältere, falsch ausgerichtete Einträge automatisch.
 
-- standardmäßig kein künstliches Größenlimit
+- Standardlimit: 6 GiB, in den FixWorld-Einstellungen zwischen 1 und 64 GiB wählbar
 - mindestens verbleibender freier Plattenplatz: 10 GiB
-- optionales hartes Limit über `FIXWORLD_DDS_CACHE_MAX_GIB`
+- optionaler Override über `FIXWORLD_DDS_CACHE_MAX_GIB`
 - Cacheeintrag erst nach erfolgreicher Konvertierung atomar bereitstellen
 - bei fehlendem Konverter oder ausgeschöpftem Plattenbudget wird die Originaltextur geladen
+- entfernte Texturen und deaktivierte Mods werden bereinigt
+- bei Überschreitung des Limits werden die am längsten ungenutzten Einträge zuerst entfernt
+
+Index laden, Cache prüfen, DDS erzeugen, veraltete Einträge entfernen und Index speichern
+werden über die Stage-Mailbox veröffentlicht. UI und Benchmark sehen damit denselben
+typisierten Zustand, ohne den DDS-Code direkt zu kennen.
 
 Der Cache lässt sich ohne Python aus dem FixWorld-Modordner prüfen oder entfernen:
 
@@ -42,9 +54,6 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Tools\Cleanup-DdsCache
 
 Der erste Aufruf ist nur ein Dry-Run. `-Delete` löscht ausschließlich erkannte
 FixWorld-DDS- und Staging-Dateien und verweigert die Ausführung, solange RimWorld läuft.
-
-Vor dem Pilot-Test soll der Schlüssel zusätzlich Konverterversion, Plattform und
-Zielformat enthalten.
 
 ## Geplantes Packformat
 

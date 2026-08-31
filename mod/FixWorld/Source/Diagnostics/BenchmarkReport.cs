@@ -306,7 +306,7 @@ namespace FixWorld.Diagnostics
             PackageId = measurement.PackageId;
             ModName = measurement.ModName;
             Attribution = measurement.Attribution.ToString();
-            Stage = LoadingSession.GetStageName(measurement.Stage);
+            Stage = LoadingStageNames.GetName(measurement.Stage);
             Operation = measurement.Operation.ToString();
             Calls = measurement.Calls;
             Failures = measurement.Failures;
@@ -370,7 +370,7 @@ namespace FixWorld.Diagnostics
         internal LoaderStageReport(LoadingStage stage, IReadOnlyCollection<LoaderStepReport> steps)
         {
             Number = (int)stage;
-            Name = LoadingSession.GetStageName(stage);
+            Name = LoadingStageNames.GetName(stage);
             Observed = steps.Count > 0;
             ExclusiveMilliseconds = steps.Sum(step => step.ExclusiveMilliseconds);
             MainThreadMilliseconds = steps.Sum(step => step.MainThreadExclusiveMilliseconds);
@@ -415,7 +415,7 @@ namespace FixWorld.Diagnostics
         {
             Id = step.Step.ToString();
             Number = (int)step.Stage;
-            Stage = LoadingSession.GetStageName(step.Stage);
+            Stage = LoadingStageNames.GetName(step.Stage);
             Name = step.Name;
             Calls = step.Calls;
             TotalMilliseconds = step.TotalMilliseconds;

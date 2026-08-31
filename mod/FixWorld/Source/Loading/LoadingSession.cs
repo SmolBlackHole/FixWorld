@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Globalization;
 using System.Threading;
 
 namespace FixWorld.Loading
@@ -21,6 +20,8 @@ namespace FixWorld.Loading
         private static long nextDetailRefreshAt;
         private static double estimatedDurationMilliseconds;
         private static string currentActivity;
+        private static LoadingStageEventSource currentSource;
+        private static IDisposable stageSubscription;
 
         internal static bool IsActive => active;
 
@@ -43,13 +44,17 @@ namespace FixWorld.Loading
                 nextDetailRefreshAt = 0L;
                 estimatedDurationMilliseconds = previousDuration;
                 currentActivity = null;
+                currentSource = LoadingStageEventSource.FixWorld;
+                stageSubscription = LoadingStageMailbox.Subscribe(ConsumeStageEvent);
                 active = true;
             }
         }
 
         internal static bool TryComplete()
         {
+            LoadingStageMailbox.Drain();
             double observedMilliseconds;
+            IDisposable subscription;
             lock (Sync)
             {
                 if (completed)
@@ -65,136 +70,18 @@ namespace FixWorld.Loading
                 currentActivity = null;
                 ClearDetail();
                 observedMilliseconds = ToMilliseconds(completedAt - startedAt);
+                subscription = stageSubscription;
+                stageSubscription = null;
             }
 
+            subscription?.Dispose();
             LoadingEstimateStore.Write(observedMilliseconds);
             return true;
         }
 
-        internal static void ReportProfilerStep(StepDescriptor descriptor)
-        {
-            if (!active)
-            {
-                return;
-            }
-
-            lock (Sync)
-            {
-                if (!active)
-                {
-                    return;
-                }
-
-                ClearDetail();
-                currentStage = descriptor.Stage;
-                currentStepName = descriptor.DisplayName;
-                currentActivity = descriptor.ModName == null
-                    ? null
-                    : descriptor.ModActivity + " for " + descriptor.ModName;
-            }
-        }
-
-        internal static void ReportProfilerDetail(string label)
-        {
-            if (active)
-            {
-                Interlocked.Exchange(ref pendingDetailLabel, label);
-            }
-        }
-
-        internal static void RestoreProfilerStep(
-            bool hasParent,
-            StepDescriptor parent,
-            LoadingStage completedStage)
-        {
-            if (!active)
-            {
-                return;
-            }
-
-            lock (Sync)
-            {
-                if (!active)
-                {
-                    return;
-                }
-
-                ClearDetail();
-                if (hasParent)
-                {
-                    currentStage = parent.Stage;
-                    currentStepName = parent.DisplayName;
-                    currentActivity = parent.ModName == null
-                        ? null
-                        : parent.ModActivity + " for " + parent.ModName;
-                    return;
-                }
-
-                currentStage = completedStage;
-                currentStepName = GetStageFallbackName(completedStage);
-                currentActivity = null;
-            }
-        }
-
-        internal static void ReportStage(
-            LoadingPipelineStage stage,
-            int completedTasks,
-            int totalTasks)
-        {
-            if (!active)
-            {
-                return;
-            }
-
-            lock (Sync)
-            {
-                if (!active)
-                {
-                    return;
-                }
-
-                ClearDetail();
-                currentStage = stage.Phase;
-                currentStepName = stage.Name;
-                currentActivity = string.Format(
-                    CultureInfo.InvariantCulture,
-                    "Stage tasks {0:N0} / {1:N0}   {2}",
-                    completedTasks,
-                    totalTasks,
-                    stage.ExecutionMode);
-            }
-        }
-
-        internal static void ReportWork(
-            LoadingWorkItem item,
-            int currentAction,
-            int totalActions)
-        {
-            if (!active)
-            {
-                return;
-            }
-
-            lock (Sync)
-            {
-                if (!active)
-                {
-                    return;
-                }
-
-                ClearDetail();
-                currentStage = item.Stage;
-                currentStepName = item.DisplayName;
-                currentActivity = item.Activity ?? string.Format(
-                    CultureInfo.InvariantCulture,
-                    "Delayed initialization task {0:N0} / {1:N0}",
-                    currentAction,
-                    totalActions);
-            }
-        }
-
         internal static bool TryGetSnapshot(out LoadingSnapshot snapshot)
         {
+            LoadingStageMailbox.Drain();
             lock (Sync)
             {
                 if (!active)
@@ -215,40 +102,15 @@ namespace FixWorld.Loading
                     : (float)Math.Min(0.95, ((int)currentStage - 0.5) / 5.0);
                 snapshot = new LoadingSnapshot(
                     currentStage,
-                    GetStageName(currentStage),
+                    LoadingStageNames.GetName(currentStage),
                     currentDetailName ?? currentStepName,
                     elapsedMilliseconds,
                     Math.Max(0.02f, progress),
                     hasEstimate,
                     estimatedDurationMilliseconds,
-                    currentActivity);
+                    currentActivity,
+                    currentSource);
                 return true;
-            }
-        }
-
-        internal static string GetStageName(LoadingStage stage)
-        {
-            switch (stage)
-            {
-                case LoadingStage.Bootstrap: return "Bootstrap";
-                case LoadingStage.XmlAndPatches: return "XML & patches";
-                case LoadingStage.Definitions: return "Definitions";
-                case LoadingStage.Content: return "Content";
-                case LoadingStage.Finalize: return "Finalize";
-                default: throw new ArgumentOutOfRangeException(nameof(stage), stage, null);
-            }
-        }
-
-        private static string GetStageFallbackName(LoadingStage stage)
-        {
-            switch (stage)
-            {
-                case LoadingStage.Bootstrap: return "Preparing the mod environment";
-                case LoadingStage.XmlAndPatches: return "Processing XML and patches";
-                case LoadingStage.Definitions: return "Preparing game definitions";
-                case LoadingStage.Content: return "Preparing mod content";
-                case LoadingStage.Finalize: return "Finalizing startup";
-                default: throw new ArgumentOutOfRangeException(nameof(stage), stage, null);
             }
         }
 
@@ -277,6 +139,40 @@ namespace FixWorld.Loading
             currentDetailName = null;
             Interlocked.Exchange(ref pendingDetailLabel, null);
             nextDetailRefreshAt = 0L;
+        }
+
+        private static void ConsumeStageEvent(LoadingStageEvent stageEvent)
+        {
+            if (!active)
+            {
+                return;
+            }
+
+            if (stageEvent.Kind == LoadingStageEventKind.Detail)
+            {
+                Interlocked.Exchange(ref pendingDetailLabel, stageEvent.DisplayName);
+                return;
+            }
+
+            if (stageEvent.Kind != LoadingStageEventKind.Started &&
+                stageEvent.Kind != LoadingStageEventKind.Progress)
+            {
+                return;
+            }
+
+            lock (Sync)
+            {
+                if (!active)
+                {
+                    return;
+                }
+
+                ClearDetail();
+                currentStage = stageEvent.Stage;
+                currentStepName = stageEvent.DisplayName;
+                currentActivity = stageEvent.Activity;
+                currentSource = stageEvent.Source;
+            }
         }
     }
 }
