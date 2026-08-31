@@ -84,20 +84,6 @@ namespace FixWorld.UI
                 new Rect(content.x, content.y + 38f, 300f, 24f),
                 (int)snapshot.Stage + " / 5   " + snapshot.StageName);
 
-            if (snapshot.TotalItems >= 0)
-            {
-                Text.Font = GameFont.Tiny;
-                Text.Anchor = TextAnchor.UpperRight;
-                string unit = string.IsNullOrEmpty(snapshot.ItemUnit)
-                    ? "items"
-                    : snapshot.ItemUnit;
-                Widgets.Label(
-                    new Rect(content.x + 300f, content.y + 42f, content.width - 300f, 20f),
-                    snapshot.CompletedItems.ToString("N0", CultureInfo.InvariantCulture) +
-                    " / " + snapshot.TotalItems.ToString("N0", CultureInfo.InvariantCulture) +
-                    " " + unit);
-            }
-
             Text.Font = GameFont.Small;
             Text.Anchor = TextAnchor.UpperLeft;
             Widgets.LabelEllipses(
@@ -118,16 +104,7 @@ namespace FixWorld.UI
         {
             Rect currentBar = new Rect(content.x, content.y + 110f, content.width, 14f);
             Widgets.DrawBoxSolid(currentBar, Track);
-            if (snapshot.TotalItems > 0)
-            {
-                float progress = Mathf.Clamp01(
-                    (float)snapshot.CompletedItems / snapshot.TotalItems);
-                DrawFill(currentBar, progress);
-            }
-            else
-            {
-                DrawIndeterminateFill(currentBar, snapshot.ElapsedMilliseconds);
-            }
+            DrawIndeterminateFill(currentBar, snapshot.ElapsedMilliseconds);
 
             Widgets.DrawBox(currentBar);
 

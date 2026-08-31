@@ -27,7 +27,8 @@ namespace FixWorld.Loading
         BuildLanguageMappings,
         GenerateImpliedDefinitions,
         ResolveDefinitions,
-        InitializeRuntime,
+        LoadKeyboardPreferences,
+        AssignDefinitionIds,
         DelayedInitialization,
         LoadContent,
         LoadAudio,
@@ -41,14 +42,6 @@ namespace FixWorld.Loading
         GarbageCollection
     }
 
-    internal enum LoadingContentKind
-    {
-        None,
-        Audio,
-        Textures,
-        Strings
-    }
-
     internal readonly struct LoadingSnapshot
     {
         internal readonly LoadingStage Stage;
@@ -59,9 +52,6 @@ namespace FixWorld.Loading
         internal readonly bool HasDurationEstimate;
         internal readonly double EstimatedTotalMilliseconds;
         internal readonly string Activity;
-        internal readonly int CompletedItems;
-        internal readonly int TotalItems;
-        internal readonly string ItemUnit;
 
         internal LoadingSnapshot(
             LoadingStage stage,
@@ -71,10 +61,7 @@ namespace FixWorld.Loading
             float progress,
             bool hasDurationEstimate,
             double estimatedTotalMilliseconds,
-            string activity,
-            int completedItems,
-            int totalItems,
-            string itemUnit)
+            string activity)
         {
             Stage = stage;
             StageName = stageName;
@@ -84,9 +71,6 @@ namespace FixWorld.Loading
             HasDurationEstimate = hasDurationEstimate;
             EstimatedTotalMilliseconds = estimatedTotalMilliseconds;
             Activity = activity;
-            CompletedItems = completedItems;
-            TotalItems = totalItems;
-            ItemUnit = itemUnit;
         }
     }
 

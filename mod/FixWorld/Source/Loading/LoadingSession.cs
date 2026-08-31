@@ -12,6 +12,8 @@ namespace FixWorld.Loading
         private static readonly object Sync = new object();
         private static readonly Dictionary<LoadingStep, StepStats> Stats =
             new Dictionary<LoadingStep, StepStats>();
+        private static readonly long DetailRefreshTicks =
+            Math.Max(1L, Stopwatch.Frequency / 5L);
 
         private static volatile bool active;
         private static bool completed;
@@ -21,13 +23,12 @@ namespace FixWorld.Loading
         private static long currentSequence;
         private static LoadingStage currentStage;
         private static string currentStepName;
+        private static string currentDetailName;
+        private static string pendingDetailLabel;
+        private static long nextDetailRefreshAt;
         private static double estimatedDurationMilliseconds;
         private static long currentModSequence;
-        private static LoadingContentKind currentModContentKind;
         private static string currentActivity;
-        private static int completedItems;
-        private static int totalItems;
-        private static string itemUnit;
 
         [ThreadStatic]
         private static Stack<Scope> scopes;
@@ -48,6 +49,9 @@ namespace FixWorld.Loading
                 completedAt = 0L;
                 currentStage = LoadingStage.Bootstrap;
                 currentStepName = "FixWorld attached";
+                currentDetailName = null;
+                pendingDetailLabel = null;
+                nextDetailRefreshAt = 0L;
                 currentSequence = 0L;
                 sequence = 0L;
                 estimatedDurationMilliseconds = previousDuration;
@@ -80,6 +84,7 @@ namespace FixWorld.Loading
 
             if (!recognized)
             {
+                Interlocked.Exchange(ref pendingDetailLabel, label);
                 return;
             }
 
@@ -90,6 +95,7 @@ namespace FixWorld.Loading
                     return;
                 }
 
+                ClearDetail();
                 currentSequence = scopeSequence;
                 currentStage = descriptor.Stage;
                 currentStepName = descriptor.DisplayName;
@@ -97,33 +103,6 @@ namespace FixWorld.Loading
                 {
                     SetCurrentMod(scopeSequence, descriptor);
                 }
-            }
-        }
-
-        internal static void SetCurrentModItemTotal(LoadingContentKind kind, int totalItems)
-        {
-            lock (Sync)
-            {
-                if (!active || currentModContentKind != kind)
-                {
-                    return;
-                }
-
-                completedItems = 0;
-                LoadingSession.totalItems = Math.Max(0, totalItems);
-            }
-        }
-
-        internal static void AdvanceCurrentModItem()
-        {
-            lock (Sync)
-            {
-                if (!active || totalItems < 0)
-                {
-                    return;
-                }
-
-                completedItems = Math.Min(completedItems + 1, totalItems);
             }
         }
 
@@ -175,6 +154,7 @@ namespace FixWorld.Loading
                     return;
                 }
 
+                ClearDetail();
                 Scope parent = scopes.FirstOrDefault(candidate => candidate.Recognized);
                 if (parent != null)
                 {
@@ -208,6 +188,7 @@ namespace FixWorld.Loading
                 currentSequence = 0L;
                 currentStage = LoadingStage.Finalize;
                 currentStepName = "Ready";
+                ClearDetail();
                 observedMilliseconds = ToMilliseconds(completedAt - startedAt);
             }
 
@@ -225,8 +206,10 @@ namespace FixWorld.Loading
                     return false;
                 }
 
+                long now = Stopwatch.GetTimestamp();
+                RefreshDetail(now);
                 double elapsedMilliseconds =
-                    ToMilliseconds(Math.Max(0L, Stopwatch.GetTimestamp() - startedAt));
+                    ToMilliseconds(Math.Max(0L, now - startedAt));
                 bool hasEstimate = estimatedDurationMilliseconds > 0.0;
                 float progress = hasEstimate
                     ? (float)Math.Min(0.98, elapsedMilliseconds / estimatedDurationMilliseconds)
@@ -234,15 +217,12 @@ namespace FixWorld.Loading
                 snapshot = new LoadingSnapshot(
                     currentStage,
                     GetStageName(currentStage),
-                    currentStepName,
+                    currentDetailName ?? currentStepName,
                     elapsedMilliseconds,
                     Math.Max(0.02f, progress),
                     hasEstimate,
                     estimatedDurationMilliseconds,
-                    currentActivity,
-                    completedItems,
-                    totalItems,
-                    itemUnit);
+                    currentActivity);
                 return true;
             }
         }
@@ -304,6 +284,28 @@ namespace FixWorld.Loading
             return ticks * 1000.0 / Stopwatch.Frequency;
         }
 
+        private static void RefreshDetail(long now)
+        {
+            if (now < nextDetailRefreshAt)
+            {
+                return;
+            }
+
+            nextDetailRefreshAt = now + DetailRefreshTicks;
+            string label = Interlocked.Exchange(ref pendingDetailLabel, null);
+            if (label != null)
+            {
+                currentDetailName = LoaderStepCatalog.GetDisplayName(label);
+            }
+        }
+
+        private static void ClearDetail()
+        {
+            currentDetailName = null;
+            Interlocked.Exchange(ref pendingDetailLabel, null);
+            nextDetailRefreshAt = 0L;
+        }
+
         private static void RestoreCurrentModAfter(Scope completedScope)
         {
             if (currentModSequence != completedScope.Sequence)
@@ -325,21 +327,13 @@ namespace FixWorld.Loading
         private static void SetCurrentMod(long scopeSequence, StepDescriptor descriptor)
         {
             currentModSequence = scopeSequence;
-            currentModContentKind = descriptor.ContentKind;
             currentActivity = descriptor.ModActivity + " for " + descriptor.ModName;
-            completedItems = 0;
-            totalItems = -1;
-            itemUnit = "files";
         }
 
         private static void ClearCurrentMod()
         {
             currentModSequence = 0L;
-            currentModContentKind = LoadingContentKind.None;
             currentActivity = null;
-            completedItems = 0;
-            totalItems = -1;
-            itemUnit = null;
         }
 
         private sealed class Scope

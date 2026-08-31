@@ -24,7 +24,6 @@ namespace FixWorld.Integration
         private static readonly Type[] RuntimePatchTypes =
         {
             typeof(ModFileLoaderPatch),
-            typeof(ModContentItemLoadPatch),
             typeof(DeepProfilerStartPatch),
             typeof(DeepProfilerEndPatch),
             typeof(LoaderCompletionPatch),
@@ -119,98 +118,6 @@ namespace FixWorld.Integration
             {
                 BenchmarkRecorder.ObserveFiles(__state, mod, contentPath, __result);
                 TextureDdsCache.Apply(mod, contentPath, foldersToLoadDebug, __result);
-
-                if (TryGetContentKind(contentPath, out LoadingContentKind kind))
-                {
-                    LoadingSession.SetCurrentModItemTotal(
-                        kind,
-                        CountLoadedItems(kind, __result));
-                }
-            }
-
-            private static bool TryGetContentKind(
-                string contentPath,
-                out LoadingContentKind kind)
-            {
-                if (string.Equals(contentPath, GenFilePaths.TexturesFolder, StringComparison.Ordinal))
-                {
-                    kind = LoadingContentKind.Textures;
-                    return true;
-                }
-
-                if (string.Equals(contentPath, GenFilePaths.SoundsFolder, StringComparison.Ordinal))
-                {
-                    kind = LoadingContentKind.Audio;
-                    return true;
-                }
-
-                if (string.Equals(contentPath, GenFilePaths.StringsFolder, StringComparison.Ordinal))
-                {
-                    kind = LoadingContentKind.Strings;
-                    return true;
-                }
-
-                kind = LoadingContentKind.None;
-                return false;
-            }
-
-            private static int CountLoadedItems(
-                LoadingContentKind kind,
-                Dictionary<string, FileInfo> files)
-            {
-                if (kind != LoadingContentKind.Textures)
-                {
-                    return files.Count;
-                }
-
-                HashSet<string> ddsFiles = new HashSet<string>(StringComparer.Ordinal);
-                foreach (string path in files.Keys)
-                {
-                    string normalized = path.ToLowerInvariant();
-                    if (normalized.EndsWith(".dds", StringComparison.Ordinal))
-                    {
-                        ddsFiles.Add(normalized);
-                    }
-                }
-
-                int count = 0;
-                foreach (string path in files.Keys)
-                {
-                    string normalized = path.ToLowerInvariant();
-                    if (normalized.Length > 4 &&
-                        !normalized.EndsWith(".dds", StringComparison.Ordinal) &&
-                        ddsFiles.Contains(normalized.Substring(0, normalized.Length - 4) + ".dds"))
-                    {
-                        continue;
-                    }
-
-                    count++;
-                }
-
-                return count;
-            }
-        }
-
-        [HarmonyPatch]
-        private static class ModContentItemLoadPatch
-        {
-            private static IEnumerable<MethodBase> TargetMethods()
-            {
-                yield return AccessTools.Method(
-                    typeof(ModContentLoader<Texture2D>),
-                    nameof(ModContentLoader<Texture2D>.LoadItem));
-                yield return AccessTools.Method(
-                    typeof(ModContentLoader<AudioClip>),
-                    nameof(ModContentLoader<AudioClip>.LoadItem));
-                yield return AccessTools.Method(
-                    typeof(ModContentLoader<string>),
-                    nameof(ModContentLoader<string>.LoadItem));
-            }
-
-            [HarmonyPostfix]
-            private static void Postfix()
-            {
-                LoadingSession.AdvanceCurrentModItem();
             }
         }
 

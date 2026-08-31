@@ -42,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--monitor", type=bounded_int(1, 16), default=2)
     parser.add_argument("--timeout", type=bounded_int(10, 600), default=180)
     parser.add_argument("--no-dds-cache", action="store_false", dest="dds_cache")
+    parser.add_argument("--live-mods", action="store_true")
     parser.add_argument("--keep-running", action="store_true")
     parser.add_argument("--minimized", action="store_true")
     parser.add_argument("--skip-build", action="store_true")
@@ -57,6 +58,16 @@ def main() -> int:
     game_root = args.game_root.resolve()
     executable = game_root / "RimWorldWin64.exe"
     config_template = ROOT / "mod" / "test-data" / "Config" / "ModsConfig.xml"
+    if args.live_mods:
+        config_template = (
+            Path.home()
+            / "AppData"
+            / "LocalLow"
+            / "Ludeon Studios"
+            / "RimWorld by Ludeon Studios"
+            / "Config"
+            / "ModsConfig.xml"
+        )
     mod_root = ROOT / "mod" / "FixWorld"
     mod_link = game_root / "Mods" / "FixWorld"
     if not executable.is_file():

@@ -8,7 +8,6 @@ namespace FixWorld.Loading
         internal readonly LoadingStage Stage;
         internal readonly string Name;
         internal readonly string DisplayName;
-        internal readonly LoadingContentKind ContentKind;
         internal readonly string ModName;
         internal readonly string ModActivity;
 
@@ -17,7 +16,6 @@ namespace FixWorld.Loading
             LoadingStage stage,
             string name,
             string displayName = null,
-            LoadingContentKind contentKind = LoadingContentKind.None,
             string modName = null,
             string modActivity = null)
         {
@@ -25,7 +23,6 @@ namespace FixWorld.Loading
             Stage = stage;
             Name = name;
             DisplayName = displayName ?? name;
-            ContentKind = contentKind;
             ModName = modName;
             ModActivity = modActivity;
         }
@@ -75,8 +72,16 @@ namespace FixWorld.Loading
                     descriptor = Step(LoadingStep.ResolveDefinitions, LoadingStage.Definitions, "Resolve definitions");
                     return true;
                 case "Load keyboard preferences.":
+                    descriptor = Step(
+                        LoadingStep.LoadKeyboardPreferences,
+                        LoadingStage.Definitions,
+                        "Loading keyboard preferences");
+                    return true;
                 case "Short hash giving.":
-                    descriptor = Step(LoadingStep.InitializeRuntime, LoadingStage.Definitions, "Initialize runtime");
+                    descriptor = Step(
+                        LoadingStep.AssignDefinitionIds,
+                        LoadingStage.Definitions,
+                        "Assigning definition IDs");
                     return true;
                 case "ExecuteToExecuteWhenFinished()":
                     descriptor = new StepDescriptor(
@@ -146,7 +151,6 @@ namespace FixWorld.Loading
                     label,
                     TexturePrefix,
                     LoadingStep.LoadTextures,
-                    LoadingContentKind.Textures,
                     "Load textures",
                     "Textures",
                     out descriptor) ||
@@ -154,7 +158,6 @@ namespace FixWorld.Loading
                     label,
                     AudioPrefix,
                     LoadingStep.LoadAudio,
-                    LoadingContentKind.Audio,
                     "Load audio",
                     "Audio",
                     out descriptor) ||
@@ -162,7 +165,6 @@ namespace FixWorld.Loading
                     label,
                     StringPrefix,
                     LoadingStep.LoadStrings,
-                    LoadingContentKind.Strings,
                     "Load strings",
                     "Strings",
                     out descriptor))
@@ -179,11 +181,32 @@ namespace FixWorld.Loading
             return false;
         }
 
+        internal static string GetDisplayName(string label)
+        {
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                return "Working";
+            }
+
+            const string separator = " -> ";
+            int separatorIndex = label.IndexOf(separator, StringComparison.Ordinal);
+            if (separatorIndex < 0)
+            {
+                return label;
+            }
+
+            string typeName = GetSimpleTypeName(label.Substring(0, separatorIndex).Trim());
+            string methodName = GetMethodName(
+                label.Substring(separatorIndex + separator.Length).Trim());
+            return string.IsNullOrEmpty(typeName) || string.IsNullOrEmpty(methodName)
+                ? label
+                : typeName + "." + methodName;
+        }
+
         private static bool TryMatchMod(
             string label,
             string prefix,
             LoadingStep step,
-            LoadingContentKind contentKind,
             string name,
             string activity,
             out StepDescriptor descriptor)
@@ -200,7 +223,6 @@ namespace FixWorld.Loading
                 LoadingStage.Content,
                 name,
                 name,
-                contentKind,
                 modName,
                 activity);
             return true;
@@ -226,7 +248,6 @@ namespace FixWorld.Loading
                 LoadingStage.Content,
                 "Load mod content",
                 "Load mod content",
-                LoadingContentKind.None,
                 modName,
                 "Mod content");
             return true;
@@ -235,6 +256,45 @@ namespace FixWorld.Loading
         private static bool StartsWith(string value, string prefix)
         {
             return value != null && value.StartsWith(prefix, StringComparison.Ordinal);
+        }
+
+        private static string GetSimpleTypeName(string typeName)
+        {
+            int nestedTypeIndex = typeName.IndexOf('+');
+            if (nestedTypeIndex >= 0)
+            {
+                typeName = typeName.Substring(0, nestedTypeIndex);
+            }
+
+            int namespaceIndex = typeName.LastIndexOf('.');
+            if (namespaceIndex >= 0)
+            {
+                typeName = typeName.Substring(namespaceIndex + 1);
+            }
+
+            int genericIndex = typeName.IndexOf('`');
+            return genericIndex >= 0 ? typeName.Substring(0, genericIndex) : typeName;
+        }
+
+        private static string GetMethodName(string signature)
+        {
+            int generatedNameStart = signature.IndexOf('<');
+            int generatedNameEnd = generatedNameStart >= 0
+                ? signature.IndexOf('>', generatedNameStart + 1)
+                : -1;
+            if (generatedNameStart >= 0 && generatedNameEnd > generatedNameStart + 1)
+            {
+                return signature.Substring(
+                    generatedNameStart + 1,
+                    generatedNameEnd - generatedNameStart - 1);
+            }
+
+            int parameterIndex = signature.IndexOf('(');
+            string name = parameterIndex >= 0
+                ? signature.Substring(0, parameterIndex).Trim()
+                : signature;
+            int returnTypeIndex = name.LastIndexOf(' ');
+            return returnTypeIndex >= 0 ? name.Substring(returnTypeIndex + 1) : name;
         }
 
         private static StepDescriptor Step(LoadingStep step, LoadingStage stage, string name)
