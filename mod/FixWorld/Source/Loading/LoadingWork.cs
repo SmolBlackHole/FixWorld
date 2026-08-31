@@ -200,6 +200,7 @@ namespace FixWorld.Loading
         internal readonly LoadingStep Operation;
         internal readonly LoadingExecutionMode ExecutionMode;
         internal readonly IReadOnlyList<int> Dependencies;
+        internal readonly int MaxParallelism;
 
         internal int TaskCount => tasks?.Count ?? 1;
 
@@ -210,7 +211,8 @@ namespace FixWorld.Loading
             LoadingStep operation,
             LoadingExecutionMode executionMode,
             LoadingWorkItem task,
-            IReadOnlyList<int> dependencies = null)
+            IReadOnlyList<int> dependencies = null,
+            int maxParallelism = 0)
         {
             Id = id;
             Name = name;
@@ -218,6 +220,7 @@ namespace FixWorld.Loading
             Operation = operation;
             ExecutionMode = executionMode;
             Dependencies = dependencies ?? NoDependencies;
+            MaxParallelism = maxParallelism;
             singleTask = task;
             tasks = null;
         }
@@ -229,7 +232,8 @@ namespace FixWorld.Loading
             LoadingStep operation,
             LoadingExecutionMode executionMode,
             IReadOnlyList<LoadingWorkItem> tasks,
-            IReadOnlyList<int> dependencies = null)
+            IReadOnlyList<int> dependencies = null,
+            int maxParallelism = 0)
         {
             if (tasks == null || tasks.Count == 0)
             {
@@ -244,6 +248,7 @@ namespace FixWorld.Loading
             Operation = operation;
             ExecutionMode = executionMode;
             Dependencies = dependencies ?? NoDependencies;
+            MaxParallelism = maxParallelism;
             singleTask = default;
             this.tasks = tasks;
         }

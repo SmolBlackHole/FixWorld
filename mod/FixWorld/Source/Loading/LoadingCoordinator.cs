@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using FixWorld.Caching;
 using Verse;
 
 namespace FixWorld.Loading
@@ -14,6 +15,7 @@ namespace FixWorld.Loading
         {
             int stagedContentActions = 0;
             int stagedFinalizationActions = 0;
+            int preparedContentThrough = -1;
             bool outerProfilerStarted = false;
             scheduler.BeginRun();
             try
@@ -26,6 +28,25 @@ namespace FixWorld.Loading
 
                 for (int actionIndex = 0; actionIndex < actions.Count; actionIndex++)
                 {
+                    if (actionIndex > preparedContentThrough &&
+                        TryCollectContentBatch(
+                            actions,
+                            actionIndex,
+                            out List<ModContentPack> contentMods,
+                            out preparedContentThrough) &&
+                        TextureDdsCache.TryCreateValidationPlan(
+                            contentMods,
+                            out LoadingActionPlan validationPlan))
+                    {
+                        foreach (object frame in scheduler.RunPlan(
+                                     validationPlan,
+                                     actionIndex + 1,
+                                     actions.Count))
+                        {
+                            yield return frame;
+                        }
+                    }
+
                     Action action = actions[actionIndex];
                     string label = GetActionLabel(action);
                     LoadingActionPlan plan = LoadingActionAdapter.CreatePlan(action, label);
@@ -98,6 +119,30 @@ namespace FixWorld.Loading
             MethodInfo method = action.Method;
             string declaringType = method.DeclaringType?.ToString() ?? "<dynamic>";
             return declaringType + " -> " + method;
+        }
+
+        private static bool TryCollectContentBatch(
+            IReadOnlyList<Action> actions,
+            int startIndex,
+            out List<ModContentPack> mods,
+            out int lastIndex)
+        {
+            mods = new List<ModContentPack>();
+            lastIndex = startIndex;
+            for (int index = startIndex; index < actions.Count; index++)
+            {
+                if (!ContentLoadingPipeline.TryCreateCompatible(
+                        actions[index],
+                        out ContentLoadingPipeline content))
+                {
+                    break;
+                }
+
+                mods.Add(content.Mod);
+                lastIndex = index;
+            }
+
+            return mods.Count > 0;
         }
     }
 }

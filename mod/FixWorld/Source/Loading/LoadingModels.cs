@@ -40,6 +40,7 @@ namespace FixWorld.Loading
         InjectLanguage,
         LoadTextureCacheIndex,
         ValidateTextureCache,
+        CommitTextureCache,
         BuildTextureCache,
         PruneTextureCache,
         SaveTextureCacheIndex,

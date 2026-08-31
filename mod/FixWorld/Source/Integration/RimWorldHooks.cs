@@ -104,22 +104,106 @@ namespace FixWorld.Integration
         [HarmonyPatch(typeof(ModContentPack), nameof(ModContentPack.GetAllFilesForMod))]
         private static class ModFileLoaderPatch
         {
+            private static readonly MethodBase PatchedMethod = AccessTools.Method(
+                typeof(ModContentPack),
+                nameof(ModContentPack.GetAllFilesForMod));
+            private static bool foreignPatchReported;
+
             [HarmonyPrefix]
-            private static void Prefix(out long __state)
+            [HarmonyPriority(Priority.First)]
+            private static bool Prefix(
+                ModContentPack mod,
+                string contentPath,
+                Func<string, bool> validateExtension,
+                List<string> foldersToLoadDebug,
+                ref Dictionary<string, FileInfo> __result,
+                out ModFileLoadState __state)
             {
-                __state = BenchmarkRecorder.BeginFileDiscovery();
+                __state = new ModFileLoadState(BenchmarkRecorder.BeginFileDiscovery());
+                if (HasForeignPatches())
+                {
+                    ReportForeignPatchFallback();
+                    return true;
+                }
+
+                try
+                {
+                    long discoveryStartedAt = __state.DiscoveryStartedAt;
+                    __result = ModFileLoader.Load(
+                        mod,
+                        contentPath,
+                        validateExtension,
+                        foldersToLoadDebug,
+                        files => BenchmarkRecorder.ObserveFiles(
+                            discoveryStartedAt,
+                            mod,
+                            contentPath,
+                            files));
+                    __state.OwnedByFixWorld = true;
+                    return false;
+                }
+                catch (Exception exception)
+                {
+                    Log.Warning(
+                        "[FixWorld] File discovery fell back to RimWorld for " +
+                        mod.PackageId + ": " + exception);
+                    return true;
+                }
             }
 
             [HarmonyPostfix]
             private static void Postfix(
-                long __state,
+                ModFileLoadState __state,
                 ModContentPack mod,
                 string contentPath,
                 List<string> foldersToLoadDebug,
                 Dictionary<string, FileInfo> __result)
             {
-                BenchmarkRecorder.ObserveFiles(__state, mod, contentPath, __result);
-                TextureDdsCache.Apply(mod, contentPath, foldersToLoadDebug, __result);
+                if (!__state.OwnedByFixWorld)
+                {
+                    BenchmarkRecorder.ObserveFiles(
+                        __state.DiscoveryStartedAt,
+                        mod,
+                        contentPath,
+                        __result);
+                    TextureDdsCache.Apply(mod, contentPath, foldersToLoadDebug, __result);
+                }
+            }
+
+            private static bool HasForeignPatches()
+            {
+                Patches patches = Harmony.GetPatchInfo(PatchedMethod);
+                return patches != null &&
+                       patches.Prefixes
+                           .Concat(patches.Postfixes)
+                           .Concat(patches.Transpilers)
+                           .Concat(patches.Finalizers)
+                           .Any(patch => patch.owner != HarmonyId);
+            }
+
+            private static void ReportForeignPatchFallback()
+            {
+                if (foreignPatchReported)
+                {
+                    return;
+                }
+
+                foreignPatchReported = true;
+                Log.Warning(
+                    "[FixWorld] Another mod patches ModContentPack.GetAllFilesForMod; " +
+                    "FixWorld leaves file discovery to RimWorld and only applies the DDS cache.");
+            }
+
+            private struct ModFileLoadState
+            {
+                internal readonly long DiscoveryStartedAt;
+                internal bool OwnedByFixWorld;
+
+                internal ModFileLoadState(long discoveryStartedAt)
+                {
+                    DiscoveryStartedAt = discoveryStartedAt;
+                    OwnedByFixWorld = false;
+                }
             }
         }
 

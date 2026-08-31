@@ -13,7 +13,7 @@ namespace FixWorld.Loading
         private const int UiRefreshMilliseconds = 150;
         private static readonly long UiRefreshTicks =
             Math.Max(1L, Stopwatch.Frequency * UiRefreshMilliseconds / 1000L);
-        private static readonly int WorkerCount =
+        private static readonly int DefaultWorkerCount =
             Math.Max(1, Environment.ProcessorCount - 1);
 
         private static bool running;
@@ -164,7 +164,10 @@ namespace FixWorld.Loading
             long queuedAt = Stopwatch.GetTimestamp();
             int nextTask = -1;
             int completedTasks = 0;
-            int workers = Math.Min(WorkerCount, stage.TaskCount);
+            int workerLimit = stage.MaxParallelism > 0
+                ? stage.MaxParallelism
+                : DefaultWorkerCount;
+            int workers = Math.Min(workerLimit, stage.TaskCount);
             Task[] workerTasks = new Task[workers];
 
             for (int worker = 0; worker < workers; worker++)
@@ -435,6 +438,12 @@ namespace FixWorld.Loading
 
         private static void ValidateStage(LoadingPipelineStage stage)
         {
+            if (stage.MaxParallelism < 0)
+            {
+                throw new InvalidOperationException(
+                    "Loading stage has an invalid parallelism limit: " + stage.Name);
+            }
+
             for (int taskIndex = 0; taskIndex < stage.TaskCount; taskIndex++)
             {
                 LoadingWorkItem item = stage.GetTask(taskIndex);

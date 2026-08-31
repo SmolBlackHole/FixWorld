@@ -12,7 +12,7 @@ using Verse;
 
 namespace FixWorld.Caching
 {
-    internal static class TextureDdsCache
+    internal static partial class TextureDdsCache
     {
         private const string CacheIdentityVersion = "bc3-unorm-mips-v3-content-index";
         private const string LegacyCacheIdentityVersion = "bc3-unorm-mips-v2-vflip";
@@ -20,6 +20,7 @@ namespace FixWorld.Caching
         private const string CacheRootEnvironmentVariable = "FIXWORLD_DDS_CACHE_ROOT";
         private const string MaxCacheGiBEnvironmentVariable = "FIXWORLD_DDS_CACHE_MAX_GIB";
         private const string MinimumFreeGiBEnvironmentVariable = "FIXWORLD_DDS_CACHE_MIN_FREE_GIB";
+        private const string WorkerCountEnvironmentVariable = "FIXWORLD_DDS_WORKERS";
         private const long DefaultMinimumFreeBytes = 10L * 1024L * 1024L * 1024L;
 
         private static readonly object Sync = new object();
@@ -41,6 +42,10 @@ namespace FixWorld.Caching
         private static long budgetSkippedCount;
         private static long failedCount;
         private static long buildMilliseconds;
+        private static int workerCount;
+        private static long workerPreparedMods;
+        private static long workerAppliedMods;
+        private static long workerFallbackMods;
 
         internal static void Initialize(string modRoot, FixWorldSettings settings)
         {
@@ -54,6 +59,7 @@ namespace FixWorld.Caching
                 Environment.GetEnvironmentVariable(EnabledEnvironmentVariable),
                 "0",
                 StringComparison.Ordinal);
+            workerCount = ReadWorkerCount();
             if (!enabled)
             {
                 Log.Message("[FixWorld] DDS cache disabled.");
@@ -128,17 +134,29 @@ namespace FixWorld.Caching
 
             lock (Sync)
             {
+                bool prepared = HasCompletePreparedValidation(mod);
                 LoadingStageOperation operation = LoadingStageMailbox.Begin(
                     Descriptor(
                         LoadingStage.Content,
-                        LoadingStep.ValidateTextureCache,
-                        "Validate texture cache",
-                        "Checking cached textures for " + mod.Name,
+                        prepared
+                            ? LoadingStep.CommitTextureCache
+                            : LoadingStep.ValidateTextureCache,
+                        prepared
+                            ? "Commit texture cache"
+                            : "Validate texture cache",
+                        prepared
+                            ? "Applying prepared texture mapping for " + mod.Name
+                            : "Checking cached textures for " + mod.Name,
                         LoadingModAttribution.Exact(mod),
                         mod.PackageId,
                         LoadingThreadAffinity.WorkerSafe));
                 try
                 {
+                    if (TryApplyPrepared(mod, files))
+                    {
+                        return;
+                    }
+
                     ApplyCore(mod, files, operation);
                 }
                 catch (Exception exception)
@@ -173,6 +191,7 @@ namespace FixWorld.Caching
                 }
                 finally
                 {
+                    ClearPreparedValidations();
                     currentCacheBytes = index.CurrentBytes;
                     index.Dispose();
                     index = null;
@@ -194,7 +213,11 @@ namespace FixWorld.Caching
                 Interlocked.Read(ref failedCount),
                 Interlocked.Read(ref buildMilliseconds),
                 Interlocked.Read(ref currentCacheBytes),
-                maxCacheBytes);
+                maxCacheBytes,
+                workerCount,
+                Interlocked.Read(ref workerPreparedMods),
+                Interlocked.Read(ref workerAppliedMods),
+                Interlocked.Read(ref workerFallbackMods));
         }
 
         private static void ApplyCore(
@@ -630,6 +653,7 @@ namespace FixWorld.Caching
                     "; index=" + index.LoadStatus +
                     "; entries=" + index.EntryCount +
                     "; texconv=" + builder.TexconvPath +
+                    "; ddsWorkers=" + workerCount +
                     "; maxCache=" + maxCacheDescription +
                     "; minFreeGiB=" +
                     ToGiB(minimumFreeBytes).ToString("0.###", CultureInfo.InvariantCulture));
@@ -733,6 +757,25 @@ namespace FixWorld.Caching
             return GiBToBytes(gibibytes);
         }
 
+        private static int ReadWorkerCount()
+        {
+            string value = Environment.GetEnvironmentVariable(WorkerCountEnvironmentVariable);
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return Math.Min(32, Math.Max(1, Environment.ProcessorCount / 2));
+            }
+
+            if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int count) ||
+                count < 0 ||
+                count > 32)
+            {
+                throw new InvalidOperationException(
+                    "Invalid worker count in " + WorkerCountEnvironmentVariable + ": " + value);
+            }
+
+            return count;
+        }
+
         private static long GiBToBytes(double gibibytes)
         {
             double bytes = gibibytes * 1024.0 * 1024.0 * 1024.0;
@@ -799,6 +842,10 @@ namespace FixWorld.Caching
         internal readonly long BuildMilliseconds;
         internal readonly long CacheBytes;
         internal readonly long MaxCacheBytes;
+        internal readonly int WorkerCount;
+        internal readonly long WorkerPreparedMods;
+        internal readonly long WorkerAppliedMods;
+        internal readonly long WorkerFallbackMods;
 
         internal TextureDdsCacheSnapshot(
             bool enabled,
@@ -812,7 +859,11 @@ namespace FixWorld.Caching
             long failed,
             long buildMilliseconds,
             long cacheBytes,
-            long maxCacheBytes)
+            long maxCacheBytes,
+            int workerCount,
+            long workerPreparedMods,
+            long workerAppliedMods,
+            long workerFallbackMods)
         {
             Enabled = enabled;
             Hits = hits;
@@ -826,6 +877,10 @@ namespace FixWorld.Caching
             BuildMilliseconds = buildMilliseconds;
             CacheBytes = cacheBytes;
             MaxCacheBytes = maxCacheBytes;
+            WorkerCount = workerCount;
+            WorkerPreparedMods = workerPreparedMods;
+            WorkerAppliedMods = workerAppliedMods;
+            WorkerFallbackMods = workerFallbackMods;
         }
     }
 }

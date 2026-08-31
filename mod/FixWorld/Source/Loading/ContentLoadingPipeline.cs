@@ -26,6 +26,8 @@ namespace FixWorld.Loading
 
         private readonly ModContentPack mod;
 
+        internal ModContentPack Mod => mod;
+
         private ContentLoadingPipeline(ModContentPack mod)
         {
             this.mod = mod;

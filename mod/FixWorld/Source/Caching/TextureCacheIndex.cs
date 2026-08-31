@@ -139,6 +139,72 @@ namespace FixWorld.Caching
             return true;
         }
 
+        internal TextureCacheValidationIndex CreateValidationSnapshot()
+        {
+            Dictionary<string, TextureCacheValidationIndexEntry> snapshotEntries =
+                new Dictionary<string, TextureCacheValidationIndexEntry>(
+                    entries.Count,
+                    StringComparer.Ordinal);
+            foreach (KeyValuePair<string, TextureCacheIndexEntry> pair in entries)
+            {
+                TextureCacheIndexEntry entry = pair.Value;
+                if (!TryResolveCachePath(cacheRoot, entry.CachePath, out string cachePath))
+                {
+                    continue;
+                }
+
+                snapshotEntries.Add(
+                    pair.Key,
+                    new TextureCacheValidationIndexEntry(
+                        entry.SourceLength,
+                        entry.SourceWriteTimeUtcTicks,
+                        entry.ConverterIdentity,
+                        cachePath,
+                        entry.CacheBytes));
+            }
+
+            return new TextureCacheValidationIndex(snapshotEntries);
+        }
+
+        internal bool MatchesPrepared(
+            string packageId,
+            string sourcePath,
+            long sourceLength,
+            long sourceWriteTimeUtcTicks,
+            string converterIdentity,
+            string cachePath)
+        {
+            if (!entries.TryGetValue(
+                    GetKey(packageId, sourcePath),
+                    out TextureCacheIndexEntry entry) ||
+                entry.SourceLength != sourceLength ||
+                entry.SourceWriteTimeUtcTicks != sourceWriteTimeUtcTicks ||
+                !ConverterMatches(entry, converterIdentity) ||
+                !TryResolveCachePath(cacheRoot, entry.CachePath, out string resolvedPath))
+            {
+                return false;
+            }
+
+            return string.Equals(
+                Path.GetFullPath(cachePath),
+                resolvedPath,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal void TouchPrepared(string packageId, string sourcePath)
+        {
+            if (!entries.TryGetValue(
+                    GetKey(packageId, sourcePath),
+                    out TextureCacheIndexEntry entry))
+            {
+                throw new InvalidOperationException(
+                    "Prepared DDS cache entry disappeared before commit: " + sourcePath);
+            }
+
+            entry.LastUsedUtcTicks = DateTime.UtcNow.Ticks;
+            dirty = true;
+        }
+
         internal bool TryReuseContent(
             string packageId,
             string sourcePath,
@@ -579,5 +645,80 @@ namespace FixWorld.Caching
 
         [DataMember(Name = "lastUsedUtcTicks", Order = 9)]
         public long LastUsedUtcTicks { get; set; }
+    }
+
+    internal sealed class TextureCacheValidationIndex
+    {
+        private readonly IReadOnlyDictionary<string, TextureCacheValidationIndexEntry>
+            entries;
+
+        internal TextureCacheValidationIndex(
+            IReadOnlyDictionary<string, TextureCacheValidationIndexEntry> entries)
+        {
+            this.entries = entries;
+        }
+
+        internal bool TryGetFresh(
+            string packageId,
+            string sourcePath,
+            FileInfo source,
+            string converterIdentity,
+            out string cachePath)
+        {
+            cachePath = null;
+            if (!entries.TryGetValue(
+                    GetKey(packageId, sourcePath),
+                    out TextureCacheValidationIndexEntry entry) ||
+                entry.SourceLength != source.Length ||
+                entry.SourceWriteTimeUtcTicks != source.LastWriteTimeUtc.Ticks ||
+                !ConverterMatches(entry.ConverterIdentity, converterIdentity) ||
+                !File.Exists(entry.CachePath) ||
+                new FileInfo(entry.CachePath).Length != entry.CacheBytes)
+            {
+                return false;
+            }
+
+            cachePath = entry.CachePath;
+            return true;
+        }
+
+        private static bool ConverterMatches(string indexed, string current)
+        {
+            return string.IsNullOrEmpty(current) ||
+                   string.Equals(indexed, current, StringComparison.Ordinal);
+        }
+
+        private static string GetKey(string packageId, string sourcePath)
+        {
+            return Normalize(packageId) + "\n" + Normalize(sourcePath);
+        }
+
+        private static string Normalize(string value)
+        {
+            return value.Replace('\\', '/').ToLowerInvariant();
+        }
+    }
+
+    internal readonly struct TextureCacheValidationIndexEntry
+    {
+        internal readonly long SourceLength;
+        internal readonly long SourceWriteTimeUtcTicks;
+        internal readonly string ConverterIdentity;
+        internal readonly string CachePath;
+        internal readonly long CacheBytes;
+
+        internal TextureCacheValidationIndexEntry(
+            long sourceLength,
+            long sourceWriteTimeUtcTicks,
+            string converterIdentity,
+            string cachePath,
+            long cacheBytes)
+        {
+            SourceLength = sourceLength;
+            SourceWriteTimeUtcTicks = sourceWriteTimeUtcTicks;
+            ConverterIdentity = converterIdentity;
+            CachePath = cachePath;
+            CacheBytes = cacheBytes;
+        }
     }
 }

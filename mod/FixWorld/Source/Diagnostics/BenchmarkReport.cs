@@ -559,6 +559,10 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "buildMs", Order = 10)] public long BuildMilliseconds { get; private set; }
         [DataMember(Name = "cacheBytes", Order = 11)] public long CacheBytes { get; private set; }
         [DataMember(Name = "maxCacheBytes", Order = 12)] public long MaxCacheBytes { get; private set; }
+        [DataMember(Name = "workerCount", Order = 13)] public int WorkerCount { get; private set; }
+        [DataMember(Name = "workerPreparedMods", Order = 14)] public long WorkerPreparedMods { get; private set; }
+        [DataMember(Name = "workerAppliedMods", Order = 15)] public long WorkerAppliedMods { get; private set; }
+        [DataMember(Name = "workerFallbackMods", Order = 16)] public long WorkerFallbackMods { get; private set; }
 
         internal DdsCacheReport(TextureDdsCacheSnapshot cache)
         {
@@ -574,6 +578,10 @@ namespace FixWorld.Diagnostics
             BuildMilliseconds = cache.BuildMilliseconds;
             CacheBytes = cache.CacheBytes;
             MaxCacheBytes = cache.MaxCacheBytes;
+            WorkerCount = cache.WorkerCount;
+            WorkerPreparedMods = cache.WorkerPreparedMods;
+            WorkerAppliedMods = cache.WorkerAppliedMods;
+            WorkerFallbackMods = cache.WorkerFallbackMods;
         }
     }
 }

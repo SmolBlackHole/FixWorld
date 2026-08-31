@@ -1,6 +1,6 @@
 # TODO
 
-Aktuell: **Worker-sichere Datei- und Byte-Arbeit messen und als ersten parallelen Slice auswählen**
+Aktuell: **DDS-Erzeugung als nächsten echten `ParallelThenCommit`-Slice zerlegen**
 
 ## Erledigter Stand
 
@@ -47,12 +47,31 @@ Aktuell: **Worker-sichere Datei- und Byte-Arbeit messen und als ersten parallele
 
 ## Nächster Slice: erste Worker-Arbeit
 
+- [x] Worker-Ausführung für `Parallel` und `ParallelThenCommit` im gemeinsamen Scheduler bereitstellen
+- [x] Harmony für den unterstützten Dateiladevertrag nur als Einstieg verwenden und Discovery, DDS-Validierung sowie Commit vollständig über FixWorld ausführen
+- [ ] bei fremden inkompatiblen Patches oder einem nicht unterstützten Vertrag kontrolliert RimWorlds Originalpfad verwenden
+- [x] DDS-Validierung pro Mod in unveränderliche Worker-Eingaben und geordnete Main-Thread-Commits teilen
+- [x] DDS-Validierung in Mod-Batches ausführen, nicht als Task pro Textur
+- [x] sequenziellen Fallback und expliziten A/B-Schalter für den DDS-Worker-Pfad bereitstellen
+- [x] Workeranzahl und aktiven DDS-Ausführungsmodus im Benchmark berichten
+- [x] identische Dateizuordnung, identischen Cache-Index, 10.460 Treffer und keine unerwarteten Misses prüfen
+- [x] zwei sequenzielle und zwei parallele Läufe mit vollständiger Modliste vergleichen
+- [x] DDS aus, kalten Aufbau und Warmstart vergleichen: 47,2 s, 124,5 s und 25,6 s Loaderzeit
+- [x] Workerstandard aus der Hälfte der logischen CPUs ableiten und per Umgebung überschreibbar lassen
+- [ ] Parallelität je Stage bestimmen: Validierung war mit 4 Workern schneller als mit 8
+- [ ] `texconv` und reine DDS-Erzeugung parallel ausführen, Ergebnisse atomar und geordnet veröffentlichen
+- [ ] DDS-Build mit 2, 4 und 8 Workern vergleichen
+- [ ] Cache-Index früh auf einem Worker laden und vor der ersten DDS-Abfrage geordnet übernehmen
+- [ ] Texturvorbereitung von Unity-Erzeugung, `Apply`, Kompression und Upload trennen
 - [ ] Renderpausen und reine Wall-Time pro framefähiger Stage getrennt berichten
 - [ ] `ThingDef.PostLoad`, Sound-Auflösung und Atlas-Build getrennt messen
 - [ ] XML-Patches, Def-Auflösung, Reflection und Harmony-Scanning einzeln bewerten
+- [ ] statische Konstruktoren weiterhin geordnet übernehmen und nur nach mod-spezifischem Nachweis optimieren
 - [ ] Discovery, Read-ahead, Cache-Validierung und reine Byte-Verarbeitung als erste Worker-Kandidaten messen
 - [ ] begrenzten Worker-Pool mit Parallelitäts-, Byte- und Queue-Limit sowie Backpressure bauen
 - [ ] Worker-Ergebnisse geordnet an den Hauptthread übergeben und Unity-Objekte nur dort erzeugen oder verändern
+- [ ] Workerfehler abbrechen oder kontrolliert auf den sequenziellen Originalpfad zurückführen
+- [ ] deterministische Ergebnis- und Commit-Reihenfolge über wiederholte Läufe prüfen
 - [ ] Worker-Anzahl gegen CPU-Kerne, Speicherdruck sowie NVMe, SATA und HDD benchmarken
 - [ ] RAM-, VRAM-, Queue- und GC-Spitzen pro Stage erfassen
 
@@ -61,6 +80,7 @@ Aktuell: **Worker-sichere Datei- und Byte-Arbeit messen und als ersten parallele
 - [x] normales Mod-Loading mit und ohne DDS reproduzierbar messen
 - [x] vollständige aktive Modliste über `--live-mods` testen
 - [ ] Preloader-Modus im Report als `on` oder `off` speichern
+- [ ] Doorstop-Version und Zeit vom frühen Einstieg bis zum normalen FixWorld-Entrypoint berichten
 - [ ] Preloader für Benchmarks explizit schaltbar machen, statt den Installationszustand zu erben
 - [ ] Preloader `off` und `on` erst vergleichen, sobald der frühe Einstieg echte Arbeit übernimmt
 - [ ] PNG/JPG sowie DDS jeweils mit kaltem und warmem OS-Dateicache messen
@@ -97,6 +117,16 @@ Der Preloader ist für den aktuellen Staged Loader nicht erforderlich und bleibt
 - [ ] eingefrorenen komplexen Save zweimal messen
 - [ ] mit Dubs den dominanten Tick-Pfad bestimmen
 - [ ] genau eine Optimierung implementieren und per A/B-Test bewerten
+
+### Pathfinding-Slice (später)
+
+- [ ] Path-Requests nach Pawn, Ziel, Traversal-Modus und relevanten Kostenprofilen erfassen
+- [ ] Kosten und Abhängigkeiten für Türen, Gefahren, Feuer, Reservierungen, Terrain, Gebäude, temporäre Hindernisse, Regionen und Zonen untersuchen
+- [ ] Path-Reuse und gestufte Path-Caches für identische oder hinreichend ähnliche Requests prüfen
+- [ ] präzise Invalidierung bei Änderungen an Türen, Feuer, Reservierungen, Terrain, Gebäuden, Hindernissen, Regionen und Zonen modellieren
+- [ ] Verhalten und Contention bei vielen gleichzeitig pfadsuchenden Pawns messen
+- [ ] Zeit pro Path-Request, Requests pro Tick, expandierte Nodes, Pfadlänge, Worst-Case-Nodes, Cache-Hit-Rate und Invalidierungen berichten
+- [ ] Path-Reuse als erste Hypothese per A/B-Test gegen unverändertes RimWorld prüfen
 
 ## Später
 

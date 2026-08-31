@@ -133,6 +133,10 @@ class TextureData(TypedDict):
 class DdsCacheData(TypedDict):
     hits: int
     misses: int
+    workerCount: int
+    workerPreparedMods: int
+    workerAppliedMods: int
+    workerFallbackMods: int
 
 
 class BenchmarkReport(TypedDict):
@@ -389,6 +393,10 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
             "FIXWORLD_DDS_CACHE_ROOT": str(cache_root),
         }
     )
+    if args.dds_workers is None:
+        environment.pop("FIXWORLD_DDS_WORKERS", None)
+    else:
+        environment["FIXWORLD_DDS_WORKERS"] = str(args.dds_workers)
     arguments = [
         f"-savedatafolder={user_data}",
         "-logFile",
@@ -434,6 +442,7 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
             (
                 f"activeMods={active_mods}",
                 f"ddsCache={args.dds_cache}",
+                f"ddsWorkers={cache['workerCount']}",
                 f"textureCompression={not args.disable_texture_compression}",
                 f"monitor={monitor.friendly_name}/{rimworld.actual_monitor}",
                 f"relevantErrors={error_count}",
@@ -444,6 +453,9 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                 f"duplicateTexturePaths={paths['duplicatePaths']}",
                 f"ddsCacheHits={cache['hits']}",
                 f"ddsCacheMisses={cache['misses']}",
+                f"ddsWorkerPreparedMods={cache['workerPreparedMods']}",
+                f"ddsWorkerAppliedMods={cache['workerAppliedMods']}",
+                f"ddsWorkerFallbackMods={cache['workerFallbackMods']}",
                 "staticConstructorTailMs="
                 f"{float(loader['staticConstructorTailMs']):.3f}",
                 "topLoaderSteps="
@@ -506,6 +518,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--monitor", type=bounded_int(1, 8), default=2)
     parser.add_argument("--timeout", type=bounded_int(30, 600), default=180)
     parser.add_argument("--dds-cache-root", type=Path)
+    parser.add_argument(
+        "--dds-workers",
+        type=bounded_int(0, 32),
+        help="Override DDS workers. By default FixWorld uses half the logical CPUs.",
+    )
     parser.add_argument("--no-dds-cache", action="store_false", dest="dds_cache")
     parser.add_argument("--disable-texture-compression", action="store_true")
     parser.add_argument("--minimized", action="store_true")
