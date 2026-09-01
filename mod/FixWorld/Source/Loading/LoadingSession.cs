@@ -1,7 +1,6 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
-using FixWorld.Scheduling;
 
 namespace FixWorld.Loading
 {
@@ -53,7 +52,6 @@ namespace FixWorld.Loading
 
         internal static bool TryComplete()
         {
-            FixWorldScheduler.DrainEvents();
             double observedMilliseconds;
             IDisposable subscription;
             lock (Sync)
@@ -82,7 +80,6 @@ namespace FixWorld.Loading
 
         internal static bool TryGetSnapshot(out LoadingSnapshot snapshot)
         {
-            FixWorldScheduler.DrainEvents();
             lock (Sync)
             {
                 if (!active)

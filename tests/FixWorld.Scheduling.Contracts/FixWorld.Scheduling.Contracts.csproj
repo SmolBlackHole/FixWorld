@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\mod\FixWorld\Source\Scheduling\FixWorldScheduler.cs"
+      Link="Scheduling\FixWorldScheduler.cs" />
+    <Compile Include="..\..\mod\FixWorld\Source\Scheduling\MainThreadDispatcher.cs"
+      Link="Scheduling\MainThreadDispatcher.cs" />
+    <Compile Include="..\..\mod\FixWorld\Source\Scheduling\SchedulerJobs.cs"
+      Link="Scheduling\SchedulerJobs.cs" />
+    <Compile Include="..\..\mod\FixWorld\Source\Scheduling\SchedulerRuntime.cs"
+      Link="Scheduling\SchedulerRuntime.cs" />
+  </ItemGroup>
+</Project>

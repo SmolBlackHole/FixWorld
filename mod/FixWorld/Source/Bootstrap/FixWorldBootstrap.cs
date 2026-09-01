@@ -1,6 +1,7 @@
 using System;
 using FixWorld.Diagnostics;
 using FixWorld.Integration;
+using FixWorld.Lifecycle;
 using FixWorld.Loading;
 using FixWorld.Preloader;
 using FixWorld.Scheduling;
@@ -12,6 +13,7 @@ namespace FixWorld
     internal static class FixWorldBootstrap
     {
         private static readonly object Sync = new object();
+        private static IDisposable lifecycleSubscription;
         private static bool initialized;
 
         internal static void Initialize(
@@ -29,16 +31,34 @@ namespace FixWorld
                 PreloaderTimelineSnapshot preloaderTimeline =
                     PreloaderTimelineState.Capture();
                 FixWorldScheduler.Initialize();
-                LoadingSession.Start(true);
-                LoadingTelemetry.Start(BenchmarkRecorder.Enabled);
-                bool hooksInstalled = RimWorldHooks.Install(BenchmarkRecorder.Enabled);
-                TextureDdsCache.Initialize(content.RootDir, settings);
-                PreloaderManager.Configure(content.RootDir);
-                PreloaderPrompt.Configure(owner, settings);
+                try
+                {
+                    if (!RimWorldHooks.Install(BenchmarkRecorder.Enabled))
+                    {
+                        throw new InvalidOperationException(
+                            "FixWorld could not install its required RimWorld hooks.");
+                    }
+
+                    LoadingSession.Start(true);
+                    LoadingTelemetry.Start(BenchmarkRecorder.Enabled);
+                    TextureDdsCache.Initialize(content.RootDir, settings);
+                    PreloaderManager.Configure(content.RootDir);
+                    PreloaderPrompt.Configure(owner, settings);
+                    lifecycleSubscription =
+                        RimWorldLifecycle.Subscribe(ConsumeLifecycleEvent);
+                }
+                catch
+                {
+                    lifecycleSubscription?.Dispose();
+                    lifecycleSubscription = null;
+                    RimWorldHooks.Uninstall();
+                    FixWorldScheduler.Shutdown();
+                    throw;
+                }
 
                 initialized = true;
                 Log.Message(
-                    "[FixWorld] Initialized; hooks=" + hooksInstalled +
+                    "[FixWorld] Initialized; hooks=True" +
                     ", benchmark=" + BenchmarkRecorder.Enabled +
                     ", workers=" + FixWorldScheduler.WorkerCount +
                     ", earlyLoader=" + preloaderTimeline.Active + ".");
@@ -46,6 +66,49 @@ namespace FixWorld
                     "[FixWorld] Early timeline; " +
                     PreloaderTimelineState.Format(preloaderTimeline) + ".");
             }
+        }
+
+        private static void ConsumeLifecycleEvent(
+            RimWorldLifecycleEvent lifecycleEvent)
+        {
+            switch (lifecycleEvent.Kind)
+            {
+                case RimWorldLifecycleEventKind.PlayDataReady:
+                    TextureDdsCache.Complete();
+                    break;
+                case RimWorldLifecycleEventKind.MainMenuReady:
+                    if (CompleteStartup(lifecycleEvent.Source))
+                    {
+                        Log.Message("[FixWorld] Main menu ready.");
+                    }
+
+                    TextureDdsCache.StartDeferredBuild();
+                    PreloaderPrompt.TryShow();
+                    break;
+                case RimWorldLifecycleEventKind.GameReady:
+                    CompleteStartup(lifecycleEvent.Source);
+                    TextureDdsCache.StartDeferredBuild();
+                    Log.Message(
+                        "[FixWorld] Game ready; generation=" +
+                        lifecycleEvent.GameGeneration + ".");
+                    break;
+                case RimWorldLifecycleEventKind.ShuttingDown:
+                    lifecycleSubscription?.Dispose();
+                    lifecycleSubscription = null;
+                    break;
+            }
+        }
+
+        private static bool CompleteStartup(string source)
+        {
+            if (!LoadingSession.TryComplete())
+            {
+                return false;
+            }
+
+            LoadingTelemetry.Complete();
+            BenchmarkRecorder.Complete(source);
+            return true;
         }
     }
 }

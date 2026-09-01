@@ -25,8 +25,6 @@ namespace FixWorld.Loading
 
         internal static bool ConsumeFrameBoundaryRequest()
         {
-            FixWorldScheduler.BindMainThread();
-            FixWorldScheduler.PumpMainThread();
             if (!running)
             {
                 frameBoundaryRequested = false;
@@ -224,7 +222,6 @@ namespace FixWorld.Loading
                     break;
                 }
 
-                FixWorldScheduler.PumpMainThread();
                 RequestFrame();
                 yield return null;
             }
@@ -259,23 +256,24 @@ namespace FixWorld.Loading
                         yield return null;
                     }
 
-                    FixWorldScheduler.BindMainThread();
-                    MainThreadActionHandle commit = FixWorldScheduler.Dispatch(
-                        concurrencyKey + "/commit/" + taskIndex,
-                        "Commit " + item.Subject,
-                        result.Prepared.Commit);
-                    FixWorldScheduler.PumpMainThread(1, int.MaxValue);
-                    result.MainThreadTicks += commit.ExecutionTicks;
-                    result.WallTicks = Stopwatch.GetTimestamp() - queuedAt;
-                    if (commit.State != SchedulerJobState.Completed)
+                    long commitStartedAt = Stopwatch.GetTimestamp();
+                    try
+                    {
+                        result.Prepared.Commit();
+                    }
+                    catch (Exception exception)
                     {
                         result.Succeeded = false;
-                        result.Exception = commit.Exception ??
-                            new InvalidOperationException(
-                                "Main-thread commit did not complete; state=" +
-                                commit.State + ".");
-                        LogFailure(item, result.Exception);
+                        result.Exception = exception;
+                        LogFailure(item, exception);
                     }
+                    finally
+                    {
+                        result.MainThreadTicks +=
+                            Stopwatch.GetTimestamp() - commitStartedAt;
+                    }
+
+                    result.WallTicks = Stopwatch.GetTimestamp() - queuedAt;
                 }
 
                 long executionTicks = result.WorkerThreadTicks + result.MainThreadTicks;

@@ -93,30 +93,6 @@ namespace FixWorld.Caching
             mutations;
     }
 
-    internal sealed class CacheDeltaBuilder<TKey, TValue, TStamp>
-    {
-        private readonly List<CacheMutation<TKey, TValue, TStamp>> mutations =
-            new List<CacheMutation<TKey, TValue, TStamp>>();
-
-        internal int Count => mutations.Count;
-
-        internal void Upsert(TKey key, TValue value, TStamp stamp)
-        {
-            mutations.Add(
-                CacheMutation<TKey, TValue, TStamp>.Upsert(key, value, stamp));
-        }
-
-        internal void Remove(TKey key)
-        {
-            mutations.Add(CacheMutation<TKey, TValue, TStamp>.Remove(key));
-        }
-
-        internal CacheDelta<TKey, TValue, TStamp> Build()
-        {
-            return new CacheDelta<TKey, TValue, TStamp>(mutations.ToArray());
-        }
-    }
-
     internal sealed class CacheRuntime<TKey, TValue, TStamp>
     {
         private readonly object writerSync = new object();

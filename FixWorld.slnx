@@ -2,4 +2,5 @@
   <Project Path="mod/FixWorld/Source/FixWorld.csproj" />
   <Project Path="preloader/FixWorld.Preloader/FixWorld.Preloader.csproj" />
   <Project Path="preloader/FixWorld.Preloader.Tool/FixWorld.Preloader.Tool.csproj" />
+  <Project Path="tests/FixWorld.Scheduling.Contracts/FixWorld.Scheduling.Contracts.csproj" />
 </Solution>

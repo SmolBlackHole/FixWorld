@@ -1,8 +1,8 @@
 # TODO
 
-Aktuell: **DDS-Warmstart auf HDD mit frühem, begrenztem Read-ahead verkürzen**
+Aktuell: **Frühen Doorstop-Einstieg absichern und den Mod-Boot schrittweise als eigene FixWorld-Pipeline übernehmen**
 
-Planstatus: **Scheduler, Cache-Grundlage, DDS-Background-Pipeline, paralleles `LoadModXML()` und geordnete Patch-Pipeline umgesetzt**
+Status: **Scheduler- und Lifecycle-Cleanup sowie Hauptmenü-Smokes sind abgeschlossen; die manuellen Spielwechsel-Prüfungen bleiben offen**
 
 ## Erledigter Stand
 
@@ -106,20 +106,21 @@ Planstatus: **Scheduler, Cache-Grundlage, DDS-Background-Pipeline, paralleles `L
 Die Stage-Struktur bleibt für Reihenfolge und Barrieren zuständig. Der Scheduler entscheidet unabhängig davon, wann, wo und mit welchem Budget ein Job läuft.
 
 - [x] `LoadingScheduler` zu einem gemeinsamen FixWorld-Scheduler für Startup und laufendes Spiel erweitern
-- [x] Ausführungsmodus (`MainThread`, `Ordered`, `Parallel`, `ParallelThenCommit`) von Lebenszeit (`Critical`, `Deferred`, `Background`) trennen
+- [x] Ausführungsmodus (`MainThread`, `Ordered`, `Parallel`, `ParallelThenCommit`) von Lebenszeit (`Critical`, `Background`) trennen
 - [x] typisierte Jobs und Handles mit Zustand, Ergebnis, Fehler, Abhängigkeiten, Priorität und Abbruch modellieren
 - [x] einen begrenzten, langlebigen Worker-Pool statt eigener `Task.Run`-Logik pro Feature verwenden
 - [x] Parallelitäts-, Queue-, Byte-, CPU- und I/O-Budgets mit Backpressure unterstützen
-- [x] Main-Thread-Commits ausschließlich über einen Dispatcher und die vorhandenen Mailboxes zustellen
-- [x] Lebenszyklus, Wartezeit, Workerzeit, Commitzeit und Fehler über Mailbox und Telemetrie veröffentlichen
-- [ ] generischen Job-Fortschritt mit `current`, `total` und optionalem Detailtext über die Scheduler-Mailbox veröffentlichen
+- [x] Main-Thread-Arbeit explizit halten: vorbereitete Loader-Ergebnisse direkt committen, Background-Ergebnisse über den Dispatcher zustellen
+- [x] RimWorld-Lifecycle und Loading-Events über typisierte Mailboxes veröffentlichen und ausschließlich in `Root.Update` plus finalem Shutdown-Flush pumpen
+- [ ] generischen Job-Fortschritt nur bei einem echten Verbraucher über Loading-Events oder eine gezielte Telemetrie veröffentlichen
 - [x] Jobs per stabilem Schlüssel deduplizieren und wiederholte RimWorld-/Harmony-Aufrufe idempotent behandeln
 - [x] Shutdown, Abbruch und unvollständige Jobs ohne beschädigte veröffentlichte Ergebnisse behandeln
 - [ ] RimWorld- und Harmony-Hooks auf dünne Übersetzer in FixWorld-Jobs reduzieren
 - [x] unbekannte Verträge und inkompatible fremde Patches weiterhin kontrolliert an den Originalpfad zurückgeben
 - [x] Worker von Unity, Harmony, veränderlichen Verse-Daten und direkter UI-Nutzung fernhalten
-- [ ] deterministische Scheduler-Vertragstests für Dependencies, Priorität, Concurrency-Gruppen, Byte-Budget, Abbruch vor Start und Shutdown ergänzen
-- [ ] abgeschlossene deduplizierte Handles vor hochfrequenten Runtime-Jobs über eine begrenzte Retention-Policy freigeben
+- [x] deterministische Scheduler-Vertragstests für aktive Deduplizierung, terminale Wiederholung, Abbruch vor Start, FIFO-Dispatch und finalen Shutdown bauen
+- [ ] Scheduler-Vertragstests um Dependencies, Priorität, Concurrency-Gruppen und Byte-Budget ergänzen
+- [x] terminale deduplizierte Handles sofort freigeben, statt eine Retention-Registry aufzubauen
 - [ ] Telemetrie-Hochrechnung gegen GC- und Scheduling-Ausreißer robust machen
 
 Akzeptanz: Die vollständige 88-Mod-Liste und Quarry laden unverändert, kritische Jobs blockieren korrekt, Background-Jobs verzögern das Hauptmenü nicht und ein Abbruch hinterlässt nur entfernbare Staging-Daten.

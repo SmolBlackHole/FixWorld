@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using FixWorld.Lifecycle;
 using HarmonyLib;
 using Verse;
 
@@ -84,7 +85,7 @@ namespace FixWorld.Loading
                 scheduled = false;
             }
 
-            LoaderCompletion.NotifyPlayDataReady("staged-runner");
+            RimWorldLifecycle.NotifyPlayDataReady("staged-runner");
         }
 
         private static void PrependLongEvent(IEnumerable action)

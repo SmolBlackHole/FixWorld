@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
-using FixWorld.Scheduling;
 using Verse;
 
 namespace FixWorld.Loading
@@ -68,7 +67,6 @@ namespace FixWorld.Loading
 
         internal static void Complete()
         {
-            FixWorldScheduler.DrainEvents();
             IDisposable subscription;
             lock (Sync)
             {

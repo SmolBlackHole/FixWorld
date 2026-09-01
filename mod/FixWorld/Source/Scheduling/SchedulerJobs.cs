@@ -9,14 +9,12 @@ namespace FixWorld.Scheduling
     internal enum SchedulerJobLifetime
     {
         Critical,
-        Deferred,
         Background
     }
 
     internal enum SchedulerJobPriority
     {
         High,
-        Normal,
         Low
     }
 
