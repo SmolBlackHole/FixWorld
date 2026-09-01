@@ -82,7 +82,8 @@ namespace FixWorld.UI
             Text.Anchor = TextAnchor.UpperLeft;
             Widgets.Label(
                 new Rect(content.x, content.y + 38f, 300f, 24f),
-                (int)snapshot.Stage + " / 5   " + snapshot.StageName);
+                (int)snapshot.Stage + " / " + LoadingStageNames.Count +
+                "   " + snapshot.StageName);
             Text.Font = GameFont.Tiny;
             Text.Anchor = TextAnchor.UpperRight;
             Widgets.Label(
@@ -137,8 +138,10 @@ namespace FixWorld.UI
         {
             const float gap = 5f;
             Rect rail = new Rect(content.x, content.y + 159f, content.width, 7f);
-            float segmentWidth = (rail.width - gap * 4f) / 5f;
-            for (int number = 1; number <= 5; number++)
+            float segmentWidth =
+                (rail.width - gap * (LoadingStageNames.Count - 1)) /
+                LoadingStageNames.Count;
+            for (int number = 1; number <= LoadingStageNames.Count; number++)
             {
                 Color color = number < (int)stage
                     ? Completed
@@ -154,7 +157,7 @@ namespace FixWorld.UI
                 Text.Anchor = TextAnchor.UpperCenter;
                 Widgets.Label(
                     new Rect(x, rail.yMax + 4f, segmentWidth, 19f),
-                    GetShortStageName(number));
+                    LoadingStageNames.GetShortName((LoadingStage)number));
             }
         }
 
@@ -245,17 +248,5 @@ namespace FixWorld.UI
                 .ToString("N0", CultureInfo.InvariantCulture) + " MiB";
         }
 
-        private static string GetShortStageName(int number)
-        {
-            switch (number)
-            {
-                case 1: return "Bootstrap";
-                case 2: return "XML";
-                case 3: return "Definitions";
-                case 4: return "Content";
-                case 5: return "Finalize";
-                default: throw new ArgumentOutOfRangeException(nameof(number), number, null);
-            }
-        }
     }
 }

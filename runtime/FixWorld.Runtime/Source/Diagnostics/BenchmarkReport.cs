@@ -14,7 +14,7 @@ namespace FixWorld.Diagnostics
     [DataContract]
     internal sealed class BenchmarkReport
     {
-        private const int CurrentSchemaVersion = 7;
+        private const int CurrentSchemaVersion = 8;
 
         [DataMember(Name = "schemaVersion", Order = 1)]
         public int SchemaVersion { get; private set; }

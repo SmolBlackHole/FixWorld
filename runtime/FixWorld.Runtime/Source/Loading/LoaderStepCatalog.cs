@@ -48,7 +48,7 @@ namespace FixWorld.Loading
                     descriptor = Step(LoadingStep.ParseTranslationKeys, LoadingStage.XmlAndPatches, "Parse translation keys");
                     return true;
                 case "ParseAndProcessXML()":
-                    descriptor = Step(LoadingStep.ParseDefinitions, LoadingStage.XmlAndPatches, "Parse definitions");
+                    descriptor = Step(LoadingStep.ParseDefinitions, LoadingStage.Definitions, "Parse definitions");
                     return true;
                 case "XmlInheritance.Resolve()":
                     descriptor = Step(
@@ -57,7 +57,7 @@ namespace FixWorld.Loading
                         "Resolve XML inheritance");
                     return true;
                 case "ClearCachedPatches()":
-                    descriptor = Step(LoadingStep.ClearPatchCache, LoadingStage.XmlAndPatches, "Clear patch cache");
+                    descriptor = Step(LoadingStep.ClearPatchCache, LoadingStage.Definitions, "Clear patch cache");
                     return true;
                 case "Load language metadata.":
                     descriptor = Step(LoadingStep.LoadLanguageMetadata, LoadingStage.Definitions, "Load language metadata");
@@ -91,7 +91,10 @@ namespace FixWorld.Loading
                         "Executing delayed initialization tasks");
                     return true;
                 case "LoadModContent":
-                    descriptor = Step(LoadingStep.LoadContent, LoadingStage.Content, "Load mod content");
+                    descriptor = Step(
+                        LoadingStep.LoadContent,
+                        LoadingStage.Content,
+                        "Load mod content");
                     return true;
                 case "Reload audio clips":
                     descriptor = Step(LoadingStep.LoadAudio, LoadingStage.Content, "Load audio");

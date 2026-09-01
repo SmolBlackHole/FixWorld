@@ -6,17 +6,19 @@ namespace FixWorld.Loading
     internal enum LoadingStage
     {
         Bootstrap = 1,
-        XmlAndPatches = 2,
-        Definitions = 3,
-        Content = 4,
-        Finalize = 5
+        ModPreparation = 2,
+        XmlAndPatches = 3,
+        Definitions = 4,
+        Content = 5,
+        Finalize = 6
     }
 
     internal enum LoadingStep
     {
         InitializeMods,
         InitializeMod,
-        ClearXmlInheritance,
+        ResetXmlInheritance,
+        ReleaseXmlInheritance,
         CreateModClasses,
         PrepareModContent,
         LoadXml,
@@ -79,11 +81,14 @@ namespace FixWorld.Loading
 
     internal static class LoadingStageNames
     {
+        internal const int Count = 6;
+
         internal static string GetName(LoadingStage stage)
         {
             switch (stage)
             {
                 case LoadingStage.Bootstrap: return "Bootstrap";
+                case LoadingStage.ModPreparation: return "Mod preparation";
                 case LoadingStage.XmlAndPatches: return "XML & patches";
                 case LoadingStage.Definitions: return "Definitions";
                 case LoadingStage.Content: return "Content";
@@ -97,10 +102,25 @@ namespace FixWorld.Loading
             switch (stage)
             {
                 case LoadingStage.Bootstrap: return "Preparing the mod environment";
+                case LoadingStage.ModPreparation: return "Preparing mod assemblies and classes";
                 case LoadingStage.XmlAndPatches: return "Processing XML and patches";
                 case LoadingStage.Definitions: return "Preparing game definitions";
                 case LoadingStage.Content: return "Preparing mod content";
                 case LoadingStage.Finalize: return "Finalizing startup";
+                default: throw new ArgumentOutOfRangeException(nameof(stage), stage, null);
+            }
+        }
+
+        internal static string GetShortName(LoadingStage stage)
+        {
+            switch (stage)
+            {
+                case LoadingStage.Bootstrap: return "Bootstrap";
+                case LoadingStage.ModPreparation: return "Mods";
+                case LoadingStage.XmlAndPatches: return "XML";
+                case LoadingStage.Definitions: return "Definitions";
+                case LoadingStage.Content: return "Content";
+                case LoadingStage.Finalize: return "Finalize";
                 default: throw new ArgumentOutOfRangeException(nameof(stage), stage, null);
             }
         }

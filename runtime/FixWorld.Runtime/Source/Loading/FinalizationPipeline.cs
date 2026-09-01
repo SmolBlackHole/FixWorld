@@ -129,7 +129,6 @@ namespace FixWorld.Loading
                         "Initializing " + target.ModName,
                         typeName + "   " + (index + 1).ToString("N0") + " / " +
                         constructors.Count.ToString("N0"),
-                        "StaticConstructorOnStartupUtility.CallAll()",
                         typeName,
                         LoadingModAttribution.Exact(target.PackageId, target.ModName),
                         continueOnFailure: true,
@@ -153,7 +152,6 @@ namespace FixWorld.Loading
                     callAllPostfixOwners == null
                         ? "Completing RimWorld static initialization"
                         : "Harmony postfixes: " + callAllPostfixOwners,
-                    "Finalize static initialization",
                     "Static initialization",
                     LoadingModAttribution.Global,
                     continueOnFailure: false,
@@ -168,7 +166,6 @@ namespace FixWorld.Loading
                         LoadingStep.CheckStaticConstructorAttributes,
                         "Checking startup attributes",
                         "Developer-mode validation",
-                        "Check static constructor attributes",
                         "Static constructor attributes",
                         LoadingModAttribution.Global,
                         continueOnFailure: false,
@@ -182,7 +179,6 @@ namespace FixWorld.Loading
                     LoadingStep.InitializeFloatMenus,
                     "Initializing runtime",
                     "Building float-menu data",
-                    null,
                     "Float menus",
                     LoadingModAttribution.Global,
                     continueOnFailure: false,
@@ -194,7 +190,6 @@ namespace FixWorld.Loading
                     LoadingStep.BakeAtlases,
                     "Building texture atlases",
                     "Atlas baking",
-                    "Atlas baking.",
                     "Texture atlases",
                     LoadingModAttribution.Global,
                     continueOnFailure: false,
@@ -206,7 +201,6 @@ namespace FixWorld.Loading
                     LoadingStep.GarbageCollection,
                     "Cleaning up loading data",
                     "Garbage collection and unused asset cleanup",
-                    "Garbage Collection",
                     "Loading cleanup",
                     LoadingModAttribution.Global,
                     continueOnFailure: false,

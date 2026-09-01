@@ -88,7 +88,6 @@ namespace FixWorld.Loading
         internal readonly LoadingStep Operation;
         internal readonly string DisplayName;
         internal readonly string Activity;
-        internal readonly string ProfilerLabel;
         internal readonly string Subject;
         internal readonly LoadingModAttribution Attribution;
         internal readonly LoadingThreadAffinity Affinity;
@@ -101,7 +100,6 @@ namespace FixWorld.Loading
             LoadingStep operation,
             string displayName,
             string activity,
-            string profilerLabel,
             string subject,
             LoadingModAttribution attribution,
             bool continueOnFailure,
@@ -112,7 +110,6 @@ namespace FixWorld.Loading
             Operation = operation;
             DisplayName = displayName;
             Activity = activity;
-            ProfilerLabel = profilerLabel;
             Subject = subject;
             Attribution = attribution;
             Affinity = affinity;
@@ -135,7 +132,6 @@ namespace FixWorld.Loading
             Operation = operation;
             DisplayName = displayName;
             Activity = activity;
-            ProfilerLabel = null;
             Subject = subject;
             Attribution = attribution;
             Affinity = LoadingThreadAffinity.WorkerSafe;
@@ -303,7 +299,6 @@ namespace FixWorld.Loading
                 LoadingStage.Content,
                 LoadingStep.DelayedInitialization,
                 LoaderStepCatalog.GetDisplayName(label),
-                null,
                 null,
                 label,
                 attribution,

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using FixWorld.Runtime;
@@ -27,6 +28,7 @@ namespace FixWorld.Loading
         internal readonly LoadingModAttribution Attribution;
         internal readonly bool MainThread;
         internal readonly long ElapsedTicks;
+        internal readonly bool RecordModTime;
 
         internal LoadingStageEvent(
             long operationId,
@@ -38,7 +40,8 @@ namespace FixWorld.Loading
             string activity,
             LoadingModAttribution attribution,
             bool mainThread,
-            long elapsedTicks)
+            long elapsedTicks,
+            bool recordModTime = true)
         {
             OperationId = operationId;
             Kind = kind;
@@ -50,6 +53,7 @@ namespace FixWorld.Loading
             Attribution = attribution;
             MainThread = mainThread;
             ElapsedTicks = elapsedTicks;
+            RecordModTime = recordModTime;
         }
     }
 
@@ -61,6 +65,7 @@ namespace FixWorld.Loading
         internal readonly string Activity;
         internal readonly LoadingModAttribution Attribution;
         internal readonly LoadingStageEventSource Source;
+        internal readonly bool RecordModTime;
 
         internal LoadingStageEventDescriptor(
             LoadingStage stage,
@@ -68,7 +73,8 @@ namespace FixWorld.Loading
             string displayName,
             string activity,
             LoadingModAttribution attribution,
-            LoadingStageEventSource source = LoadingStageEventSource.FixWorld)
+            LoadingStageEventSource source = LoadingStageEventSource.FixWorld,
+            bool recordModTime = true)
         {
             Stage = stage;
             Operation = operation;
@@ -76,6 +82,7 @@ namespace FixWorld.Loading
             Activity = activity;
             Attribution = attribution;
             Source = source;
+            RecordModTime = recordModTime;
         }
     }
 
@@ -85,6 +92,8 @@ namespace FixWorld.Loading
         private const string DetailEventKey = "loading/detail";
 
         private static long nextOperationId;
+        [ThreadStatic]
+        private static List<ActiveOperation> activeOperations;
 
         internal static LoadingOperation Begin(LoadingStageEventDescriptor descriptor)
         {
@@ -96,28 +105,39 @@ namespace FixWorld.Loading
                 UnityData.IsInMainThread);
             FixWorldEvents.Publish(
                 operation.CreateEvent(LoadingStageEventKind.Started, 0L));
+            TrackOperation(operationId, descriptor.Operation);
             return operation;
         }
 
-        internal static void ReportStage(
-            LoadingPipelineStage stage,
-            int completedTasks,
-            int totalTasks)
+        internal static bool IsOperationActive(LoadingStep operation)
         {
-            FixWorldEvents.PublishLatest(
-                ProgressEventKey,
-                new LoadingStageEvent(
-                0L,
-                LoadingStageEventKind.Progress,
-                LoadingStageEventSource.FixWorld,
+            if (activeOperations == null)
+            {
+                return false;
+            }
+
+            for (int index = activeOperations.Count - 1; index >= 0; index--)
+            {
+                if (activeOperations[index].Operation == operation)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static LoadingOperation Begin(LoadingPipelineStage stage)
+        {
+            return Begin(new LoadingStageEventDescriptor(
                 stage.Phase,
                 stage.Operation,
                 stage.Name,
-                "Stage tasks " + completedTasks + " / " + totalTasks +
-                "   " + stage.ExecutionMode,
+                "Executing " + stage.TaskCount + " stage tasks   " +
+                stage.ExecutionMode,
                 LoadingModAttribution.Global,
-                true,
-                0L));
+                LoadingStageEventSource.FixWorld,
+                recordModTime: false));
         }
 
         internal static void ReportWork(
@@ -193,6 +213,49 @@ namespace FixWorld.Loading
                     LoadingModAttribution.Global,
                     mainThread,
                     0L));
+        }
+
+        internal static void CompleteOperation(long operationId)
+        {
+            if (activeOperations == null)
+            {
+                return;
+            }
+
+            for (int index = activeOperations.Count - 1; index >= 0; index--)
+            {
+                if (activeOperations[index].Id != operationId)
+                {
+                    continue;
+                }
+
+                activeOperations.RemoveAt(index);
+                return;
+            }
+        }
+
+        private static void TrackOperation(
+            long operationId,
+            LoadingStep operation)
+        {
+            if (activeOperations == null)
+            {
+                activeOperations = new List<ActiveOperation>(8);
+            }
+
+            activeOperations.Add(new ActiveOperation(operationId, operation));
+        }
+
+        private readonly struct ActiveOperation
+        {
+            internal readonly long Id;
+            internal readonly LoadingStep Operation;
+
+            internal ActiveOperation(long id, LoadingStep operation)
+            {
+                Id = id;
+                Operation = operation;
+            }
         }
 
     }
@@ -273,7 +336,8 @@ namespace FixWorld.Loading
                 descriptor.Activity,
                 descriptor.Attribution,
                 mainThread,
-                elapsedTicks);
+                elapsedTicks,
+                descriptor.RecordModTime);
         }
 
         private void Finish(LoadingStageEventKind kind)
@@ -283,6 +347,7 @@ namespace FixWorld.Loading
                 return;
             }
 
+            LoadingEvents.CompleteOperation(operationId);
             FixWorldEvents.Publish(CreateEvent(
                 kind,
                 Stopwatch.GetTimestamp() - startedAt));

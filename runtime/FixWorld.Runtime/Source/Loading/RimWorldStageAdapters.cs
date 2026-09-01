@@ -7,20 +7,30 @@ namespace FixWorld.Loading
 {
     internal static class RimWorldStageAdapters
     {
-        internal static void ClearXmlInheritance()
+        internal static void ResetXmlInheritance()
         {
             Run(
-                LoadingStage.XmlAndPatches,
-                LoadingStep.ClearXmlInheritance,
+                LoadingStage.Bootstrap,
+                LoadingStep.ResetXmlInheritance,
                 "Clear XML inheritance",
                 "Resetting inherited XML state",
+                XmlInheritance.Clear);
+        }
+
+        internal static void ReleaseXmlInheritance()
+        {
+            Run(
+                LoadingStage.Definitions,
+                LoadingStep.ReleaseXmlInheritance,
+                "Release XML inheritance",
+                "Releasing inherited XML state",
                 XmlInheritance.Clear);
         }
 
         internal static void LoadModContent(ModBootContext context)
         {
             Run(
-                LoadingStage.Content,
+                LoadingStage.ModPreparation,
                 LoadingStep.PrepareModContent,
                 "Prepare mod content",
                 "Loading assemblies and queueing asset content",
@@ -30,7 +40,7 @@ namespace FixWorld.Loading
         internal static void CreateModClasses()
         {
             Run(
-                LoadingStage.Content,
+                LoadingStage.ModPreparation,
                 LoadingStep.CreateModClasses,
                 "Create mod classes",
                 "Constructing RimWorld mod instances",
@@ -112,7 +122,7 @@ namespace FixWorld.Loading
         internal static void ClearPatchCache()
         {
             Run(
-                LoadingStage.XmlAndPatches,
+                LoadingStage.Definitions,
                 LoadingStep.ClearPatchCache,
                 "Clear patch cache",
                 "Releasing cached patch operations",

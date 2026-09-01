@@ -82,22 +82,18 @@ namespace FixWorld.Loading
                 new ContentLoadingStep(
                     LoadingStep.LoadAudio,
                     "Audio",
-                    "Reload audio clips",
                     () => mod.GetContentHolder<AudioClip>().ReloadAll(false)),
                 new ContentLoadingStep(
                     LoadingStep.LoadTextures,
                     "Textures",
-                    "Reload textures",
                     () => mod.GetContentHolder<Texture2D>().ReloadAll(false)),
                 new ContentLoadingStep(
                     LoadingStep.LoadStrings,
                     "Strings",
-                    "Reload strings",
                     () => mod.GetContentHolder<string>().ReloadAll(false)),
                 new ContentLoadingStep(
                     LoadingStep.LoadAssetBundles,
                     "Asset bundles",
-                    "Reload asset bundles",
                     () => ReloadAssetBundles(mod))
             };
             LoadingModAttribution attribution = LoadingModAttribution.Exact(mod);
@@ -110,7 +106,6 @@ namespace FixWorld.Loading
                     step.Operation,
                     "Loading content for " + mod.Name,
                     step.DisplayName + "   " + (index + 1) + " / " + steps.Length,
-                    step.ProfilerLabel,
                     step.DisplayName,
                     attribution,
                     continueOnFailure: false,
@@ -167,18 +162,15 @@ namespace FixWorld.Loading
         {
             internal readonly LoadingStep Operation;
             internal readonly string DisplayName;
-            internal readonly string ProfilerLabel;
             internal readonly Action Execute;
 
             internal ContentLoadingStep(
                 LoadingStep operation,
                 string displayName,
-                string profilerLabel,
                 Action execute)
             {
                 Operation = operation;
                 DisplayName = displayName;
-                ProfilerLabel = profilerLabel;
                 Execute = execute;
             }
         }

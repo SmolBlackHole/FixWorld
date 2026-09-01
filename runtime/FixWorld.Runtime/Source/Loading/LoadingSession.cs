@@ -110,7 +110,9 @@ namespace FixWorld.Loading
                     ? (float)Math.Min(
                         0.98,
                         elapsedMilliseconds / estimatedDurationMilliseconds)
-                    : (float)Math.Min(0.95, ((int)currentStage - 0.5) / 5.0);
+                    : (float)Math.Min(
+                        0.95,
+                        ((int)currentStage - 0.5) / LoadingStageNames.Count);
                 snapshot = new LoadingSnapshot(
                     currentStage,
                     LoadingStageNames.GetName(currentStage),

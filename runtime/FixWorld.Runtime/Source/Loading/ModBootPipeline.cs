@@ -12,7 +12,7 @@ namespace FixWorld.Loading
                 "[FixWorld.Runtime] Running the owned mod-loading pipeline.");
 
             ModBootContext context = new ModBootContext(hotReload);
-            RimWorldStageAdapters.ClearXmlInheritance();
+            RimWorldStageAdapters.ResetXmlInheritance();
             if (!hotReload)
             {
                 LogInitialization(ModInitializationStage.Run());
@@ -33,7 +33,7 @@ namespace FixWorld.Loading
             RimWorldStageAdapters.ApplyPatches(context);
             RimWorldStageAdapters.ParseDefinitions(context);
             RimWorldStageAdapters.ClearPatchCache();
-            RimWorldStageAdapters.ClearXmlInheritance();
+            RimWorldStageAdapters.ReleaseXmlInheritance();
         }
 
         private static void LogInitialization(ModInitializationResult result)

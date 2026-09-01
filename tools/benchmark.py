@@ -303,7 +303,7 @@ def wait_for_json_file(
 
 def validate_report(raw: object) -> BenchmarkReport:
     report = _string_dict(raw, "benchmark report")
-    if report.get("schemaVersion") != 7:
+    if report.get("schemaVersion") != 8:
         raise RuntimeError(
             f"Unsupported benchmark schema: {report.get('schemaVersion')!r}"
         )
@@ -312,7 +312,7 @@ def validate_report(raw: object) -> BenchmarkReport:
         raise RuntimeError("Benchmark report contains invalid preloader measurements.")
     completion = _string_dict(report.get("completion"), "completion")
     loader = _string_dict(report.get("loader"), "loader")
-    if completion.get("source") != "staged-runner+uiroot_entry":
+    if completion.get("source") != "staged-runner+main-menu-draw":
         raise RuntimeError(f"Unexpected completion data: {completion!r}")
     stages = _object_list(loader.get("stages"))
     steps = _object_list(loader.get("steps"))
@@ -323,7 +323,7 @@ def validate_report(raw: object) -> BenchmarkReport:
     overhead = _object_list(loader.get("overhead"))
     if (
         stages is None
-        or len(stages) != 5
+        or len(stages) != 6
         or steps is None
         or not steps
         or delayed_actions is None

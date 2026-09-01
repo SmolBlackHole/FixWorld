@@ -111,7 +111,6 @@ namespace FixWorld.Loading
                     LoadingModAttribution.Exact(
                         metadata.PackageId,
                         metadata.Name)));
-            DeepProfiler.Start("Initializing " + metadata);
             try
             {
                 if (!metadata.RootDir.Exists)
@@ -146,7 +145,6 @@ namespace FixWorld.Loading
             }
             finally
             {
-                DeepProfiler.End();
                 operation.Dispose();
             }
         }

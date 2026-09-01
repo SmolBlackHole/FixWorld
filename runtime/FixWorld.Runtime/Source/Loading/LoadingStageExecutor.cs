@@ -57,7 +57,6 @@ namespace FixWorld.Loading
         {
             currentPlanId++;
             currentPlanStartedAt = Stopwatch.GetTimestamp();
-            DeepProfiler.Start(plan.Label);
             try
             {
                 for (int stageIndex = 0; stageIndex < plan.StageCount; stageIndex++)
@@ -84,7 +83,6 @@ namespace FixWorld.Loading
                 LoadingTelemetry.ObserveDelayedAction(
                     plan,
                     Stopwatch.GetTimestamp() - currentPlanStartedAt);
-                DeepProfiler.End();
             }
         }
 
@@ -95,26 +93,55 @@ namespace FixWorld.Loading
             int totalActions)
         {
             currentStageSucceeded = true;
-            IEnumerable execution = stage.ExecutionMode ==
-                                    LoadingExecutionMode.ParallelThenCommit
-                ? RunParallelStage(
-                    stage,
-                    stageIndex,
-                    currentAction,
-                    totalActions)
-                : RunSequentialStage(stage, currentAction, totalActions);
-            foreach (object frame in execution)
+            LoadingOperation operation = LoadingEvents.Begin(stage);
+            bool finished = false;
+            try
             {
-                yield return frame;
+                operation.ReportProgress(
+                    StageProgress(stage, 0),
+                    force: true);
+                IEnumerable execution = stage.ExecutionMode ==
+                                        LoadingExecutionMode.ParallelThenCommit
+                    ? RunParallelStage(
+                        stage,
+                        stageIndex,
+                        currentAction,
+                        totalActions,
+                        operation)
+                    : RunSequentialStage(
+                        stage,
+                        currentAction,
+                        totalActions,
+                        operation);
+                foreach (object frame in execution)
+                {
+                    yield return frame;
+                }
+
+                if (!currentStageSucceeded)
+                {
+                    operation.Fail();
+                }
+
+                finished = true;
+            }
+            finally
+            {
+                if (!finished)
+                {
+                    operation.Fail();
+                }
+
+                operation.Dispose();
             }
         }
 
         private IEnumerable RunSequentialStage(
             LoadingPipelineStage stage,
             int currentAction,
-            int totalActions)
+            int totalActions,
+            LoadingOperation operation)
         {
-            LoadingEvents.ReportStage(stage, 0, stage.TaskCount);
             for (int taskIndex = 0; taskIndex < stage.TaskCount; taskIndex++)
             {
                 LoadingWorkItem item = stage.GetTask(taskIndex);
@@ -133,7 +160,9 @@ namespace FixWorld.Loading
                     0L,
                     result.ExecutionTicks,
                     result.Succeeded);
-                LoadingEvents.ReportStage(stage, taskIndex + 1, stage.TaskCount);
+                operation.ReportProgress(
+                    StageProgress(stage, taskIndex + 1),
+                    force: taskIndex + 1 == stage.TaskCount);
 
                 if (!result.Succeeded && !item.ContinueOnFailure)
                 {
@@ -149,9 +178,9 @@ namespace FixWorld.Loading
             LoadingPipelineStage stage,
             int stageIndex,
             int currentAction,
-            int totalActions)
+            int totalActions,
+            LoadingOperation operation)
         {
-            LoadingEvents.ReportStage(stage, 0, stage.TaskCount);
             long queuedAt = Stopwatch.GetTimestamp();
             int workerLimit = stage.MaxParallelism > 0
                 ? stage.MaxParallelism
@@ -195,10 +224,7 @@ namespace FixWorld.Loading
                     }
                 }
 
-                LoadingEvents.ReportStage(
-                    stage,
-                    completedTasks,
-                    stage.TaskCount);
+                operation.ReportProgress(StageProgress(stage, completedTasks));
                 if (completedTasks == stage.TaskCount)
                 {
                     break;
@@ -266,13 +292,23 @@ namespace FixWorld.Loading
                     result.WaitTicks,
                     result.WallTicks,
                     result.Succeeded);
-                LoadingEvents.ReportStage(stage, taskIndex + 1, stage.TaskCount);
+                operation.ReportProgress(
+                    StageProgress(stage, taskIndex + 1),
+                    force: taskIndex + 1 == stage.TaskCount);
 
                 if (!result.Succeeded && !item.ContinueOnFailure)
                 {
                     currentStageSucceeded = false;
                 }
             }
+        }
+
+        private static string StageProgress(
+            LoadingPipelineStage stage,
+            int completedTasks)
+        {
+            return "Stage tasks " + completedTasks + " / " + stage.TaskCount +
+                   "   " + stage.ExecutionMode;
         }
 
         private static WorkExecution ExecuteOnMainThread(LoadingWorkItem item)
@@ -282,11 +318,6 @@ namespace FixWorld.Loading
                 throw new InvalidOperationException(
                     "A main-thread loading task has no execution delegate: " +
                     item.Subject);
-            }
-
-            if (item.ProfilerLabel != null)
-            {
-                DeepProfiler.Start(item.ProfilerLabel);
             }
 
             long startedAt = Stopwatch.GetTimestamp();
@@ -303,13 +334,6 @@ namespace FixWorld.Loading
                 return new WorkExecution(
                     false,
                     Stopwatch.GetTimestamp() - startedAt);
-            }
-            finally
-            {
-                if (item.ProfilerLabel != null)
-                {
-                    DeepProfiler.End();
-                }
             }
         }
 

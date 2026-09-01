@@ -103,6 +103,7 @@ namespace FixWorld.Lifecycle
                 if (CanPublishGameReady())
                 {
                     readyGame = Current.Game;
+                    mainMenuPublished = false;
                     gameGeneration++;
                     lifecycleEvent = CreateEvent(
                         RimWorldLifecycleEventKind.GameReady,

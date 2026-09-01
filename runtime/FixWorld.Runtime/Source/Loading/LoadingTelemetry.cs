@@ -104,6 +104,13 @@ namespace FixWorld.Loading
                 DescriptorMatch match = MatchProfilerLabel(label);
                 bool recognized = match.Recognized;
                 StepDescriptor descriptor = match.Descriptor;
+                bool suppressed = recognized &&
+                                  LoadingEvents.IsOperationActive(descriptor.Step);
+                if (suppressed)
+                {
+                    recognized = false;
+                }
+
                 bool mainThread = UnityData.IsInMainThread;
                 profilerScopes.Add(new ProfilerScope(
                     Stopwatch.GetTimestamp(),
@@ -115,7 +122,7 @@ namespace FixWorld.Loading
                 {
                     LoadingEvents.ReportProfilerStep(descriptor, mainThread);
                 }
-                else if (mainThread)
+                else if (!suppressed && mainThread)
                 {
                     LoadingEvents.ReportProfilerDetail(label, mainThread);
                 }
@@ -541,6 +548,11 @@ namespace FixWorld.Loading
                 {
                     stepStats.WorkerThreadTicks += elapsedTicks;
                     stepStats.WorkerThreadExclusiveTicks += elapsedTicks;
+                }
+
+                if (!stageEvent.RecordModTime)
+                {
+                    return;
                 }
 
                 string modKey = stageEvent.Attribution.PackageId + "\n" +
