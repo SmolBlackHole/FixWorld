@@ -7,7 +7,8 @@ Der abgeschlossene Stand gehört in Git, Benchmarks und Logs. Diese Datei enthä
 ## Nächster Schnitt: eigener Mod-Boot
 
 - [x] den normalen Mod auf einen einmaligen Doorstop-Installer mit automatischem Neustart reduzieren
-- [x] bei fehlgeschlagenem Neustart sicher abbrechen, statt einen zweiten späten Loader-Pfad zu starten
+- [x] bei aktiviertem, aber inaktivem Doorstop ohne vererbte Prozessmarke sicher abbrechen und Neustart-Schleifen verhindern
+- [x] den normalen FixWorld-Runtime-Start nur nach nachgewiesener Übernahme von `LoadAllActiveMods()` erlauben
 - [x] `FixWorld.Loader.dll` nach dem Laden von `Assembly-CSharp` über Doorstop starten
 - [x] RimWorld-Version, Assembly-MVID und `LoadAllActiveMods(bool)`-Signatur vor der Übernahme prüfen
 - [x] `LoadedModManager.LoadAllActiveMods()` vollständig durch den FixWorld-Coordinator ersetzen

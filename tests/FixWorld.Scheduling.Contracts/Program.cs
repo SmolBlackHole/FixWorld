@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using FixWorld.Caching;
+using FixWorld.Preloader;
 using FixWorld.Runtime;
 using FixWorld.Scheduling;
 
@@ -27,6 +28,7 @@ internal static class Program
             EventChannelsPreserveOrderAndCoalesceLatestValues();
             EventSubscribersAreIsolatedAndDisposable();
             EventBusShutdownIsFinal();
+            PreloaderSignalsBelongToTheCurrentProcess();
             AtomicFileReplacesAndBacksUp();
             CacheWriterPublishesImmutableSnapshots();
             MainThreadDispatcherIsFifo();
@@ -43,6 +45,33 @@ internal static class Program
             Console.Error.WriteLine(exception);
             return 1;
         }
+    }
+
+    private static void PreloaderSignalsBelongToTheCurrentProcess()
+    {
+        string staleProcessId = (Environment.ProcessId + 1).ToString();
+        Environment.SetEnvironmentVariable(
+            PreloaderTimelineContract.ActiveVariable,
+            staleProcessId);
+        Environment.SetEnvironmentVariable(
+            PreloaderTimelineContract.LoaderOwnsModBootVariable,
+            staleProcessId);
+
+        PreloaderTimelineSnapshot stale =
+            PreloaderTimelineContract.CaptureAtBootstrap(1L, 0);
+        Assert(!stale.Active, "An inherited preloader signal must be stale.");
+        Assert(
+            !PreloaderTimelineContract.LoaderOwnsModBoot(),
+            "An inherited loader signal must be stale.");
+
+        PreloaderTimelineContract.PublishEntry(1L, 0);
+        PreloaderTimelineContract.PublishLoaderOwnsModBoot();
+        PreloaderTimelineSnapshot current =
+            PreloaderTimelineContract.CaptureAtBootstrap(1L, 0);
+        Assert(current.Active, "The current preloader signal was not accepted.");
+        Assert(
+            PreloaderTimelineContract.LoaderOwnsModBoot(),
+            "The current loader signal was not accepted.");
     }
 
     private static void ActiveKeyIsDeduplicatedAndTerminalKeyCanRunAgain()

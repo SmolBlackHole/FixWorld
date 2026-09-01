@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using FixWorld.Preloader;
 using HarmonyLib;
 using Verse;
 
@@ -72,6 +73,7 @@ namespace FixWorld.Loader
         {
             internal static bool Prefix(bool hotReload)
             {
+                PreloaderTimelineContract.PublishLoaderOwnsModBoot();
                 ModLoadingCoordinator.Run(hotReload);
                 return false;
             }

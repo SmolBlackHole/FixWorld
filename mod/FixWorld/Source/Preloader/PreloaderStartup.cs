@@ -5,9 +5,6 @@ namespace FixWorld.Preloader
 {
     internal static class PreloaderStartup
     {
-        private const string RestartAttemptVariable =
-            "FIXWORLD_PRELOADER_RESTART_ATTEMPTED";
-
         internal static bool EnsureInstalled(string modRoot)
         {
             PreloaderManager.Configure(modRoot);
@@ -15,7 +12,16 @@ namespace FixWorld.Preloader
             if (state.Status == PreloaderStatus.Enabled &&
                 state.ActiveThisLaunch)
             {
-                return true;
+                if (PreloaderTimelineContract.LoaderOwnsModBoot())
+                {
+                    return true;
+                }
+
+                Log.Error(
+                    "[FixWorld] Doorstop is active, but FixWorld.Loader did not " +
+                    "claim the mod-loading pipeline. FixWorld remains disabled " +
+                    "for this launch and RimWorld continues with its original loader.");
+                return false;
             }
 
             if (state.ActiveThisLaunch)
@@ -26,11 +32,11 @@ namespace FixWorld.Preloader
                 return false;
             }
 
-            if (RestartAttempted())
+            if (state.Status == PreloaderStatus.Enabled)
             {
                 Log.Error(
-                    "[FixWorld] Doorstop was still inactive after the automatic " +
-                    "restart. FixWorld stopped to prevent a restart loop. " +
+                    "[FixWorld] The early loader is enabled but did not start. " +
+                    "FixWorld will not restart RimWorld again. " +
                     state.Message);
                 return false;
             }
@@ -58,7 +64,6 @@ namespace FixWorld.Preloader
                     throw new InvalidOperationException(state.Message);
                 }
 
-                MarkRestartAttempted();
                 Log.Message(
                     "[FixWorld] Installed the required early loader. Restarting " +
                     "RimWorld so FixWorld.Loader can own the mod-loading pipeline.");
@@ -73,22 +78,5 @@ namespace FixWorld.Preloader
                 return false;
             }
         }
-
-        private static bool RestartAttempted()
-        {
-            return string.Equals(
-                Environment.GetEnvironmentVariable(RestartAttemptVariable),
-                "1",
-                StringComparison.Ordinal);
-        }
-
-        private static void MarkRestartAttempted()
-        {
-            Environment.SetEnvironmentVariable(
-                RestartAttemptVariable,
-                "1",
-                EnvironmentVariableTarget.Process);
-        }
-
     }
 }

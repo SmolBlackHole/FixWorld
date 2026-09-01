@@ -24,6 +24,12 @@ Es gibt keine Legacy-Konfiguration, keinen optionalen Spätpfad und keinen
 Enable-/Disable-Modus. Das Testscript installiert denselben produktiven Pfad über
 `FixWorld.Preloader.Tool.exe install`.
 
+Ist Doorstop nach dem Neustart zwar aktiviert, aber nicht im Prozess aktiv,
+startet FixWorld RimWorld nicht erneut. Ist Doorstop aktiv, konnte
+`FixWorld.Loader` die Mod-Ladepipeline aber nicht übernehmen, bleibt die normale
+FixWorld-Runtime für diesen Start deaktiviert und RimWorld verwendet seinen
+ursprünglichen Loader.
+
 ## DDS-Read-ahead
 
 Der Preloader kann den vorhandenen DDS-Index und begrenzt DDS-Daten aktiver Mods in den

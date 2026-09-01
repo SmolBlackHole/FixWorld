@@ -70,6 +70,9 @@ namespace FixWorld.Preloader
         internal const string ActiveVariable = "FIXWORLD_PRELOADER_ACTIVE";
         internal const string DoorstopVersion = "4.4.0";
 
+        internal const string LoaderOwnsModBootVariable =
+            "FIXWORLD_LOADER_OWNS_MOD_BOOT";
+
         private const string EntryTicksVariable = "FIXWORLD_PRELOADER_ENTRY_TICKS";
         private const string AssemblyCSharpTicksVariable =
             "FIXWORLD_PRELOADER_ASSEMBLY_CSHARP_TICKS";
@@ -92,9 +95,22 @@ namespace FixWorld.Preloader
 
         internal static void PublishEntry(long timestamp, int assemblyCount)
         {
-            Set(ActiveVariable, "1");
+            Set(ActiveVariable, CurrentProcessId());
             Set(EntryTicksVariable, timestamp);
             Set(AssembliesAtEntryVariable, assemblyCount);
+        }
+
+        internal static void PublishLoaderOwnsModBoot()
+        {
+            Set(LoaderOwnsModBootVariable, CurrentProcessId());
+        }
+
+        internal static bool LoaderOwnsModBoot()
+        {
+            return string.Equals(
+                Get(LoaderOwnsModBootVariable),
+                CurrentProcessId(),
+                StringComparison.Ordinal);
         }
 
         internal static void PublishAssemblyCSharp(long timestamp, bool availableAtEntry)
@@ -125,7 +141,10 @@ namespace FixWorld.Preloader
             long bootstrapTimestamp,
             int assemblyCount)
         {
-            bool active = string.Equals(Get(ActiveVariable), "1", StringComparison.Ordinal);
+            bool active = string.Equals(
+                Get(ActiveVariable),
+                CurrentProcessId(),
+                StringComparison.Ordinal);
             long entryTimestamp = GetLong(EntryTicksVariable);
             long assemblyCSharpTimestamp = GetLong(AssemblyCSharpTicksVariable);
             long firstModAssemblyTimestamp = GetLong(FirstModAssemblyTicksVariable);
@@ -186,6 +205,12 @@ namespace FixWorld.Preloader
         private static string Get(string name)
         {
             return Environment.GetEnvironmentVariable(name);
+        }
+
+        private static string CurrentProcessId()
+        {
+            return Process.GetCurrentProcess().Id.ToString(
+                CultureInfo.InvariantCulture);
         }
 
         private static void Set(string name, int value)

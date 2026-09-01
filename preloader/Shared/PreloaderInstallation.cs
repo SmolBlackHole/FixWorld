@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -75,7 +77,7 @@ namespace FixWorld.Preloader
         {
             bool active = string.Equals(
                 Environment.GetEnvironmentVariable("FIXWORLD_PRELOADER_ACTIVE"),
-                "1",
+                Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture),
                 StringComparison.Ordinal);
 
             if (Environment.OSVersion.Platform != PlatformID.Win32NT)
