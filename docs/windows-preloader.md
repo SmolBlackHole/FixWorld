@@ -12,12 +12,16 @@ Beim ersten Start installiert der normale Mod zwei Dateien neben
 Ab dem nächsten Start gilt genau ein Pfad:
 
 ```text
-Doorstop -> FixWorld.Preloader -> FixWorld.Loader -> ModLoadingCoordinator
+Doorstop -> FixWorld.Preloader -> FixWorld.Loader -> FixWorld.Runtime
+                                      |
+                                      -> ModLoadingCoordinator
 ```
 
 Der Preloader lädt die DLL der installierten Harmony-Mod. `FixWorld.Loader` prüft die
-RimWorld-Assembly per MVID und übernimmt anschließend
-`LoadedModManager.LoadAllActiveMods()`. Unbekannte `winhttp.dll`- oder
+RimWorld-Assembly per MVID und den versionierten Runtime-Vertrag. Erst nachdem
+`FixWorld.Runtime` den Zustand `EarlyReady` erreicht hat, übernimmt der Loader
+`LoadedModManager.LoadAllActiveMods()`. Die normale FixWorld-Modinstanz bindet sich
+später genau einmal an dieselbe Runtime. Unbekannte `winhttp.dll`- oder
 `doorstop_config.ini`-Dateien werden nicht überschrieben.
 
 Es gibt keine Legacy-Konfiguration, keinen optionalen Spätpfad und keinen

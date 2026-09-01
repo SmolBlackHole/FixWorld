@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using FixWorld.Caching;
 using FixWorld.Preloader;
 using FixWorld.Runtime;
@@ -29,6 +30,10 @@ internal static class Program
             EventSubscribersAreIsolatedAndDisposable();
             EventBusShutdownIsFinal();
             PreloaderSignalsBelongToTheCurrentProcess();
+            RuntimeLifecycleTransitionsAreStrict();
+            ConcurrentRuntimeStartRunsOnce();
+            RuntimeFailureIsTerminal();
+            PublicRuntimeEntrypointIsIdempotent();
             AtomicFileReplacesAndBacksUp();
             CacheWriterPublishesImmutableSnapshots();
             MainThreadDispatcherIsFifo();
@@ -72,6 +77,128 @@ internal static class Program
         Assert(
             PreloaderTimelineContract.LoaderOwnsModBoot(),
             "The current loader signal was not accepted.");
+    }
+
+    private static void RuntimeLifecycleTransitionsAreStrict()
+    {
+        RuntimeLifecycle lifecycle = new RuntimeLifecycle();
+        object mod = new object();
+        int starts = 0;
+        int attaches = 0;
+        int shutdowns = 0;
+
+        AssertThrows<InvalidOperationException>(
+            () => lifecycle.AttachMod(mod, () => { }));
+        lifecycle.StartEarly(() => starts++);
+        lifecycle.StartEarly(() => starts++);
+        Assert(starts == 1, "The runtime initialized more than once.");
+        Assert(
+            lifecycle.Snapshot.State == FixWorldRuntimeState.EarlyReady,
+            "The runtime did not become early-ready.");
+
+        lifecycle.AttachMod(mod, () => attaches++);
+        lifecycle.AttachMod(mod, () => attaches++);
+        Assert(attaches == 1, "The same mod instance attached more than once.");
+        Assert(
+            lifecycle.Snapshot.State == FixWorldRuntimeState.Running &&
+            lifecycle.Snapshot.HasAttachedMod,
+            "The runtime did not enter the running state after mod attachment.");
+        AssertThrows<InvalidOperationException>(
+            () => lifecycle.AttachMod(new object(), () => { }));
+
+        lifecycle.Shutdown(() => shutdowns++);
+        lifecycle.Shutdown(() => shutdowns++);
+        Assert(shutdowns == 1, "Runtime shutdown executed more than once.");
+        Assert(
+            lifecycle.Snapshot.State == FixWorldRuntimeState.Stopped,
+            "Runtime shutdown was not final.");
+        AssertThrows<InvalidOperationException>(
+            () => lifecycle.StartEarly(() => { }));
+        AssertThrows<InvalidOperationException>(
+            () => lifecycle.AttachMod(mod, () => { }));
+    }
+
+    private static void ConcurrentRuntimeStartRunsOnce()
+    {
+        RuntimeLifecycle lifecycle = new RuntimeLifecycle();
+        using (ManualResetEventSlim entered = new ManualResetEventSlim(false))
+        using (ManualResetEventSlim release = new ManualResetEventSlim(false))
+        {
+            int starts = 0;
+            Action initialize = () =>
+            {
+                Interlocked.Increment(ref starts);
+                entered.Set();
+                release.Wait();
+            };
+            Task first = Task.Run(() => lifecycle.StartEarly(initialize));
+            Task second = Task.Run(() => lifecycle.StartEarly(initialize));
+
+            Assert(
+                entered.Wait(TimeSpan.FromSeconds(2)),
+                "The concurrent runtime start did not begin.");
+            Assert(
+                lifecycle.Snapshot.State == FixWorldRuntimeState.Starting,
+                "The runtime did not expose its starting state.");
+            release.Set();
+            Task.WaitAll(first, second);
+            Assert(starts == 1, "Concurrent starts initialized the runtime twice.");
+            Assert(
+                lifecycle.Snapshot.State == FixWorldRuntimeState.EarlyReady,
+                "Concurrent start did not finish in early-ready state.");
+        }
+    }
+
+    private static void RuntimeFailureIsTerminal()
+    {
+        RuntimeLifecycle startFailure = new RuntimeLifecycle();
+        AssertThrows<InvalidOperationException>(
+            () => startFailure.StartEarly(
+                () => throw new InvalidOperationException("expected start failure")));
+        Assert(
+            startFailure.Snapshot.State == FixWorldRuntimeState.Failed &&
+            startFailure.Snapshot.FailureMessage.Contains("expected start failure"),
+            "A failed start did not retain its terminal failure state.");
+        AssertThrows<InvalidOperationException>(
+            () => startFailure.StartEarly(() => { }));
+        startFailure.Shutdown(() =>
+            throw new InvalidOperationException("must not run"));
+        Assert(
+            startFailure.Snapshot.State == FixWorldRuntimeState.Failed,
+            "Shutdown changed a failed runtime state.");
+
+        RuntimeLifecycle attachFailure = new RuntimeLifecycle();
+        attachFailure.StartEarly(() => { });
+        AssertThrows<InvalidOperationException>(
+            () => attachFailure.AttachMod(
+                new object(),
+                () => throw new InvalidOperationException("expected attach failure")));
+        Assert(
+            attachFailure.Snapshot.State == FixWorldRuntimeState.Failed &&
+            attachFailure.Snapshot.HasAttachedMod,
+            "A failed attachment did not enter the terminal failure state.");
+    }
+
+    private static void PublicRuntimeEntrypointIsIdempotent()
+    {
+        object mod = new object();
+        int attaches = 0;
+        int shutdowns = 0;
+
+        FixWorldRuntime.StartEarly();
+        FixWorldRuntime.StartEarly();
+        FixWorldRuntime.AttachMod(mod, () => attaches++);
+        FixWorldRuntime.AttachMod(mod, () => attaches++);
+        Assert(
+            attaches == 1 &&
+            FixWorldRuntime.Snapshot.State == FixWorldRuntimeState.Running,
+            "The public runtime entrypoint was not idempotent.");
+        FixWorldRuntime.Shutdown(() => shutdowns++);
+        FixWorldRuntime.Shutdown(() => shutdowns++);
+        Assert(
+            shutdowns == 1 &&
+            FixWorldRuntime.Snapshot.State == FixWorldRuntimeState.Stopped,
+            "The public runtime entrypoint did not shut down exactly once.");
     }
 
     private static void ActiveKeyIsDeduplicatedAndTerminalKeyCanRunAgain()

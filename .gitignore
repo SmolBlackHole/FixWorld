@@ -20,12 +20,16 @@
 /mod/**/obj/
 /preloader/**/bin/
 /preloader/**/obj/
+/runtime/**/bin/
+/runtime/**/obj/
 /tests/**/bin/
 /tests/**/obj/
 /mod/FixWorld/Tools/Windows-x64/FixWorld.Preloader.dll
 /mod/FixWorld/Tools/Windows-x64/FixWorld.Preloader.pdb
 /mod/FixWorld/Tools/Windows-x64/FixWorld.Loader.dll
 /mod/FixWorld/Tools/Windows-x64/FixWorld.Loader.pdb
+/mod/FixWorld/Tools/Windows-x64/FixWorld.Runtime.dll
+/mod/FixWorld/Tools/Windows-x64/FixWorld.Runtime.pdb
 /mod/FixWorld/Tools/Windows-x64/FixWorld.Preloader.Tool.exe
 /mod/FixWorld/Tools/Windows-x64/FixWorld.Preloader.Tool.exe.config
 /mod/FixWorld/Tools/Windows-x64/FixWorld.Preloader.Tool.pdb

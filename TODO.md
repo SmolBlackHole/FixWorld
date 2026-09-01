@@ -1,11 +1,14 @@
 # TODO
 
-Aktuell: **Den Mod-Boot vollständig über Doorstop und `FixWorld.Loader` übernehmen.**
+Aktuell: **Phase 2 aus [RUNTIME-PLAN.md](RUNTIME-PLAN.md) vorbereiten: Infrastruktur und Mod-Boot in `FixWorld.Runtime` verschieben.**
 
 Der abgeschlossene Stand gehört in Git, Benchmarks und Logs. Diese Datei enthält nur noch bewusst verschobene Arbeit.
 
 ## Nächster Schnitt: eigener Mod-Boot
 
+- [x] `FixWorld.Runtime.dll` mit idempotentem Start-, Attach- und Shutdown-Vertrag früh laden
+- [x] fehlende oder inkompatible Runtime ohne FixWorld-Hooks auf Vanilla zurückfallen lassen
+- [ ] EventBus, Scheduler, Dispatcher und Mod-Boot aus Loader und normaler Mod in die Runtime verschieben
 - [x] den normalen Mod auf einen einmaligen Doorstop-Installer mit automatischem Neustart reduzieren
 - [x] bei aktiviertem, aber inaktivem Doorstop ohne vererbte Prozessmarke sicher abbrechen und Neustart-Schleifen verhindern
 - [x] den normalen FixWorld-Runtime-Start nur nach nachgewiesener Übernahme von `LoadAllActiveMods()` erlauben

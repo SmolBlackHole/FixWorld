@@ -5,6 +5,7 @@ using FixWorld.Lifecycle;
 using FixWorld.Loading;
 using FixWorld.Preloader;
 using FixWorld.Runtime;
+using FixWorld.RuntimeBridge;
 using FixWorld.Scheduling;
 using FixWorld.Textures;
 using Verse;
@@ -16,7 +17,6 @@ namespace FixWorld
         private static readonly object Sync = new object();
         private static IDisposable lifecycleSubscription;
         private static bool initialized;
-        private static bool shuttingDown;
 
         internal static void Initialize(
             ModContentPack content,
@@ -78,14 +78,17 @@ namespace FixWorld
         {
             lock (Sync)
             {
-                if (!initialized || shuttingDown)
+                if (!initialized)
                 {
                     return;
                 }
-
-                shuttingDown = true;
             }
 
+            RuntimeContract.BindLoaded().Shutdown(ShutdownCore);
+        }
+
+        private static void ShutdownCore()
+        {
             try
             {
                 RimWorldLifecycle.NotifyShuttingDown();
@@ -143,6 +146,10 @@ namespace FixWorld
             }
 
             RimWorldHooks.Uninstall();
+            lock (Sync)
+            {
+                initialized = false;
+            }
         }
 
         private static void ConsumeLifecycleEvent(

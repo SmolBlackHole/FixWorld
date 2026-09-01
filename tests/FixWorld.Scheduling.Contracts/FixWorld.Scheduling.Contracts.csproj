@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\runtime\FixWorld.Runtime\FixWorldRuntime.cs"
+      Link="Runtime\FixWorldRuntime.cs" />
+    <Compile Include="..\..\runtime\FixWorld.Runtime\RuntimeLifecycle.cs"
+      Link="Runtime\RuntimeLifecycle.cs" />
     <Compile Include="..\..\preloader\Shared\PreloaderTimeline.cs"
       Link="Preloader\PreloaderTimeline.cs" />
     <Compile Include="..\..\mod\FixWorld\Source\Caching\CacheModels.cs"

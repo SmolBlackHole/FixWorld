@@ -27,6 +27,8 @@
   <ItemGroup>
     <Compile Include="..\Shared\PreloaderTimeline.cs"
       Link="PreloaderTimeline.cs" />
+    <Compile Include="..\Shared\RuntimeContract.cs"
+      Link="RuntimeContract.cs" />
   </ItemGroup>
 
   <ItemGroup>

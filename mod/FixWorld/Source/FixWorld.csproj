@@ -29,6 +29,8 @@
       Link="Preloader\PreloaderInstallation.cs" />
     <Compile Include="..\..\..\preloader\Shared\PreloaderTimeline.cs"
       Link="Preloader\PreloaderTimeline.cs" />
+    <Compile Include="..\..\..\preloader\Shared\RuntimeContract.cs"
+      Link="Runtime\RuntimeContract.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -109,6 +111,10 @@
       <FixWorldPackageFile
         Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\FixWorld.Loader.dll">
         <PackagePath>Tools\Windows-x64\FixWorld.Loader.dll</PackagePath>
+      </FixWorldPackageFile>
+      <FixWorldPackageFile
+        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\FixWorld.Runtime.dll">
+        <PackagePath>Tools\Windows-x64\FixWorld.Runtime.dll</PackagePath>
       </FixWorldPackageFile>
       <FixWorldPackageFile
         Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\FixWorld.Preloader.Tool.exe">

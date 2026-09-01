@@ -1,5 +1,6 @@
 using System;
 using FixWorld.Preloader;
+using FixWorld.RuntimeBridge;
 using UnityEngine;
 using Verse;
 
@@ -17,7 +18,9 @@ namespace FixWorld
                 return;
             }
 
-            FixWorldBootstrap.Initialize(content, settings);
+            RuntimeContract.BindLoaded().AttachMod(
+                this,
+                () => FixWorldBootstrap.Initialize(content, settings));
         }
 
         public override string SettingsCategory()
