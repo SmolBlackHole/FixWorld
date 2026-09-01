@@ -1,6 +1,6 @@
 # FixWorld Runtime
 
-Status: **freigegeben, Revision 1, Phase 2 abgeschlossen**
+Status: **freigegeben, Revision 1, Phase 3 abgeschlossen**
 
 Baseline: `94fe7cf fix: harden early loader handoff`
 
@@ -275,17 +275,21 @@ Abnahme:
 
 ## Nächster ausführbarer Schnitt
 
-Phase 2 ist abgeschlossen. `FixWorld.Runtime` besitzt EventBus, Scheduler,
-Main-Thread-Dispatcher, Lifecycle, Loading-Pipeline und den top-level Patch auf
-`LoadAllActiveMods()`. Der Loader prüft nur noch die Umgebung, lädt die Runtime und
-ruft `StartEarly()` auf. Die normale Mod bindet Installer, Settings und
-`ModContentPack` über `AttachMod()` an die bereits laufende Runtime.
+Phase 3 ist abgeschlossen. Die normale Modassembly heißt eindeutig
+`FixWorld.Mod.dll` und enthält nur Installer, Settings, Mod-UI und die
+Runtime-Anbindung. Die Runtime übernimmt `Mod` und `ModContentPack` in einen
+unveränderlichen typisierten Attachment- und Settings-Snapshot. Der
+Reflection-Vertrag bleibt die abhängigkeitsschwache Bootstrap-Grenze für den ersten
+Start ohne aktive Runtime.
 
-Der Solution-Build ist warnungsfrei, 86 Contract-Assertions sind erfolgreich und
-die absichtlich fehlende Runtime fällt ohne Neustart-Schleife auf Vanilla zurück.
-Die vollständige 88-Mod-Liste erreicht das Hauptmenü in 55,7 Sekunden ohne
-relevante Fehler. Das Windows-Pilotpaket enthält Loader, Preloader und Runtime.
+Build und Runtime entfernen die alte `FixWorld.dll`. Die frühe Runtime bereinigt
+zusätzlich einen überkopierten Altbestand vor RimWorlds Assembly-Discovery. Der
+Upgrade-Smoke-Test sowie die vollständige 88-Mod-Liste erreichen das Hauptmenü ohne
+relevante Fehler. Runtime-Start, Pipeline, Mod-Attach und Main-Menü-Ereignis treten
+dabei jeweils genau einmal auf. Der Solution-Build ist warnungsfrei und alle 86
+Contract-Assertions sind erfolgreich.
 
-Der nächste ausführbare Schnitt ist Phase 3. Dabei wird die normale Modassembly zur
-dünnen, eindeutig benannten Brücke. Die bestehende Stage-Reihenfolge und ihre
-Ausführung bleiben dabei unverändert.
+Der nächste ausführbare Schnitt ist Phase 4. Dabei wird der bisher top-level
+übernommene Mod-Boot in explizite, typisierte Stages zerlegt. Zuerst wird
+`InitializeMods()` isoliert, ohne die Stage-Reihenfolge oder beobachtbare
+Mod-Semantik zu ändern.

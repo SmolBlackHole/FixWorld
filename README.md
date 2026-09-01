@@ -17,7 +17,8 @@ nicht vorgesehen; später folgt ein Pilot-Test mit einer zweiten Modliste.
 
 ## Wichtige Pfade
 
-- `mod/FixWorld/`: unser Harmony-Mod
+- `mod/FixWorld/`: Installer, Settings und normale `FixWorld.Mod`-Brücke
+- `runtime/FixWorld.Runtime/`: frühe Runtime, Loader-Pipeline und Infrastruktur
 - `benchmarks/saves/spoon-spring-v1.rws`: eingefrorener Ausgangssave
 - `profiling/captures/`: lokale Messdaten
 - `decompiled/Assembly-CSharp/`: read-only Referenz des Zielbuilds

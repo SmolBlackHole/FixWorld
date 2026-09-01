@@ -1,6 +1,6 @@
 # TODO
 
-Aktuell: **Phase 3 aus [RUNTIME-PLAN.md](RUNTIME-PLAN.md): die normale Modassembly als dünne Brücke eindeutig von der frühen Runtime trennen.**
+Aktuell: **Phase 4 aus [RUNTIME-PLAN.md](RUNTIME-PLAN.md): den übernommenen Mod-Boot schrittweise in explizite typisierte Stages zerlegen.**
 
 Der abgeschlossene Stand gehört in Git, Benchmarks und Logs. Diese Datei enthält nur noch bewusst verschobene Arbeit.
 
@@ -15,9 +15,9 @@ Der abgeschlossene Stand gehört in Git, Benchmarks und Logs. Diese Datei enthä
 - [x] `FixWorld.Loader.dll` nach dem Laden von `Assembly-CSharp` über Doorstop starten
 - [x] RimWorld-Version, Assembly-MVID und `LoadAllActiveMods(bool)`-Signatur vor der Übernahme prüfen
 - [x] `LoadedModManager.LoadAllActiveMods()` vollständig durch den FixWorld-Coordinator ersetzen
-- [ ] Hauptassembly in `FixWorld.Mod.dll` umbenennen und alte `FixWorld.dll` aus Build und Paket entfernen
-- [ ] sicherstellen, dass Runtime und Modassembly jeweils genau einmal geladen werden
-- [ ] Settings und Mod-UI ausschließlich über den typisierten `AttachMod()`-Snapshot anbinden
+- [x] Hauptassembly in `FixWorld.Mod.dll` umbenennen und alte `FixWorld.dll` aus Build und Paket entfernen
+- [x] sicherstellen, dass Runtime und Modassembly jeweils genau einmal geladen werden
+- [x] `ModContentPack` und Settings-Daten über den typisierten `AttachMod()`-Snapshot anbinden
 - [ ] `InitializeMods()` als eigene Stage für Metadaten und `ModContentPack` übernehmen
 - [ ] Assembly-Discovery und Assembly-Loading als eigene Stages übernehmen und typisiert messen
 - [ ] `LoadModContent()` hinter einen FixWorld-Adapter legen und pro Mod erfassen

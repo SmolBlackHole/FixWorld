@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using FixWorld.Diagnostics;
 using FixWorld.Integration;
 using FixWorld.Lifecycle;
@@ -27,6 +28,7 @@ namespace FixWorld.Runtime
                     return;
                 }
 
+                RemoveLegacyModAssembly();
                 PreloaderTimelineSnapshot timeline =
                     PreloaderTimelineState.Capture();
                 FixWorldScheduler.Initialize(ReportMainThreadError);
@@ -109,19 +111,19 @@ namespace FixWorld.Runtime
         }
 
         internal static void AttachMod(
-            string modRoot,
-            float ddsCacheMaxGiB)
+            RuntimeModAttachmentSnapshot attachment)
         {
-            if (string.IsNullOrWhiteSpace(modRoot))
+            if (attachment == null)
             {
-                throw new ArgumentException(
-                    "The FixWorld mod root is required.",
-                    nameof(modRoot));
+                throw new ArgumentNullException(nameof(attachment));
             }
 
-            TextureDdsCache.Initialize(modRoot, ddsCacheMaxGiB);
+            TextureDdsCache.Initialize(
+                attachment.Content.RootDir,
+                attachment.Settings.DdsCacheMaxGiB);
             Log.Message(
-                "[FixWorld.Runtime] Normal mod attached; hooks=True, workers=" +
+                "[FixWorld.Runtime] Normal mod attached; assembly=FixWorld.Mod, " +
+                "hooks=True, workers=" +
                 FixWorldScheduler.WorkerCount + ".");
         }
 
@@ -221,6 +223,53 @@ namespace FixWorld.Runtime
             Log.Error(
                 "[FixWorld.Runtime] Main-thread action failed (" + name +
                 "): " + exception);
+        }
+
+        private static void RemoveLegacyModAssembly()
+        {
+            string runtimeDirectory = Path.GetDirectoryName(
+                typeof(RuntimeHost).Assembly.Location);
+            if (string.IsNullOrWhiteSpace(runtimeDirectory))
+            {
+                throw new InvalidOperationException(
+                    "FixWorld.Runtime has no assembly location.");
+            }
+
+            string modRoot = Path.GetFullPath(
+                Path.Combine(runtimeDirectory, "..", ".."));
+            string assembliesDirectory = Path.Combine(modRoot, "Assemblies");
+            string currentAssembly = Path.Combine(
+                assembliesDirectory,
+                "FixWorld.Mod.dll");
+            if (!File.Exists(currentAssembly))
+            {
+                return;
+            }
+
+            string legacyAssembly = Path.Combine(
+                assembliesDirectory,
+                "FixWorld.dll");
+            string legacySymbols = Path.Combine(
+                assembliesDirectory,
+                "FixWorld.pdb");
+            bool removed = false;
+            if (File.Exists(legacyAssembly))
+            {
+                File.Delete(legacyAssembly);
+                removed = true;
+            }
+
+            if (File.Exists(legacySymbols))
+            {
+                File.Delete(legacySymbols);
+                removed = true;
+            }
+
+            if (removed)
+            {
+                Log.Message(
+                    "[FixWorld.Runtime] Removed the superseded FixWorld.dll.");
+            }
         }
 
         private static bool CompleteStartup(string source)

@@ -1,5 +1,5 @@
 <Solution>
-  <Project Path="mod/FixWorld/Source/FixWorld.csproj" />
+  <Project Path="mod/FixWorld/Source/FixWorld.Mod.csproj" />
   <Project Path="preloader/FixWorld.Loader/FixWorld.Loader.csproj" />
   <Project Path="preloader/FixWorld.Preloader/FixWorld.Preloader.csproj" />
   <Project Path="preloader/FixWorld.Preloader.Tool/FixWorld.Preloader.Tool.csproj" />

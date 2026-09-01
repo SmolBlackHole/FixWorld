@@ -30,7 +30,9 @@ FATAL_STARTUP_MARKERS = (
     "[FixWorld] Doorstop is active, but FixWorld.Runtime did not claim",
 )
 EARLY_PIPELINE_MARKER = "[FixWorld.Runtime] Running the owned mod-loading pipeline."
-RUNTIME_ATTACHED_MARKER = "[FixWorld.Runtime] Normal mod attached;"
+RUNTIME_ATTACHED_MARKER = (
+    "[FixWorld.Runtime] Normal mod attached; assembly=FixWorld.Mod,"
+)
 
 
 def bounded_int(minimum: int, maximum: int):

@@ -3,7 +3,7 @@
     <TargetFramework>net472</TargetFramework>
     <LangVersion>latest</LangVersion>
     <PlatformTarget>x64</PlatformTarget>
-    <AssemblyName>FixWorld</AssemblyName>
+    <AssemblyName>FixWorld.Mod</AssemblyName>
     <RootNamespace>FixWorld</RootNamespace>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
@@ -49,6 +49,11 @@
       Text="UnityEngine.CoreModule.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
   </Target>
 
+  <Target Name="RemoveLegacyModAssembly" BeforeTargets="PrepareForBuild">
+    <Delete
+      Files="$(MSBuildProjectDirectory)\..\Assemblies\FixWorld.dll;$(MSBuildProjectDirectory)\..\Assemblies\FixWorld.pdb" />
+  </Target>
+
   <Target Name="Package" DependsOnTargets="Build">
     <PropertyGroup>
       <FixWorldDistDir>$(MSBuildProjectDirectory)\..\..\..\dist</FixWorldDistDir>
@@ -59,8 +64,8 @@
       <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\About\About.xml">
         <PackagePath>About\About.xml</PackagePath>
       </FixWorldPackageFile>
-      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\Assemblies\FixWorld.dll">
-        <PackagePath>Assemblies\FixWorld.dll</PackagePath>
+      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\Assemblies\FixWorld.Mod.dll">
+        <PackagePath>Assemblies\FixWorld.Mod.dll</PackagePath>
       </FixWorldPackageFile>
       <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\Tools\DirectXTex-LICENSE.txt">
         <PackagePath>Tools\DirectXTex-LICENSE.txt</PackagePath>
@@ -108,6 +113,8 @@
         <PackagePath>Tools\Windows-x64\Doorstop-4.4.0\winhttp.dll</PackagePath>
       </FixWorldPackageFile>
     </ItemGroup>
+    <Error Condition="Exists('$(MSBuildProjectDirectory)\..\Assemblies\FixWorld.dll')"
+      Text="The legacy FixWorld.dll must not be packaged beside FixWorld.Mod.dll." />
     <RemoveDir Directories="$(FixWorldPackageStage)" />
     <MakeDir Directories="$(FixWorldPackageStage)\FixWorld" />
     <Copy

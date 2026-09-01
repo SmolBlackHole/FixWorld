@@ -32,7 +32,7 @@ namespace FixWorld.RuntimeBridge
             attachMod = RequireMethod(
                 entrypoint,
                 "AttachMod",
-                new[] { typeof(object), typeof(string), typeof(float) });
+                new[] { typeof(object), typeof(object), typeof(float) });
             shutdown = RequireMethod(
                 entrypoint,
                 "Shutdown",
@@ -84,10 +84,10 @@ namespace FixWorld.RuntimeBridge
 
         internal void AttachMod(
             object mod,
-            string modRoot,
+            object content,
             float ddsCacheMaxGiB)
         {
-            Invoke(attachMod, new object[] { mod, modRoot, ddsCacheMaxGiB });
+            Invoke(attachMod, new[] { mod, content, (object)ddsCacheMaxGiB });
         }
 
         internal void Shutdown()

@@ -67,9 +67,9 @@ def run_build(project: Path, target: str | None = None) -> None:
 
 def build_mod() -> Path:
     build_runtime_components()
-    run_build(ROOT / "mod" / "FixWorld" / "Source" / "FixWorld.csproj")
+    run_build(ROOT / "mod" / "FixWorld" / "Source" / "FixWorld.Mod.csproj")
 
-    assembly = ROOT / "mod" / "FixWorld" / "Assemblies" / "FixWorld.dll"
+    assembly = ROOT / "mod" / "FixWorld" / "Assemblies" / "FixWorld.Mod.dll"
     if not assembly.is_file():
         raise RuntimeError(f"Build succeeded, but the mod DLL is missing: {assembly}")
     digest = hashlib.sha256(assembly.read_bytes()).hexdigest().upper()
@@ -80,7 +80,10 @@ def build_mod() -> Path:
 
 def package_mod() -> Path:
     build_runtime_components()
-    run_build(ROOT / "mod" / "FixWorld" / "Source" / "FixWorld.csproj", "Package")
+    run_build(
+        ROOT / "mod" / "FixWorld" / "Source" / "FixWorld.Mod.csproj",
+        "Package",
+    )
     package = ROOT / "dist" / "FixWorld-pilot-win-x64.zip"
     if not package.is_file():
         raise RuntimeError(f"Package target did not create the expected ZIP: {package}")

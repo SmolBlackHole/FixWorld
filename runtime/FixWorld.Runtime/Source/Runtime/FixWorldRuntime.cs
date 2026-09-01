@@ -18,12 +18,17 @@ namespace FixWorld.Runtime
 
         public static void AttachMod(
             object mod,
-            string modRoot,
+            object content,
             float ddsCacheMaxGiB)
         {
+            RuntimeModAttachmentSnapshot attachment =
+                RuntimeModAttachmentSnapshot.Create(
+                    mod,
+                    content,
+                    ddsCacheMaxGiB);
             Lifecycle.AttachMod(
-                mod,
-                () => RuntimeHost.AttachMod(modRoot, ddsCacheMaxGiB));
+                attachment.Mod,
+                () => RuntimeHost.AttachMod(attachment));
         }
 
         public static void Shutdown()

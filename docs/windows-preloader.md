@@ -22,9 +22,14 @@ RimWorld-Assembly per MVID und den versionierten Runtime-Vertrag, lädt
 `FixWorld.Runtime` und ruft `StartEarly()` auf. Die Runtime richtet die langlebige
 Infrastruktur ein und übernimmt danach `LoadedModManager.LoadAllActiveMods()`.
 Der Loader besitzt weder einen Harmony-Patch noch eine fachliche Loading-Stage. Die
-normale FixWorld-Modinstanz bindet sich später genau einmal an dieselbe Runtime.
+normale `FixWorld.Mod.dll` bindet sich später genau einmal an dieselbe Runtime.
 Unbekannte `winhttp.dll`- oder `doorstop_config.ini`-Dateien werden nicht
 überschrieben.
+
+Seit Phase 3 ersetzt `FixWorld.Mod.dll` die frühere `FixWorld.dll`. Build und Runtime
+entfernen einen eindeutig erkannten Altbestand, bevor RimWorld beide Assemblies
+gleichzeitig laden kann. Das erlaubt auch ein Update, das über einen bestehenden
+privaten Pilotordner kopiert wurde.
 
 Es gibt keine Legacy-Konfiguration, keinen optionalen Spätpfad und keinen
 Enable-/Disable-Modus. Das Testscript installiert denselben produktiven Pfad über

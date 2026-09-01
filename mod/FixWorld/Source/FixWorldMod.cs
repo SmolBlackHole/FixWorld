@@ -20,7 +20,7 @@ namespace FixWorld
 
             RuntimeContract.BindLoaded().AttachMod(
                 this,
-                content.RootDir,
+                content,
                 settings.DdsCacheMaxGiB);
         }
 

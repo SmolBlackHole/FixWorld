@@ -25,7 +25,7 @@ RimWorldWin64.exe
 RimWorld-Modloader
 └─ FixWorld.Mod
    ├─ mit der frühen Runtime verbinden
-   └─ ohne Doorstop dieselbe Runtime später starten
+   └─ ohne aktiven Doorstop Installation und einmaligen Neustart auslösen
 ```
 
 Harmony bleibt zunächst das kompatible Patch-Backend. Doorstop liefert nur den frühen,
