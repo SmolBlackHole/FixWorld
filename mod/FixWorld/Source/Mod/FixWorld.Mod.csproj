@@ -70,9 +70,6 @@
       <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\..\Tools\DirectXTex-LICENSE.txt">
         <PackagePath>Tools\DirectXTex-LICENSE.txt</PackagePath>
       </FixWorldPackageFile>
-      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\..\Tools\Cleanup-DdsCache.ps1">
-        <PackagePath>Tools\Cleanup-DdsCache.ps1</PackagePath>
-      </FixWorldPackageFile>
       <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\texconv.exe">
         <PackagePath>Tools\Windows-x64\texconv.exe</PackagePath>
       </FixWorldPackageFile>
@@ -89,12 +86,12 @@
         <PackagePath>Tools\Windows-x64\FixWorld.Runtime.dll</PackagePath>
       </FixWorldPackageFile>
       <FixWorldPackageFile
-        Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\FixWorld.Preloader.Tool.exe">
-        <PackagePath>Tools\Windows-x64\FixWorld.Preloader.Tool.exe</PackagePath>
+        Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\FixWorld.Tool.exe">
+        <PackagePath>Tools\Windows-x64\FixWorld.Tool.exe</PackagePath>
       </FixWorldPackageFile>
       <FixWorldPackageFile
-        Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\FixWorld.Preloader.Tool.exe.config">
-        <PackagePath>Tools\Windows-x64\FixWorld.Preloader.Tool.exe.config</PackagePath>
+        Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\FixWorld.Tool.exe.config">
+        <PackagePath>Tools\Windows-x64\FixWorld.Tool.exe.config</PackagePath>
       </FixWorldPackageFile>
       <FixWorldPackageFile
         Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\Doorstop-4.4.0\.doorstop_version">

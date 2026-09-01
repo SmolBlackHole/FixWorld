@@ -39,7 +39,7 @@ namespace FixWorld
             listing.Gap();
             listing.Label(
                 "Physical removal: close RimWorld, then run " +
-                "Tools/Windows-x64/FixWorld.Preloader.Tool.exe uninstall.");
+                "Tools/Windows-x64/FixWorld.Tool.exe preloader uninstall.");
             listing.GapLine();
             listing.Label("DDS texture cache");
             listing.Label(

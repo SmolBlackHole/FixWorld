@@ -4,8 +4,8 @@
     <TargetFramework>net472</TargetFramework>
     <LangVersion>latest</LangVersion>
     <PlatformTarget>x64</PlatformTarget>
-    <AssemblyName>FixWorld.Preloader.Tool</AssemblyName>
-    <RootNamespace>FixWorld.Preloader.Tool</RootNamespace>
+    <AssemblyName>FixWorld.Tool</AssemblyName>
+    <RootNamespace>FixWorld.Tool</RootNamespace>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <Deterministic>true</Deterministic>

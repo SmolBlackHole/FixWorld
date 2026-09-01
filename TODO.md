@@ -1,8 +1,19 @@
 # TODO
 
-Aktuell: **Phase 4 aus [RUNTIME-PLAN.md](RUNTIME-PLAN.md): den übernommenen Mod-Boot schrittweise in explizite typisierte Stages zerlegen.**
+Aktuell: **Feature Freeze. Vor weiteren Loader-Features werden die vorhandenen Infrastrukturgrenzen sauber gezogen.**
 
 Der abgeschlossene Stand gehört in Git, Benchmarks und Logs. Diese Datei enthält nur noch bewusst verschobene Arbeit.
+
+## Aktueller Infrastruktur-Refactor
+
+- [x] `texconv` ausschließlich über einen kleinen typisierten Wrapper aufrufen; Aufrufer übergeben nur Eingabepfade, Ausgabeverzeichnis und DDS-Anforderungen
+- [x] Eingabedaten an der Tool-Grenze nur als Pfade beziehungsweise `--file-list` übergeben; der Wrapper kopiert keine Assetdaten
+- [x] DDS-Cache-Cleanup in das C#-Tool übernehmen und das PowerShell-Skript entfernen
+- [ ] die Hash-Staging-Kopien des DDS-Builders nur mit einer kollisionssicheren direkten Ausgabestrategie entfernen; der Tool-Wrapper selbst ist bereits kopierfrei
+- [ ] festlegen, welche Verträge wirklich assemblyübergreifend in `Shared` leben; zentrale Runtime-Dienste sind nicht automatisch Shared-Code
+- [ ] Caching, Scheduling, Worker und Runtime-Initialisierung anhand ihrer tatsächlichen Besitzer und Lebenszeiten neu zuschneiden
+- [ ] RimWorlds vorhandenes Unity Job System mit einem isolierten `IJob`-/`NativeArray`-Prototyp prüfen, bevor FixWorld einen eigenen Worker-Unterbau festlegt
+- [ ] erst nach dem Prototyp entscheiden, welche Arbeit Unity Jobs, FixWorld-Worker oder der Main Thread ausführen
 
 ## Nächster Schnitt: eigener Mod-Boot
 

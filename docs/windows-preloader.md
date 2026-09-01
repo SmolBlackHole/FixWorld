@@ -33,7 +33,7 @@ privaten Pilotordner kopiert wurde.
 
 Es gibt keine Legacy-Konfiguration, keinen optionalen Spätpfad und keinen
 Enable-/Disable-Modus. Das Testscript installiert denselben produktiven Pfad über
-`FixWorld.Preloader.Tool.exe install`.
+`FixWorld.Tool.exe preloader install`.
 
 Ist Doorstop nach dem Neustart zwar aktiviert, aber nicht im Prozess aktiv,
 startet FixWorld RimWorld nicht erneut. Ist Doorstop aktiv, konnte
@@ -52,7 +52,7 @@ Read-ahead, nicht den Preloader.
 RimWorld schließen und aus dem FixWorld-Modordner ausführen:
 
 ```powershell
-.\Tools\Windows-x64\FixWorld.Preloader.Tool.exe uninstall
+.\Tools\Windows-x64\FixWorld.Tool.exe preloader uninstall
 ```
 
 Das Tool entfernt ausschließlich eine über Eigentumsmarker und Doorstop-Prüfsumme

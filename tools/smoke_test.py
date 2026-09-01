@@ -67,7 +67,9 @@ def main() -> int:
 
     game_root = args.game_root.resolve()
     executable = game_root / "RimWorldWin64.exe"
-    config_template = ROOT / "mod" / "FixWorld" / "TestData" / "Config" / "ModsConfig.xml"
+    config_template = (
+        ROOT / "mod" / "FixWorld" / "TestData" / "Config" / "ModsConfig.xml"
+    )
     if args.live_mods:
         config_template = (
             Path.home()
@@ -93,11 +95,11 @@ def main() -> int:
     if is_rimworld_running():
         raise RuntimeError("RimWorld is already running.")
 
-    installer = mod_root / "Tools" / "Windows-x64" / "FixWorld.Preloader.Tool.exe"
+    installer = mod_root / "Tools" / "Windows-x64" / "FixWorld.Tool.exe"
     if not installer.is_file():
         raise RuntimeError(f"The FixWorld preloader installer is missing: {installer}")
     installation = subprocess.run(
-        [str(installer), "install", str(game_root)],
+        [str(installer), "preloader", "install", str(game_root)],
         cwd=installer.parent,
         capture_output=True,
         text=True,

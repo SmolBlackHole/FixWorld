@@ -94,17 +94,16 @@ def package_mod() -> Path:
 
 
 def build_runtime_components() -> None:
-    run_build(ROOT / "mod" / "FixWorld" / "Source" / "Runtime" / "FixWorld.Runtime.csproj")
-    run_build(ROOT / "mod" / "FixWorld" / "Source" / "Loader" / "FixWorld.Loader.csproj")
-    run_build(ROOT / "mod" / "FixWorld" / "Source" / "Preloader" / "FixWorld.Preloader.csproj")
     run_build(
-        ROOT
-        / "mod"
-        / "FixWorld"
-        / "Source"
-        / "Preloader.Tool"
-        / "FixWorld.Preloader.Tool.csproj"
+        ROOT / "mod" / "FixWorld" / "Source" / "Runtime" / "FixWorld.Runtime.csproj"
     )
+    run_build(
+        ROOT / "mod" / "FixWorld" / "Source" / "Loader" / "FixWorld.Loader.csproj"
+    )
+    run_build(
+        ROOT / "mod" / "FixWorld" / "Source" / "Preloader" / "FixWorld.Preloader.csproj"
+    )
+    run_build(ROOT / "mod" / "FixWorld" / "Source" / "Tool" / "FixWorld.Tool.csproj")
 
 
 def parse_args() -> argparse.Namespace:

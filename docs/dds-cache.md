@@ -48,11 +48,11 @@ typisierten Zustand, ohne den DDS-Code direkt zu kennen.
 Der Cache lässt sich ohne Python aus dem FixWorld-Modordner prüfen oder entfernen:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Tools\Cleanup-DdsCache.ps1
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Tools\Cleanup-DdsCache.ps1 -Delete
+.\Tools\Windows-x64\FixWorld.Tool.exe dds-cache status
+.\Tools\Windows-x64\FixWorld.Tool.exe dds-cache clean
 ```
 
-Der erste Aufruf ist nur ein Dry-Run. `-Delete` löscht ausschließlich erkannte
+Der erste Aufruf ist nur ein Dry-Run. `clean` löscht ausschließlich erkannte
 FixWorld-DDS- und Staging-Dateien und verweigert die Ausführung, solange RimWorld läuft.
 
 ## Geplantes Packformat
