@@ -1,19 +1,24 @@
 # TODO
 
-Aktuell: **Den frühen Doorstop-Einstieg absichern und den Mod-Boot schrittweise als eigene FixWorld-Pipeline übernehmen.**
+Aktuell: **Den Mod-Boot vollständig über Doorstop und `FixWorld.Loader` übernehmen.**
 
 Der abgeschlossene Stand gehört in Git, Benchmarks und Logs. Diese Datei enthält nur noch bewusst verschobene Arbeit.
 
-## Nächster Schnitt: früher Mod-Boot
+## Nächster Schnitt: eigener Mod-Boot
 
-- [ ] `LoadedModManager.LoadAllActiveMods()` am Doorstop-Einstieg zunächst ausschließlich beobachten und Vanilla vollständig weiterlaufen lassen
-- [ ] Mod-Metadaten, Assembly-Discovery, Assembly-Loading, Mod-Konstruktoren und Harmony-Zeiten typisiert erfassen
+- [x] den normalen Mod auf einen einmaligen Doorstop-Installer mit automatischem Neustart reduzieren
+- [x] bei fehlgeschlagenem Neustart sicher abbrechen, statt einen zweiten späten Loader-Pfad zu starten
+- [x] `FixWorld.Loader.dll` nach dem Laden von `Assembly-CSharp` über Doorstop starten
+- [x] RimWorld-Version, Assembly-MVID und `LoadAllActiveMods(bool)`-Signatur vor der Übernahme prüfen
+- [x] `LoadedModManager.LoadAllActiveMods()` vollständig durch den FixWorld-Coordinator ersetzen
+- [ ] `InitializeMods()` als eigene Stage für Metadaten und `ModContentPack` übernehmen
+- [ ] Assembly-Discovery und Assembly-Loading als eigene Stages übernehmen und typisiert messen
+- [ ] `LoadModContent()` hinter einen FixWorld-Adapter legen und pro Mod erfassen
+- [ ] `CreateModClasses()` hinter einen FixWorld-Adapter legen und Konstruktor- sowie Harmony-Zeiten erfassen
 - [ ] Ursache des langen frühen `...`-Abschnitts mit dieser Telemetrie belegen
-- [ ] Hook-Vertrag gegen RimWorld-Version, Assembly-MVID, Methodensignatur und Harmony-Owner absichern
-- [ ] `GetAllFilesForModPreserveOrder()` und Assembly-Discovery beobachten oder indexieren, noch nicht ersetzen
-- [ ] LongEvent-Thread, synchrone Events, Szenenwechsel und Exception-Lebenszyklus als Vertrag erfassen
-- [ ] erst danach `LoadAllActiveMods()` schrittweise über einen FixWorld-Coordinator übernehmen
-- [ ] Assembly- und Harmony-Reihenfolge unverändert delegieren, bis Messungen eine sichere Übernahme begründen
+- [ ] `GetAllFilesForModPreserveOrder()` und Assembly-Discovery in die eigene Stage-Pipeline übernehmen
+- [ ] LongEvent-Thread, synchrone Events, Szenenwechsel und Exception-Lebenszyklus als FixWorld-Vertrag erfassen
+- [ ] RimWorld- und Harmony-Operationen nur noch hinter expliziten FixWorld-Adaptern aufrufen
 
 ## Loader und Worker
 

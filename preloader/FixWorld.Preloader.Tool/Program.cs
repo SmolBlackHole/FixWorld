@@ -23,14 +23,9 @@ namespace FixWorld.Preloader.Tool
                         Console.WriteLine(PreloaderInstallation.GetState(paths).Message);
                         return 0;
                     case "install":
-                    case "enable":
                         RequireGameStopped();
-                        PreloaderInstallation.InstallOrEnable(paths);
-                        Console.WriteLine("FixWorld preloader is installed and enabled.");
-                        return 0;
-                    case "disable":
-                        PreloaderInstallation.Disable(paths);
-                        Console.WriteLine("FixWorld preloader is disabled for the next launch.");
+                        PreloaderInstallation.Install(paths);
+                        Console.WriteLine("FixWorld preloader is installed.");
                         return 0;
                     case "uninstall":
                         RequireGameStopped();
@@ -41,7 +36,7 @@ namespace FixWorld.Preloader.Tool
                     default:
                         throw new ArgumentException(
                             "Usage: FixWorld.Preloader.Tool.exe " +
-                            "[status|install|enable|disable|uninstall] " +
+                            "[status|install|uninstall] " +
                             "[RimWorld game directory]");
                 }
             }

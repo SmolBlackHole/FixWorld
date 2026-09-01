@@ -23,6 +23,12 @@ ERROR_PATTERNS = (
     r"TypeLoadException",
     r"\[FixWorld\].*(?:error|exception)",
 )
+FATAL_STARTUP_MARKERS = (
+    "[FixWorld] The active Doorstop installation is invalid",
+    "[FixWorld] Doorstop was still inactive after the automatic restart",
+    "[FixWorld] The required early loader could not be installed",
+)
+EARLY_PIPELINE_MARKER = "[FixWorld.Loader] Running the owned mod-loading pipeline."
 
 
 def bounded_int(minimum: int, maximum: int):
@@ -83,6 +89,20 @@ def main() -> int:
     if is_rimworld_running():
         raise RuntimeError("RimWorld is already running.")
 
+    installer = mod_root / "Tools" / "Windows-x64" / "FixWorld.Preloader.Tool.exe"
+    if not installer.is_file():
+        raise RuntimeError(f"The FixWorld preloader installer is missing: {installer}")
+    installation = subprocess.run(
+        [str(installer), "install", str(game_root)],
+        cwd=installer.parent,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if installation.returncode != 0:
+        detail = installation.stderr.strip() or installation.stdout.strip()
+        raise RuntimeError(f"Could not install the FixWorld preloader: {detail}")
+
     user_data = ROOT / "profiling" / "fixworld-userdata"
     config = user_data / "Config"
     config.mkdir(parents=True, exist_ok=True)
@@ -107,6 +127,7 @@ def main() -> int:
     )
     loaded = False
     ready = False
+    early_pipeline = False
     errors = 0
     try:
         while time.monotonic() - started < args.timeout:
@@ -114,6 +135,15 @@ def main() -> int:
                 log = log_path.read_text(encoding="utf-8", errors="replace")
                 loaded = "[FixWorld] Initialized;" in log
                 ready = "[FixWorld] Main menu ready." in log
+                early_pipeline = EARLY_PIPELINE_MARKER in log
+                fatal_marker = next(
+                    (marker for marker in FATAL_STARTUP_MARKERS if marker in log),
+                    None,
+                )
+                if fatal_marker:
+                    raise RuntimeError(
+                        f"FixWorld startup failed: {fatal_marker}. Log: {log_path}"
+                    )
                 if ready:
                     break
             if rimworld.process.poll() is not None:
@@ -122,10 +152,11 @@ def main() -> int:
                 )
             time.sleep(0.25)
 
-        if not loaded or not ready:
+        if not early_pipeline or not loaded or not ready:
             raise TimeoutError(
                 f"Smoke test incomplete after {args.timeout} seconds. "
-                f"Loaded={loaded}, Ready={ready}, Log={log_path}"
+                f"EarlyPipeline={early_pipeline}, Loaded={loaded}, "
+                f"Ready={ready}, Log={log_path}"
             )
 
         log = log_path.read_text(encoding="utf-8", errors="replace")
@@ -140,7 +171,8 @@ def main() -> int:
 
     duration = time.monotonic() - started
     print(
-        f"Loaded={loaded} Ready={ready} RelevantErrors={errors} "
+        f"EarlyPipeline={early_pipeline} Loaded={loaded} Ready={ready} "
+        f"RelevantErrors={errors} "
         f"DurationSeconds={duration:.1f} Log={log_path}"
     )
     return 0

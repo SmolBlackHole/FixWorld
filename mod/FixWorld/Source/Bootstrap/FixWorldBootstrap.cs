@@ -19,7 +19,6 @@ namespace FixWorld
         private static bool shuttingDown;
 
         internal static void Initialize(
-            FixWorldMod owner,
             ModContentPack content,
             FixWorldSettings settings)
         {
@@ -45,8 +44,6 @@ namespace FixWorld
                     LoadingSession.Start(true);
                     LoadingTelemetry.Start(BenchmarkRecorder.Enabled);
                     TextureDdsCache.Initialize(content.RootDir, settings);
-                    PreloaderManager.Configure(content.RootDir);
-                    PreloaderPrompt.Configure(owner, settings);
                     lifecycleSubscription =
                         FixWorldEvents.Subscribe<RimWorldLifecycleEvent>(
                             ConsumeLifecycleEvent);
@@ -163,7 +160,6 @@ namespace FixWorld
                     }
 
                     TextureDdsCache.StartDeferredBuild();
-                    PreloaderPrompt.TryShow();
                     break;
                 case RimWorldLifecycleEventKind.GameReady:
                     CompleteStartup(lifecycleEvent.Source);

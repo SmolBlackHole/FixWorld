@@ -9,7 +9,7 @@ nicht vorgesehen; später folgt ein Pilot-Test mit einer zweiten Modliste.
 - [ROADMAP.md](ROADMAP.md) beschreibt nur die High-Level-Richtung.
 - [TODO.md](TODO.md) enthält nur die nächsten konkreten Schritte.
 - [docs/dds-cache.md](docs/dds-cache.md) beschreibt Cacheformat, Grenzen und Messregeln.
-- [docs/windows-preloader.md](docs/windows-preloader.md) beschreibt den optionalen frühen Loader.
+- [docs/windows-preloader.md](docs/windows-preloader.md) beschreibt den Windows-Frühstart.
 - `benchmarks/fixtures.csv` identifiziert feste Ausgangssaves.
 - `benchmarks/results.csv` enthält eine Zeile pro Messlauf.
 - Rohlogs, Screenshots, Saves, dekompilierter Code und externe Werkzeuge bleiben
@@ -33,6 +33,7 @@ python .\tools\benchmark.py
 python .\tools\rimworld_process.py
 ```
 
-Die originalen RimWorld-Binaries bleiben unangetastet. Der optionale Windows-Preloader
-wird nur nach ausdrücklicher Aktivierung als separate Datei neben der EXE installiert.
-Der eigene Mod, Harmony und Dubs Performance Analyzer sind lokal über Junctions eingebunden.
+Die originalen RimWorld-Binaries bleiben unangetastet. Beim ersten FixWorld-Start wird
+der erforderliche Windows-Preloader neben der EXE installiert und RimWorld einmal neu
+gestartet. Der eigene Mod, Harmony und Dubs Performance Analyzer sind lokal über
+Junctions eingebunden.

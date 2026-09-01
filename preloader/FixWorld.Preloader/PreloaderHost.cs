@@ -12,13 +12,14 @@ namespace FixWorld.Preloader
             try
             {
                 PreloaderTimelineCapture.Start(entryTimestamp);
-                string gameRoot = FindGameRoot();
+                string gameRoot = PreloaderPaths.FindGameRoot();
                 log = new PreloaderLog(Path.Combine(gameRoot, "FixWorld.Preloader.log"));
+                EarlyLoaderBridge.Start(log);
                 DdsReadAhead.Start();
                 log.Write(
-                    "Doorstop entered FixWorld preloader, started the early assembly " +
-                    "timeline, and queued bounded DDS read-ahead. Runtime hooks remain " +
-                    "deferred to RimWorld's mod loader.");
+                    "Doorstop entered FixWorld preloader, armed FixWorld.Loader, " +
+                    "started the early assembly timeline, and queued bounded DDS " +
+                    "read-ahead.");
             }
             catch (Exception exception)
             {
@@ -36,18 +37,6 @@ namespace FixWorld.Preloader
                     log.Write(message);
                 }
             }
-        }
-
-        private static string FindGameRoot()
-        {
-            string executablePath = Process.GetCurrentProcess().MainModule?.FileName;
-            if (string.IsNullOrEmpty(executablePath))
-            {
-                throw new InvalidOperationException("Could not locate the RimWorld executable.");
-            }
-
-            return Path.GetDirectoryName(executablePath) ??
-                   throw new InvalidOperationException("Could not locate the RimWorld directory.");
         }
 
     }

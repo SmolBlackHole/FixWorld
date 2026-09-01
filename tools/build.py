@@ -91,6 +91,7 @@ def package_mod() -> Path:
 
 
 def build_runtime_components() -> None:
+    run_build(ROOT / "preloader" / "FixWorld.Loader" / "FixWorld.Loader.csproj")
     run_build(ROOT / "preloader" / "FixWorld.Preloader" / "FixWorld.Preloader.csproj")
     run_build(
         ROOT

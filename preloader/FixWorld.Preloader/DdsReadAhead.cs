@@ -61,7 +61,7 @@ namespace FixWorld.Preloader
                     0L,
                     0,
                     0.0);
-                string saveDataFolder = FindSaveDataFolder();
+                string saveDataFolder = PreloaderPaths.FindSaveDataFolder();
                 string cacheRoot = FindCacheRoot(saveDataFolder);
                 string indexPath = Path.Combine(cacheRoot, DdsCacheContract.IndexFileName);
                 if (!File.Exists(indexPath))
@@ -362,35 +362,6 @@ namespace FixWorld.Preloader
                 "FixWorld",
                 "TextureCache",
                 DdsCacheContract.CacheDirectoryName);
-        }
-
-        private static string FindSaveDataFolder()
-        {
-            string[] arguments = Environment.GetCommandLineArgs();
-            for (int index = 0; index < arguments.Length; index++)
-            {
-                const string prefix = "-savedatafolder=";
-                if (arguments[index].StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    return Path.GetFullPath(arguments[index].Substring(prefix.Length));
-                }
-
-                if (string.Equals(
-                        arguments[index],
-                        "-savedatafolder",
-                        StringComparison.OrdinalIgnoreCase) &&
-                    index + 1 < arguments.Length)
-                {
-                    return Path.GetFullPath(arguments[index + 1]);
-                }
-            }
-
-            return Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                "AppData",
-                "LocalLow",
-                "Ludeon Studios",
-                "RimWorld by Ludeon Studios");
         }
 
         private static long GetBudgetBytes()

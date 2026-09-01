@@ -12,7 +12,12 @@ namespace FixWorld
         public FixWorldMod(ModContentPack content) : base(content)
         {
             settings = GetSettings<FixWorldSettings>();
-            FixWorldBootstrap.Initialize(this, content, settings);
+            if (!PreloaderStartup.EnsureInstalled(content.RootDir))
+            {
+                return;
+            }
+
+            FixWorldBootstrap.Initialize(content, settings);
         }
 
         public override string SettingsCategory()
@@ -24,32 +29,9 @@ namespace FixWorld
         {
             Listing_Standard listing = new Listing_Standard();
             listing.Begin(inRect);
-            listing.Label("Optional Windows early loader");
+            listing.Label("Required Windows early loader");
             PreloaderState state = PreloaderManager.GetState();
             listing.Label(state.Message);
-            listing.Gap();
-
-            try
-            {
-                if ((state.Status == PreloaderStatus.NotInstalled ||
-                     state.Status == PreloaderStatus.Disabled) &&
-                    listing.ButtonText("Enable for next launch"))
-                {
-                    PreloaderManager.InstallOrEnable();
-                    settings.PreloaderPromptDismissed = true;
-                    WriteSettings();
-                }
-                else if (state.Status == PreloaderStatus.Enabled &&
-                         listing.ButtonText("Disable for next launch"))
-                {
-                    PreloaderManager.Disable();
-                }
-            }
-            catch (Exception exception)
-            {
-                Log.Error("[FixWorld] Could not change early-loader state: " + exception);
-            }
-
             listing.Gap();
             listing.Label(
                 "Physical removal: close RimWorld, then run " +

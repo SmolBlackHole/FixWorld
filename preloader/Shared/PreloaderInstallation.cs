@@ -64,13 +64,11 @@ namespace FixWorld.Preloader
         private const string OwnershipMarker = "# Managed by FixWorld";
         private const string DoorstopFileName = "winhttp.dll";
         private const string DoorstopConfigFileName = "doorstop_config.ini";
-        private const string LegacyPreloaderConfigFileName = "FixWorld.Preloader.ini";
 
         private static readonly string[] InstalledFiles =
         {
             DoorstopConfigFileName,
-            DoorstopFileName,
-            LegacyPreloaderConfigFileName
+            DoorstopFileName
         };
 
         internal static PreloaderState GetState(PreloaderInstallationPaths paths)
@@ -103,15 +101,13 @@ namespace FixWorld.Preloader
 
             string doorstopPath = paths.Target(DoorstopFileName);
             string doorstopConfigPath = paths.Target(DoorstopConfigFileName);
-            string legacyConfigPath = paths.Target(LegacyPreloaderConfigFileName);
             bool anyFile = File.Exists(doorstopPath) ||
-                           File.Exists(doorstopConfigPath) ||
-                           File.Exists(legacyConfigPath);
+                           File.Exists(doorstopConfigPath);
             if (!anyFile)
             {
                 return State(
                     PreloaderStatus.NotInstalled,
-                    "The optional early loader is not installed.",
+                    "The required early loader is not installed.",
                     active);
             }
 
@@ -124,17 +120,10 @@ namespace FixWorld.Preloader
             }
 
             if (File.Exists(doorstopConfigPath) &&
-                !IsOwnedDoorstopConfig(doorstopConfigPath, paths.BundledPreloader))
+                !IsOwnedDoorstopConfig(doorstopConfigPath))
             {
                 return Conflict(
                     "RimWorld already has a Doorstop config not owned by FixWorld.",
-                    active);
-            }
-
-            if (File.Exists(legacyConfigPath) && !IsOwned(legacyConfigPath))
-            {
-                return Conflict(
-                    "RimWorld already has a preloader config not owned by FixWorld.",
                     active);
             }
 
@@ -155,7 +144,7 @@ namespace FixWorld.Preloader
                 active);
         }
 
-        internal static PreloaderState InstallOrEnable(PreloaderInstallationPaths paths)
+        internal static PreloaderState Install(PreloaderInstallationPaths paths)
         {
             PreloaderState state = GetState(paths);
             if (state.Status != PreloaderStatus.NotInstalled &&
@@ -170,8 +159,7 @@ namespace FixWorld.Preloader
             try
             {
                 CopyDoorstop(paths, createdFiles);
-                WriteDoorstopConfig(paths, true, createdFiles);
-                DeleteOwnedLegacyConfig(paths);
+                WriteDoorstopConfig(paths, createdFiles);
                 return GetState(paths);
             }
             catch
@@ -185,25 +173,6 @@ namespace FixWorld.Preloader
             }
         }
 
-        internal static PreloaderState Disable(PreloaderInstallationPaths paths)
-        {
-            PreloaderState state = GetState(paths);
-            if (state.Status == PreloaderStatus.Disabled)
-            {
-                DeleteOwnedLegacyConfig(paths);
-                return GetState(paths);
-            }
-
-            if (state.Status != PreloaderStatus.Enabled)
-            {
-                throw new InvalidOperationException(state.Message);
-            }
-
-            WriteDoorstopConfig(paths, false);
-            DeleteOwnedLegacyConfig(paths);
-            return GetState(paths);
-        }
-
         internal static void Uninstall(PreloaderInstallationPaths paths)
         {
             PreloaderState state = GetState(paths);
@@ -215,13 +184,7 @@ namespace FixWorld.Preloader
 
             foreach (string fileName in InstalledFiles)
             {
-                string path = paths.Target(fileName);
-                if (!string.Equals(fileName, LegacyPreloaderConfigFileName, StringComparison.Ordinal) ||
-                    !File.Exists(path) ||
-                    IsOwned(path))
-                {
-                    File.Delete(path);
-                }
+                File.Delete(paths.Target(fileName));
             }
         }
 
@@ -270,7 +233,6 @@ namespace FixWorld.Preloader
 
         private static void WriteDoorstopConfig(
             PreloaderInstallationPaths paths,
-            bool enabled,
             ICollection<string> createdFiles = null)
         {
             string path = paths.Target(DoorstopConfigFileName);
@@ -278,7 +240,7 @@ namespace FixWorld.Preloader
             string content = OwnershipMarker + Environment.NewLine +
                              "# UnityDoorstop 4.4.0, Windows x64" + Environment.NewLine +
                              "[General]" + Environment.NewLine +
-                             "enabled=" + enabled.ToString().ToLowerInvariant() + Environment.NewLine +
+                             "enabled=true" + Environment.NewLine +
                              "target_assembly=" + paths.BundledPreloader + Environment.NewLine +
                              "redirect_output_log=false" + Environment.NewLine +
                              "boot_config_override=" + Environment.NewLine +
@@ -293,15 +255,6 @@ namespace FixWorld.Preloader
             if (!existed && createdFiles != null)
             {
                 createdFiles.Add(path);
-            }
-        }
-
-        private static void DeleteOwnedLegacyConfig(PreloaderInstallationPaths paths)
-        {
-            string path = paths.Target(LegacyPreloaderConfigFileName);
-            if (File.Exists(path) && IsOwned(path))
-            {
-                File.Delete(path);
             }
         }
 
@@ -323,33 +276,11 @@ namespace FixWorld.Preloader
             throw new InvalidDataException("Doorstop config has no enabled setting.");
         }
 
-        private static bool IsOwnedDoorstopConfig(string path, string preloaderPath)
+        private static bool IsOwnedDoorstopConfig(string path)
         {
-            string content = File.ReadAllText(path);
-            return content.StartsWith(OwnershipMarker, StringComparison.Ordinal) &&
-                   ContainsLine(content, "target_assembly=" + preloaderPath);
-        }
-
-        private static bool IsOwned(string path)
-        {
-            return File.ReadAllText(path).StartsWith(OwnershipMarker, StringComparison.Ordinal);
-        }
-
-        private static bool ContainsLine(string content, string expected)
-        {
-            using (StringReader reader = new StringReader(content))
-            {
-                string line;
-                while ((line = reader.ReadLine()) != null)
-                {
-                    if (string.Equals(line.Trim(), expected, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
+            return File.ReadAllText(path).StartsWith(
+                OwnershipMarker,
+                StringComparison.Ordinal);
         }
 
         private static string Hash(string path)

@@ -107,6 +107,10 @@
         <PackagePath>Tools\Windows-x64\FixWorld.Preloader.dll</PackagePath>
       </FixWorldPackageFile>
       <FixWorldPackageFile
+        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\FixWorld.Loader.dll">
+        <PackagePath>Tools\Windows-x64\FixWorld.Loader.dll</PackagePath>
+      </FixWorldPackageFile>
+      <FixWorldPackageFile
         Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\FixWorld.Preloader.Tool.exe">
         <PackagePath>Tools\Windows-x64\FixWorld.Preloader.Tool.exe</PackagePath>
       </FixWorldPackageFile>

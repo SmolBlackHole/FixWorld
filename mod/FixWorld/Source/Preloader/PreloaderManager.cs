@@ -50,19 +50,11 @@ namespace FixWorld.Preloader
             }
         }
 
-        internal static PreloaderState InstallOrEnable()
+        internal static PreloaderState Install()
         {
             lock (Sync)
             {
-                return PreloaderInstallation.InstallOrEnable(RequirePaths());
-            }
-        }
-
-        internal static PreloaderState Disable()
-        {
-            lock (Sync)
-            {
-                return PreloaderInstallation.Disable(RequirePaths());
+                return PreloaderInstallation.Install(RequirePaths());
             }
         }
 
