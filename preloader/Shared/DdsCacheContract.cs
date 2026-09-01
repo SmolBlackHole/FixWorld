@@ -39,7 +39,7 @@ namespace FixWorld.Textures
     {
         internal const int ManifestSchemaVersion = 1;
         internal const string CacheIdentityVersion =
-            "bc3-unorm-mips-v3-content-index";
+            "bc3-unorm-mips-v4-ignore-srgb-content-index";
         internal const string CacheDirectoryName = "dds-v1";
         internal const string IndexFileName = "index.json";
         internal const string BackupFileName = "index.backup.json";

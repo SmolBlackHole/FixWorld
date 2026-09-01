@@ -207,7 +207,9 @@ namespace FixWorld.Textures
             ProcessStartInfo startInfo = new()
             {
                 FileName = texconvPath,
-                Arguments = "-nologo -y -vflip -f BC3_UNORM -m " +
+                // RimWorld creates DDS textures with linear:false. Preserve the
+                // encoded source values so Unity performs the single sRGB decode.
+                Arguments = "-nologo -y --ignore-srgb -vflip -f BC3_UNORM -m " +
                             mipCount.ToString(CultureInfo.InvariantCulture) +
                             " -o " + Quote(outputDirectory) + " " + Quote(inputPattern),
                 UseShellExecute = false,
