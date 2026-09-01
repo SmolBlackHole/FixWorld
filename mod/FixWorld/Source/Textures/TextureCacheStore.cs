@@ -136,7 +136,7 @@ namespace FixWorld.Textures
 
         internal void TouchPrepared(string packageId, string sourcePath)
         {
-            string key = GetKey(packageId, sourcePath);
+            string key = TextureCacheIdentity.GetEntryKey(packageId, sourcePath);
             if (!writer.TryGet(
                     key,
                     out CacheEntry<TextureCacheArtifact, TextureCacheFingerprint> entry))
@@ -163,7 +163,7 @@ namespace FixWorld.Textures
         {
             string relativeCachePath = GetRelativeCachePath(cachePath);
             FileInfo cacheFile = new FileInfo(cachePath);
-            string key = GetKey(packageId, sourcePath);
+            string key = TextureCacheIdentity.GetEntryKey(packageId, sourcePath);
             bool hadPrevious = writer.TryGet(
                 key,
                 out CacheEntry<TextureCacheArtifact, TextureCacheFingerprint> previous);
@@ -185,8 +185,8 @@ namespace FixWorld.Textures
             writer.Upsert(
                 key,
                 new TextureCacheArtifact(
-                    Normalize(packageId),
-                    Normalize(sourcePath),
+                    TextureCacheIdentity.Normalize(packageId),
+                    TextureCacheIdentity.Normalize(sourcePath),
                     relativeCachePath,
                     cacheFile.Length,
                     DateTime.UtcNow.Ticks),
@@ -202,7 +202,7 @@ namespace FixWorld.Textures
             string packageId,
             ISet<string> retainedSourcePaths)
         {
-            string normalizedPackageId = Normalize(packageId);
+            string normalizedPackageId = TextureCacheIdentity.Normalize(packageId);
             string[] keys = writer.Enumerate()
                 .Where(pair =>
                     string.Equals(
@@ -375,9 +375,9 @@ namespace FixWorld.Textures
                     continue;
                 }
 
-                string packageId = Normalize(entry.PackageId);
-                string sourcePath = Normalize(entry.SourcePath);
-                result[GetKey(packageId, sourcePath)] =
+                string packageId = TextureCacheIdentity.Normalize(entry.PackageId);
+                string sourcePath = TextureCacheIdentity.Normalize(entry.SourcePath);
+                result[TextureCacheIdentity.GetEntryKey(packageId, sourcePath)] =
                     new CacheEntry<TextureCacheArtifact, TextureCacheFingerprint>(
                         new TextureCacheArtifact(
                             packageId,
@@ -570,15 +570,6 @@ namespace FixWorld.Textures
             return bytes;
         }
 
-        internal static string GetKey(string packageId, string sourcePath)
-        {
-            return Normalize(packageId) + "\n" + Normalize(sourcePath);
-        }
-
-        private static string Normalize(string value)
-        {
-            return value.Replace('\\', '/').ToLowerInvariant();
-        }
     }
 
     internal readonly struct TextureCacheFingerprint
@@ -662,7 +653,7 @@ namespace FixWorld.Textures
         {
             cachePath = null;
             if (!snapshot.TryGet(
-                    TextureCacheStore.GetKey(packageId, sourcePath),
+                    TextureCacheIdentity.GetEntryKey(packageId, sourcePath),
                     out CacheEntry<TextureCacheArtifact, TextureCacheFingerprint> entry) ||
                 entry.Stamp.SourceLength != source.Length ||
                 entry.Stamp.SourceWriteTimeUtcTicks !=
@@ -687,7 +678,7 @@ namespace FixWorld.Textures
         {
             cachePath = null;
             if (!snapshot.TryGet(
-                    TextureCacheStore.GetKey(packageId, sourcePath),
+                    TextureCacheIdentity.GetEntryKey(packageId, sourcePath),
                     out CacheEntry<TextureCacheArtifact, TextureCacheFingerprint> entry) ||
                 string.IsNullOrEmpty(entry.Stamp.SourceHash) ||
                 !string.Equals(

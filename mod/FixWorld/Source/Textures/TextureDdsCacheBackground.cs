@@ -6,8 +6,6 @@ using System.IO;
 using System.Linq;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
 using FixWorld.Runtime;
 using FixWorld.Scheduling;
@@ -15,41 +13,60 @@ using Verse;
 
 namespace FixWorld.Textures
 {
-    internal static partial class TextureDdsCache
+    internal sealed class TextureDdsCacheBackground
     {
         private const string BackgroundOutputEnvironmentVariable =
             "FIXWORLD_DDS_BACKGROUND_OUTPUT";
 
-        private static readonly object BackgroundSync = new object();
+        private readonly object sync = new object();
+        private readonly TextureCacheStore store;
+        private readonly TextureDdsCacheBuilder builder;
+        private readonly TextureDdsCacheMetrics metrics;
+        private readonly int workerCount;
+        private readonly List<ScheduledJobHandle> jobs =
+            new List<ScheduledJobHandle>();
 
-        private static IReadOnlyList<TextureCacheEntry> pendingDeferredBuild =
+        private IReadOnlyList<TextureCacheEntry> pendingDeferredBuild =
             Array.Empty<TextureCacheEntry>();
-        private static bool deferredBuildStarted;
+        private bool started;
+        private bool stopped;
 
-        private static void QueueDeferredBuild(IReadOnlyList<TextureCacheEntry> entries)
+        internal TextureDdsCacheBackground(
+            TextureCacheStore store,
+            TextureDdsCacheBuilder builder,
+            TextureDdsCacheMetrics metrics,
+            int workerCount)
         {
-            lock (BackgroundSync)
-            {
-                pendingDeferredBuild = entries ?? Array.Empty<TextureCacheEntry>();
-            }
+            this.store = store;
+            this.builder = builder;
+            this.metrics = metrics;
+            this.workerCount = workerCount;
         }
 
-        internal static void StartDeferredBuild()
+        internal void Queue(IReadOnlyList<TextureCacheEntry> entries)
         {
-            if (!enabled || cacheStore == null)
+            lock (sync)
             {
-                return;
-            }
-
-            IReadOnlyList<TextureCacheEntry> entries;
-            lock (BackgroundSync)
-            {
-                if (deferredBuildStarted)
+                if (stopped)
                 {
                     return;
                 }
 
-                deferredBuildStarted = true;
+                pendingDeferredBuild = entries ?? Array.Empty<TextureCacheEntry>();
+            }
+        }
+
+        internal void Start()
+        {
+            IReadOnlyList<TextureCacheEntry> entries;
+            lock (sync)
+            {
+                if (stopped || started)
+                {
+                    return;
+                }
+
+                started = true;
                 entries = pendingDeferredBuild;
                 pendingDeferredBuild = Array.Empty<TextureCacheEntry>();
             }
@@ -59,14 +76,15 @@ namespace FixWorld.Textures
                 .GroupBy(entry => entry.PackageId, StringComparer.Ordinal)
                 .Select(group => group.ToArray())
                 .ToArray();
-            string buildIdentity = GetDeferredBuildIdentity(entries);
+            string buildIdentity = TextureCacheIdentity.GetDeferredBuildIdentity(
+                entries);
             int parallelism = Math.Max(
                 1,
                 Math.Min(workerCount, FixWorldScheduler.WorkerCount));
 
             if (entries.Count == 0)
             {
-                FixWorldScheduler.Schedule(
+                Track(FixWorldScheduler.Schedule(
                     new SchedulerJob<DeferredTextureCacheReport>(
                         "dds/maintenance/" + buildIdentity,
                         "Clean deferred DDS cache",
@@ -78,7 +96,7 @@ namespace FixWorld.Textures
                             backgroundStartedAt,
                             cancellationToken),
                         concurrencyKey: "dds-cache-writer",
-                        maxConcurrency: 1));
+                        maxConcurrency: 1)));
                 return;
             }
 
@@ -89,7 +107,7 @@ namespace FixWorld.Textures
                 TextureCacheEntry[] batch = batches[batchIndex];
                 long estimatedBytes = batch.Sum(entry =>
                     Math.Max(0L, entry.EstimatedCacheBytes));
-                preparations[batchIndex] = FixWorldScheduler.Schedule(
+                preparations[batchIndex] = Track(FixWorldScheduler.Schedule(
                     new SchedulerJob<CacheBuildPreparation>(
                         "dds/prepare/" + buildIdentity + "/" + batchIndex,
                         "Build DDS for " + batch[0].PackageId,
@@ -100,10 +118,10 @@ namespace FixWorld.Textures
                             builder.Prepare(batch, cancellationToken),
                         estimatedBytes: estimatedBytes,
                         concurrencyKey: "dds-build",
-                        maxConcurrency: parallelism));
+                        maxConcurrency: parallelism)));
             }
 
-            FixWorldScheduler.Schedule(
+            Track(FixWorldScheduler.Schedule(
                 new SchedulerJob<DeferredTextureCacheReport>(
                     "dds/publish/" + buildIdentity,
                     "Publish deferred DDS cache",
@@ -119,10 +137,65 @@ namespace FixWorld.Textures
                         cancellationToken),
                     dependencies: preparations,
                     concurrencyKey: "dds-cache-writer",
-                    maxConcurrency: 1));
+                    maxConcurrency: 1)));
         }
 
-        private static DeferredTextureCacheReport RunDeferredMaintenance(
+        internal bool Shutdown()
+        {
+            ScheduledJobHandle[] scheduled;
+            lock (sync)
+            {
+                stopped = true;
+                pendingDeferredBuild = Array.Empty<TextureCacheEntry>();
+                scheduled = jobs.ToArray();
+            }
+
+            foreach (ScheduledJobHandle handle in scheduled)
+            {
+                FixWorldScheduler.Cancel(handle);
+            }
+
+            using (CancellationTokenSource timeout =
+                   new CancellationTokenSource(2000))
+            {
+                try
+                {
+                    foreach (ScheduledJobHandle handle in scheduled)
+                    {
+                        if (!handle.IsTerminal)
+                        {
+                            handle.Wait(timeout.Token);
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    return false;
+                }
+            }
+
+            return scheduled.All(handle => handle.IsTerminal);
+        }
+
+        private THandle Track<THandle>(THandle handle)
+            where THandle : ScheduledJobHandle
+        {
+            lock (sync)
+            {
+                if (stopped)
+                {
+                    FixWorldScheduler.Cancel(handle);
+                }
+                else
+                {
+                    jobs.Add(handle);
+                }
+            }
+
+            return handle;
+        }
+
+        private DeferredTextureCacheReport RunDeferredMaintenance(
             string buildIdentity,
             long backgroundStartedAt,
             CancellationToken cancellationToken)
@@ -132,10 +205,10 @@ namespace FixWorld.Textures
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                removedOrphans = cacheStore.SweepOrphans();
-                cacheStore.Save();
-                Interlocked.Add(ref invalidatedCount, removedOrphans);
-                Interlocked.Exchange(ref currentCacheBytes, cacheStore.CurrentBytes);
+                removedOrphans = store.SweepOrphans();
+                store.Save();
+                metrics.AddInvalidated(removedOrphans);
+                metrics.SetCacheBytes(store.CurrentBytes);
             }
             catch (Exception exception)
             {
@@ -171,7 +244,7 @@ namespace FixWorld.Textures
                 backgroundStartedAt);
         }
 
-        private static DeferredTextureCacheReport RunDeferredBuild(
+        private DeferredTextureCacheReport RunDeferredBuild(
             IReadOnlyList<TextureCacheEntry> entries,
             IReadOnlyList<TextureCacheEntry[]> batches,
             IReadOnlyList<ScheduledJobHandle<CacheBuildPreparation>> preparations,
@@ -206,7 +279,7 @@ namespace FixWorld.Textures
                             continue;
                         }
 
-                        cacheStore.RegisterExisting(
+                        store.RegisterExisting(
                             entry.PackageId,
                             entry.SourcePath,
                             entry.Source,
@@ -218,14 +291,14 @@ namespace FixWorld.Textures
 
                     if ((batchIndex + 1) % 8 == 0)
                     {
-                        cacheStore.Save();
+                        store.Save();
                     }
                 }
 
-                removedOrphans = cacheStore.SweepOrphans();
-                cacheStore.Save();
-                Interlocked.Add(ref invalidatedCount, removedOrphans);
-                Interlocked.Exchange(ref currentCacheBytes, cacheStore.CurrentBytes);
+                removedOrphans = store.SweepOrphans();
+                store.Save();
+                metrics.AddInvalidated(removedOrphans);
+                metrics.SetCacheBytes(store.CurrentBytes);
             }
             catch (Exception exception)
             {
@@ -236,11 +309,7 @@ namespace FixWorld.Textures
             {
                 double backgroundMilliseconds = GetElapsedMilliseconds(
                     backgroundStartedAt);
-                Interlocked.Add(ref createdCount, created);
-                Interlocked.Add(ref failedCount, failed);
-                Interlocked.Add(
-                    ref buildMilliseconds,
-                    (long)Math.Round(backgroundMilliseconds));
+                metrics.CompleteBuild(created, failed, backgroundMilliseconds);
                 DeferredTextureCacheReport report =
                     new DeferredTextureCacheReport(
                         entries.Count,
@@ -273,7 +342,7 @@ namespace FixWorld.Textures
                 backgroundStartedAt);
         }
 
-        private static DeferredTextureCacheReport CreateDeferredReport(
+        private DeferredTextureCacheReport CreateDeferredReport(
             int entries,
             int created,
             int failed,
@@ -373,27 +442,6 @@ namespace FixWorld.Textures
             }
         }
 
-        private static string GetDeferredBuildIdentity(
-            IReadOnlyList<TextureCacheEntry> entries)
-        {
-            using (SHA256 sha256 = SHA256.Create())
-            {
-                StringBuilder input = new StringBuilder(entries.Count * 96);
-                foreach (TextureCacheEntry entry in entries)
-                {
-                    input.Append(entry.Key)
-                        .Append('|')
-                        .Append(entry.SourceHash)
-                        .Append('\n');
-                }
-
-                byte[] hash = sha256.ComputeHash(
-                    Encoding.UTF8.GetBytes(input.ToString()));
-                return BitConverter.ToString(hash)
-                    .Replace("-", string.Empty)
-                    .ToLowerInvariant();
-            }
-        }
     }
 
     [DataContract]

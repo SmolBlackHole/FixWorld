@@ -1,6 +1,6 @@
 # FixWorld Cleanup
 
-Status: **aktiv und freigegeben**
+Status: **abgeschlossen**
 
 ## Ziel
 
@@ -74,11 +74,11 @@ Abnahme:
 
 ## Phase 5: DDS-Verantwortung und Abschluss
 
-- [ ] Der große partielle statische DDS-Zustand wird auf klare Besitzer reduziert: Lifecycle-Fassade, Store, Validierung/Planung, Builder und Background-Orchestrierung.
-- [ ] Wiederholte DDS-Pfad- und Fingerprint-Logik wird nur innerhalb der Texturdomäne zentralisiert.
-- [ ] Ungenutzte Overloads, Felder und Konfigurationspfade entfallen.
-- [ ] Background-Jobs greifen nach Shutdown nicht auf freigegebene Ressourcen zu.
-- [ ] `TODO.md` enthält nur bewusst verschobene Arbeit, nicht erledigte Cleanup-Punkte.
+- [x] Der große partielle statische DDS-Zustand wird auf klare Besitzer reduziert: Lifecycle-Fassade, Store, Validierung/Planung, Builder und Background-Orchestrierung.
+- [x] Wiederholte DDS-Pfad- und Fingerprint-Logik wird nur innerhalb der Texturdomäne zentralisiert.
+- [x] Ungenutzte Overloads, Felder und Konfigurationspfade entfallen.
+- [x] Background-Jobs greifen nach Shutdown nicht auf freigegebene Ressourcen zu.
+- [x] `TODO.md` enthält nur bewusst verschobene Arbeit, nicht erledigte Cleanup-Punkte.
 
 Abnahme:
 

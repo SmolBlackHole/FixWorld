@@ -8,24 +8,48 @@ using Verse;
 
 namespace FixWorld.Textures
 {
-    internal static partial class TextureDdsCache
+    internal sealed class TextureDdsCachePlanner
     {
-        private static readonly Dictionary<string, TextureLoadPlan> PreparedPlans =
+        private readonly object sync = new object();
+        private readonly string cacheRoot;
+        private readonly TextureCacheStore store;
+        private readonly TextureDdsCacheBuilder builder;
+        private readonly TextureDdsCacheMetrics metrics;
+        private readonly long maxCacheBytes;
+        private readonly long minimumFreeBytes;
+        private readonly int workerCount;
+        private readonly Dictionary<string, TextureLoadPlan> preparedPlans =
             new Dictionary<string, TextureLoadPlan>(StringComparer.Ordinal);
-        private static readonly Dictionary<string, IReadOnlyList<TextureCacheEntry>>
-            DeferredBuildsByPackage =
+        private readonly Dictionary<string, IReadOnlyList<TextureCacheEntry>>
+            deferredBuildsByPackage =
                 new Dictionary<string, IReadOnlyList<TextureCacheEntry>>(
                     StringComparer.Ordinal);
 
-        internal static bool TryCreateValidationPlan(
+        internal TextureDdsCachePlanner(
+            string cacheRoot,
+            TextureCacheStore store,
+            TextureDdsCacheBuilder builder,
+            TextureDdsCacheMetrics metrics,
+            long maxCacheBytes,
+            long minimumFreeBytes,
+            int workerCount)
+        {
+            this.cacheRoot = cacheRoot;
+            this.store = store;
+            this.builder = builder;
+            this.metrics = metrics;
+            this.maxCacheBytes = maxCacheBytes;
+            this.minimumFreeBytes = minimumFreeBytes;
+            this.workerCount = workerCount;
+        }
+
+        internal bool TryCreateValidationPlan(
             IReadOnlyList<ModContentPack> mods,
             out LoadingActionPlan plan)
         {
             DdsCacheContract.RequestReadAheadStop();
             plan = default;
-            if (!enabled ||
-                workerCount <= 0 ||
-                cacheStore == null ||
+            if (workerCount <= 0 ||
                 !Prefs.TextureCompression ||
                 mods == null ||
                 mods.Count == 0)
@@ -35,9 +59,9 @@ namespace FixWorld.Textures
 
             TextureCacheSnapshot cacheSnapshot;
             TextureLoadTarget[] targets;
-            lock (Sync)
+            lock (sync)
             {
-                cacheSnapshot = cacheStore.CreateValidationSnapshot();
+                cacheSnapshot = store.CreateValidationSnapshot();
                 targets = mods.Select(CreateTarget).ToArray();
             }
 
@@ -70,7 +94,7 @@ namespace FixWorld.Textures
             return true;
         }
 
-        internal static bool TryGetPreparedFiles(
+        internal bool TryGetPreparedFiles(
             ModContentPack mod,
             string contentPath,
             Func<string, bool> validateExtension,
@@ -82,10 +106,10 @@ namespace FixWorld.Textures
                 return false;
             }
 
-            lock (Sync)
+            lock (sync)
             {
-                if (!PreparedPlans.TryGetValue(
-                        Normalize(mod.PackageId),
+                if (!preparedPlans.TryGetValue(
+                        TextureCacheIdentity.Normalize(mod.PackageId),
                         out TextureLoadPlan prepared))
                 {
                     return false;
@@ -96,13 +120,82 @@ namespace FixWorld.Textures
             }
         }
 
-        private static TextureLoadTarget CreateTarget(ModContentPack mod)
+        internal void Apply(
+            ModContentPack mod,
+            Dictionary<string, FileInfo> files)
+        {
+            lock (sync)
+            {
+                bool prepared = HasPreparedPlan(mod);
+                LoadingOperation operation = LoadingEvents.Begin(
+                    Descriptor(
+                        LoadingStage.Content,
+                        prepared
+                            ? LoadingStep.CommitTextureCache
+                            : LoadingStep.ValidateTextureCache,
+                        prepared
+                            ? "Commit texture cache"
+                            : "Validate texture cache",
+                        prepared
+                            ? "Applying prepared texture mapping for " + mod.Name
+                            : "Checking cached textures for " + mod.Name,
+                        LoadingModAttribution.Exact(mod)));
+                try
+                {
+                    if (TryApplyPrepared(mod, files))
+                    {
+                        return;
+                    }
+
+                    PrepareAndApplyFallback(mod, files);
+                }
+                catch (Exception exception)
+                {
+                    operation.Fail();
+                    Log.Warning(
+                        "[FixWorld] DDS cache skipped for " + mod.PackageId +
+                        ": " + exception);
+                }
+                finally
+                {
+                    operation.Dispose();
+                }
+            }
+        }
+
+        internal IReadOnlyList<TextureCacheEntry> Complete()
+        {
+            lock (sync)
+            {
+                try
+                {
+                    PrepareCacheMaintenance();
+                    return TakeDeferredBuildEntries();
+                }
+                finally
+                {
+                    preparedPlans.Clear();
+                    metrics.SetCacheBytes(store.CurrentBytes);
+                }
+            }
+        }
+
+        internal void Shutdown()
+        {
+            lock (sync)
+            {
+                preparedPlans.Clear();
+                deferredBuildsByPackage.Clear();
+            }
+        }
+
+        private TextureLoadTarget CreateTarget(ModContentPack mod)
         {
             string root = Path.GetFullPath(mod.RootDir)
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
                           Path.DirectorySeparatorChar;
             return new TextureLoadTarget(
-                Normalize(mod.PackageId),
+                TextureCacheIdentity.Normalize(mod.PackageId),
                 mod.Name,
                 root,
                 mod.foldersToLoadDescendingOrder.ToArray(),
@@ -110,7 +203,7 @@ namespace FixWorld.Textures
                 builder.Identity);
         }
 
-        private static TextureLoadPlan CreateLoadPlan(
+        private TextureLoadPlan CreateLoadPlan(
             TextureLoadTarget target,
             TextureCacheSnapshot cacheSnapshot,
             Dictionary<string, FileInfo> discoveredFiles)
@@ -128,7 +221,7 @@ namespace FixWorld.Textures
                     ModFileLoader.DiscoverTextures(target.Folders, target.ContentPath);
                 HashSet<string> shippedDdsPaths = new HashSet<string>(
                     files.Keys
-                        .Select(Normalize)
+                        .Select(TextureCacheIdentity.Normalize)
                         .Where(path => path.EndsWith(".dds", StringComparison.Ordinal)),
                     StringComparer.Ordinal);
                 List<TextureLoadDecision> decisions = new List<TextureLoadDecision>();
@@ -141,7 +234,7 @@ namespace FixWorld.Textures
                     operation.ReportProgress(
                         "Checking cached textures for " + target.ModName);
                     FileInfo source = item.Value;
-                    string sourceKey = Normalize(item.Key);
+                    string sourceKey = TextureCacheIdentity.Normalize(item.Key);
                     string extension = source.Extension.ToLowerInvariant();
                     if (extension == ".dds" ||
                         shippedDdsPaths.Contains(Path.ChangeExtension(sourceKey, ".dds")) ||
@@ -154,7 +247,9 @@ namespace FixWorld.Textures
                         continue;
                     }
 
-                    string sourcePath = GetRelativeSourcePath(source, target.ModRoot);
+                    string sourcePath = TextureCacheIdentity.GetRelativeSourcePath(
+                        source,
+                        target.ModRoot);
                     if (cacheSnapshot.TryGetFresh(
                             target.PackageId,
                             sourcePath,
@@ -188,7 +283,8 @@ namespace FixWorld.Textures
                         continue;
                     }
 
-                    string sourceHash = GetFileHash(source.FullName);
+                    string sourceHash = TextureCacheIdentity.GetFileHash(
+                        source.FullName);
                     if (cacheSnapshot.TryGetReusable(
                             target.PackageId,
                             sourcePath,
@@ -249,7 +345,7 @@ namespace FixWorld.Textures
             }
         }
 
-        private static TextureCacheEntry CreateBuildEntry(
+        private TextureCacheEntry CreateBuildEntry(
             TextureLoadTarget target,
             string key,
             FileInfo source,
@@ -258,13 +354,13 @@ namespace FixWorld.Textures
             int mipCount,
             long estimatedBytes)
         {
-            string cacheKey = GetContentCacheKey(
+            string cacheKey = TextureCacheIdentity.GetContentKey(
                 sourcePath,
                 sourceHash,
                 target.ConverterIdentity);
             string finalDirectory = Path.Combine(
                 cacheRoot,
-                SanitizePathSegment(target.PackageId),
+                TextureCacheIdentity.SanitizePathSegment(target.PackageId),
                 cacheKey);
             return new TextureCacheEntry(
                 key,
@@ -282,58 +378,59 @@ namespace FixWorld.Textures
                     Path.GetFileNameWithoutExtension(source.Name) + ".dds"));
         }
 
-        private static void StorePreparedPlan(TextureLoadPlan plan)
+        private void StorePreparedPlan(TextureLoadPlan plan)
         {
-            lock (Sync)
+            lock (sync)
             {
                 plan.UseCachedFiles();
-                PreparedPlans[plan.PackageId] = plan;
-                DeferredBuildsByPackage[plan.PackageId] = plan.DeferredBuilds;
-                workerPreparedMods++;
+                preparedPlans[plan.PackageId] = plan;
+                deferredBuildsByPackage[plan.PackageId] = plan.DeferredBuilds;
+                metrics.PreparedMod();
             }
         }
 
-        private static bool TryApplyPrepared(
+        private bool TryApplyPrepared(
             ModContentPack mod,
             Dictionary<string, FileInfo> files)
         {
-            string packageId = Normalize(mod.PackageId);
-            if (!PreparedPlans.TryGetValue(packageId, out TextureLoadPlan prepared))
+            string packageId = TextureCacheIdentity.Normalize(mod.PackageId);
+            if (!preparedPlans.TryGetValue(packageId, out TextureLoadPlan prepared))
             {
                 return false;
             }
 
-            PreparedPlans.Remove(packageId);
+            preparedPlans.Remove(packageId);
             if (!ReferenceEquals(files, prepared.Files))
             {
                 return false;
             }
 
             CommitLoadPlan(prepared);
-            workerAppliedMods++;
+            metrics.AppliedMod();
             return true;
         }
 
-        private static void PrepareAndApplyFallback(
+        private void PrepareAndApplyFallback(
             ModContentPack mod,
             Dictionary<string, FileInfo> files)
         {
             TextureLoadPlan plan = CreateLoadPlan(
                 CreateTarget(mod),
-                cacheStore.CreateValidationSnapshot(),
+                store.CreateValidationSnapshot(),
                 files);
             plan.UseCachedFiles();
-            DeferredBuildsByPackage[plan.PackageId] = plan.DeferredBuilds;
+            deferredBuildsByPackage[plan.PackageId] = plan.DeferredBuilds;
             CommitLoadPlan(plan);
-            workerFallbackMods++;
+            metrics.FallbackMod();
         }
 
-        private static bool HasPreparedPlan(ModContentPack mod)
+        private bool HasPreparedPlan(ModContentPack mod)
         {
-            return PreparedPlans.ContainsKey(Normalize(mod.PackageId));
+            return preparedPlans.ContainsKey(
+                TextureCacheIdentity.Normalize(mod.PackageId));
         }
 
-        private static void CommitLoadPlan(TextureLoadPlan plan)
+        private void CommitLoadPlan(TextureLoadPlan plan)
         {
             HashSet<string> retainedSourcePaths = new HashSet<string>(StringComparer.Ordinal);
             foreach (TextureLoadDecision decision in plan.Decisions)
@@ -343,7 +440,7 @@ namespace FixWorld.Textures
                     case TextureLoadDecisionKind.Cached:
                         if (decision.Register)
                         {
-                            cacheStore.RegisterExisting(
+                            store.RegisterExisting(
                                 plan.PackageId,
                                 decision.SourcePath,
                                 decision.Source,
@@ -354,30 +451,76 @@ namespace FixWorld.Textures
                         }
                         else
                         {
-                            cacheStore.TouchPrepared(plan.PackageId, decision.SourcePath);
+                            store.TouchPrepared(plan.PackageId, decision.SourcePath);
                         }
 
                         retainedSourcePaths.Add(decision.SourcePath);
-                        hitCount++;
+                        metrics.Hit();
                         break;
                     case TextureLoadDecisionKind.Missing:
-                        missCount++;
+                        metrics.Miss();
                         break;
                     case TextureLoadDecisionKind.Excluded:
-                        excludedCount++;
+                        metrics.Exclude();
                         break;
                     case TextureLoadDecisionKind.Unsupported:
-                        unsupportedCount++;
+                        metrics.Unsupported();
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
             }
 
-            invalidatedCount += cacheStore.RemoveMissingSources(
+            metrics.AddInvalidated(store.RemoveMissingSources(
                 plan.PackageId,
-                retainedSourcePaths);
-            currentCacheBytes = cacheStore.CurrentBytes;
+                retainedSourcePaths));
+            metrics.SetCacheBytes(store.CurrentBytes);
+        }
+
+        private void PrepareCacheMaintenance()
+        {
+            LoadingOperation operation = LoadingEvents.Begin(
+                Descriptor(
+                    LoadingStage.Finalize,
+                    LoadingStep.PruneTextureCache,
+                    "Prepare texture cache maintenance",
+                    "Publishing active and in-budget DDS cache entries"));
+            try
+            {
+                HashSet<string> activePackageIds = new HashSet<string>(
+                    LoadedModManager.RunningModsListForReading
+                        .Select(mod =>
+                            TextureCacheIdentity.Normalize(mod.PackageId)),
+                    StringComparer.Ordinal);
+                int removedEntries = store.RemoveInactivePackages(activePackageIds);
+                int budgetRemovals = store.EnforceBudget(maxCacheBytes);
+                metrics.AddInvalidated(removedEntries + budgetRemovals);
+                metrics.SetCacheBytes(store.CurrentBytes);
+            }
+            catch
+            {
+                operation.Fail();
+                throw;
+            }
+            finally
+            {
+                operation.Dispose();
+            }
+        }
+
+        private static LoadingStageEventDescriptor Descriptor(
+            LoadingStage stage,
+            LoadingStep step,
+            string displayName,
+            string activity,
+            LoadingModAttribution? attribution = null)
+        {
+            return new LoadingStageEventDescriptor(
+                stage,
+                step,
+                displayName,
+                activity,
+                attribution ?? LoadingModAttribution.Global);
         }
 
         private static bool IsStandardTextureRequest(
@@ -394,25 +537,20 @@ namespace FixWorld.Textures
                    !validateExtension(".txt");
         }
 
-        private static void ClearPreparedPlans()
+        private IReadOnlyList<TextureCacheEntry> TakeDeferredBuildEntries()
         {
-            PreparedPlans.Clear();
-        }
-
-        private static IReadOnlyList<TextureCacheEntry> TakeDeferredBuildEntries()
-        {
-            TextureCacheEntry[] candidates = DeferredBuildsByPackage.Values
+            TextureCacheEntry[] candidates = deferredBuildsByPackage.Values
                 .SelectMany(entries => entries)
                 .ToArray();
-            DeferredBuildsByPackage.Clear();
+            deferredBuildsByPackage.Clear();
             TextureCacheBuildBudget budget = new TextureCacheBuildBudget(
-                cacheStore.CurrentBytes,
+                store.CurrentBytes,
                 new DriveInfo(Path.GetPathRoot(cacheRoot)).AvailableFreeSpace,
                 maxCacheBytes,
                 minimumFreeBytes,
                 builder.Available);
             IReadOnlyList<TextureCacheEntry> selected = budget.Select(candidates);
-            budgetSkippedCount += candidates.Length - selected.Count;
+            metrics.AddBudgetSkipped(candidates.Length - selected.Count);
             return selected;
         }
 

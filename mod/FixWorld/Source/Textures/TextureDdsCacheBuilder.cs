@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 
@@ -22,7 +21,9 @@ namespace FixWorld.Textures
         {
             this.cacheRoot = cacheRoot;
             texconvPath = FindTexconv(modRoot);
-            identity = File.Exists(texconvPath) ? GetFileIdentity(texconvPath) : null;
+            identity = File.Exists(texconvPath)
+                ? TextureCacheIdentity.GetConverterIdentity(texconvPath)
+                : null;
         }
 
         internal bool Available => !string.IsNullOrEmpty(texconvPath);
@@ -30,11 +31,6 @@ namespace FixWorld.Textures
         internal string TexconvPath => texconvPath;
 
         internal string Identity => identity;
-
-        internal CacheBuildPreparation Prepare(IReadOnlyList<TextureCacheEntry> entries)
-        {
-            return Prepare(entries, CancellationToken.None);
-        }
 
         internal CacheBuildPreparation Prepare(
             IReadOnlyList<TextureCacheEntry> entries,
@@ -51,11 +47,9 @@ namespace FixWorld.Textures
                     null,
                     Array.Empty<CacheBuildArtifact>(),
                     entries.Count,
-                    0.0,
                     null);
             }
 
-            Stopwatch stopwatch = Stopwatch.StartNew();
             int failed = 0;
             List<string> errors = [];
             List<CacheBuildArtifact> artifacts = new List<CacheBuildArtifact>(entries.Count);
@@ -63,7 +57,7 @@ namespace FixWorld.Textures
                 cacheRoot,
                 ".staging-" + Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture) + "-" +
                 Guid.NewGuid().ToString("N"));
-            EnsureChildPath(cacheRoot, stagingRoot);
+            TextureCacheIdentity.EnsureChildPath(cacheRoot, stagingRoot);
 
             try
             {
@@ -121,16 +115,10 @@ namespace FixWorld.Textures
                 failed = Math.Max(failed, entries.Count - artifacts.Count);
                 errors.Add(exception.Message);
             }
-            finally
-            {
-                stopwatch.Stop();
-            }
-
             return new CacheBuildPreparation(
                 stagingRoot,
                 artifacts,
                 failed,
-                stopwatch.Elapsed.TotalMilliseconds,
                 errors.Count == 0 ? null : string.Join(" | ", errors.Take(3)));
         }
 
@@ -141,9 +129,7 @@ namespace FixWorld.Textures
                 throw new ArgumentNullException(nameof(preparation));
             }
 
-            Stopwatch stopwatch = Stopwatch.StartNew();
             int created = 0;
-            long createdBytes = 0L;
             int failed = preparation.Failed;
             List<string> errors = new List<string>();
             if (preparation.Error != null)
@@ -167,7 +153,6 @@ namespace FixWorld.Textures
 
                         File.Move(artifact.StagedPath, entry.FinalPath);
                         created++;
-                        createdBytes += new FileInfo(entry.FinalPath).Length;
                     }
                     catch (Exception exception)
                     {
@@ -178,7 +163,6 @@ namespace FixWorld.Textures
             }
             finally
             {
-                stopwatch.Stop();
                 string cleanupError = DeleteStagingDirectory(preparation.StagingRoot);
                 if (cleanupError != null)
                 {
@@ -188,9 +172,7 @@ namespace FixWorld.Textures
 
             return new CacheBuildResult(
                 created,
-                createdBytes,
                 failed,
-                preparation.Milliseconds + stopwatch.Elapsed.TotalMilliseconds,
                 errors.Count == 0 ? null : string.Join(" | ", errors.Take(3)));
         }
 
@@ -372,31 +354,6 @@ namespace FixWorld.Textures
                    platform == PlatformID.WinCE;
         }
 
-        private static string GetFileIdentity(string path)
-        {
-            using SHA256 sha256 = SHA256.Create();
-            using FileStream stream = new(
-                       path,
-                       FileMode.Open,
-                       FileAccess.Read,
-                       FileShare.Read);
-            byte[] hash = sha256.ComputeHash(stream);
-            return "sha256:" + BitConverter.ToString(hash)
-                .Replace("-", string.Empty)
-                .ToLowerInvariant();
-        }
-
-        private static void EnsureChildPath(string parent, string child)
-        {
-            string resolvedParent = Path.GetFullPath(parent).TrimEnd(Path.DirectorySeparatorChar) +
-                                    Path.DirectorySeparatorChar;
-            string resolvedChild = Path.GetFullPath(child);
-            if (!resolvedChild.StartsWith(resolvedParent, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("Invalid cache path: " + resolvedChild);
-            }
-        }
-
         private static string Quote(string value)
         {
             return "\"" + value.Replace("\"", "\\\"") + "\"";
@@ -450,26 +407,22 @@ namespace FixWorld.Textures
             null,
             Array.Empty<CacheBuildArtifact>(),
             0,
-            0.0,
             null);
 
         internal readonly string StagingRoot;
         internal readonly IReadOnlyList<CacheBuildArtifact> Artifacts;
         internal readonly int Failed;
-        internal readonly double Milliseconds;
         internal readonly string Error;
 
         internal CacheBuildPreparation(
             string stagingRoot,
             IReadOnlyList<CacheBuildArtifact> artifacts,
             int failed,
-            double milliseconds,
             string error)
         {
             StagingRoot = stagingRoot;
             Artifacts = artifacts;
             Failed = failed;
-            Milliseconds = milliseconds;
             Error = error;
         }
     }
@@ -488,20 +441,14 @@ namespace FixWorld.Textures
 
     internal readonly struct CacheBuildResult
     {
-        internal static readonly CacheBuildResult Empty = new(0, 0L, 0, 0.0, null);
-
         internal readonly int Created;
-        internal readonly long CreatedBytes;
         internal readonly int Failed;
-        internal readonly double Milliseconds;
         internal readonly string Error;
 
-        internal CacheBuildResult(int created, long createdBytes, int failed, double milliseconds, string error)
+        internal CacheBuildResult(int created, int failed, string error)
         {
             Created = created;
-            CreatedBytes = createdBytes;
             Failed = failed;
-            Milliseconds = milliseconds;
             Error = error;
         }
     }

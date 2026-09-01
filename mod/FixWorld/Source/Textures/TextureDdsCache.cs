@@ -2,9 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
 using FixWorld.Loading;
 using UnityEngine;
@@ -12,105 +9,95 @@ using Verse;
 
 namespace FixWorld.Textures
 {
-    internal static partial class TextureDdsCache
+    internal static class TextureDdsCache
     {
-        private const string MaxCacheGiBEnvironmentVariable = "FIXWORLD_DDS_CACHE_MAX_GIB";
-        private const string MinimumFreeGiBEnvironmentVariable = "FIXWORLD_DDS_CACHE_MIN_FREE_GIB";
-        private const string WorkerCountEnvironmentVariable = "FIXWORLD_DDS_WORKERS";
-        private const long DefaultMinimumFreeBytes = 10L * 1024L * 1024L * 1024L;
-
         private static readonly object Sync = new object();
 
         private static bool initialized;
-        private static bool enabled;
-        private static string cacheRoot;
-        private static TextureDdsCacheBuilder builder;
-        private static TextureCacheStore cacheStore;
-        private static long maxCacheBytes;
-        private static long minimumFreeBytes;
-        private static long currentCacheBytes;
-        private static long hitCount;
-        private static long missCount;
-        private static long createdCount;
-        private static long invalidatedCount;
-        private static long excludedCount;
-        private static long unsupportedCount;
-        private static long budgetSkippedCount;
-        private static long failedCount;
-        private static long buildMilliseconds;
-        private static int workerCount;
-        private static long workerPreparedMods;
-        private static long workerAppliedMods;
-        private static long workerFallbackMods;
+        private static TextureDdsCacheRuntime runtime;
+        private static TextureDdsCacheSnapshot lastSnapshot;
 
         internal static void Initialize(string modRoot, FixWorldSettings settings)
         {
-            if (initialized)
+            lock (Sync)
             {
-                return;
-            }
-
-            initialized = true;
-            enabled = !string.Equals(
-                Environment.GetEnvironmentVariable(
-                    DdsCacheContract.EnabledEnvironmentVariable),
-                "0",
-                StringComparison.Ordinal);
-            workerCount = ReadWorkerCount();
-            if (!enabled)
-            {
-                Log.Message("[FixWorld] DDS cache disabled.");
-                return;
-            }
-
-            LoadingOperation operation = LoadingEvents.Begin(
-                Descriptor(
-                    LoadingStage.Bootstrap,
-                    LoadingStep.LoadTextureCache,
-                    "Load texture cache index",
-                    "Opening the DDS cache index"));
-            try
-            {
-                cacheRoot = Environment.GetEnvironmentVariable(
-                    DdsCacheContract.CacheRootEnvironmentVariable);
-                if (string.IsNullOrWhiteSpace(cacheRoot))
+                if (initialized)
                 {
-                    cacheRoot = Path.Combine(
-                        GenFilePaths.SaveDataFolderPath,
-                        "FixWorld",
-                        "TextureCache",
-                        DdsCacheContract.CacheDirectoryName);
+                    return;
                 }
 
-                cacheRoot = Path.GetFullPath(cacheRoot);
-                Directory.CreateDirectory(cacheRoot);
-                long configuredMaximum = GiBToBytes(settings?.DdsCacheMaxGiB ?? 6.0f);
-                maxCacheBytes = ReadGiBLimit(
-                    MaxCacheGiBEnvironmentVariable,
-                    configuredMaximum);
-                minimumFreeBytes = ReadGiBLimit(
-                    MinimumFreeGiBEnvironmentVariable,
-                    DefaultMinimumFreeBytes);
-                builder = new TextureDdsCacheBuilder(cacheRoot, modRoot);
-                cacheStore = TextureCacheStore.Open(
-                    cacheRoot,
-                    DdsCacheContract.CacheIdentityVersion);
-                currentCacheBytes = cacheStore.CurrentBytes;
-                LogConfiguration();
+                initialized = true;
+                int workerCount = TextureDdsCacheConfiguration.ReadWorkerCount();
+                lastSnapshot = TextureDdsCacheSnapshot.Disabled(workerCount);
+                if (!TextureDdsCacheConfiguration.IsEnabled())
+                {
+                    Log.Message("[FixWorld] DDS cache disabled.");
+                    return;
+                }
+
+                LoadingOperation operation = LoadingEvents.Begin(
+                    new LoadingStageEventDescriptor(
+                        LoadingStage.Bootstrap,
+                        LoadingStep.LoadTextureCache,
+                        "Load texture cache index",
+                        "Opening the DDS cache index",
+                        LoadingModAttribution.Global));
+                try
+                {
+                    runtime = TextureDdsCacheRuntime.Open(
+                        modRoot,
+                        settings,
+                        workerCount);
+                    lastSnapshot = runtime.GetSnapshot();
+                }
+                catch (Exception exception)
+                {
+                    operation.Fail();
+                    runtime?.Shutdown();
+                    runtime = null;
+                    Log.Warning(
+                        "[FixWorld] DDS cache disabled after initialization failure: " +
+                        exception);
+                }
+                finally
+                {
+                    operation.Dispose();
+                }
             }
-            catch (Exception exception)
+        }
+
+        internal static bool TryCreateValidationPlan(
+            IReadOnlyList<ModContentPack> mods,
+            out LoadingActionPlan plan)
+        {
+            TextureDdsCacheRuntime current = Volatile.Read(ref runtime);
+            if (current == null)
             {
-                operation.Fail();
-                enabled = false;
-                cacheStore?.Dispose();
-                cacheStore = null;
-                Log.Warning(
-                    "[FixWorld] DDS cache disabled after initialization failure: " + exception);
+                plan = default;
+                return false;
             }
-            finally
+
+            return current.TryCreateValidationPlan(mods, out plan);
+        }
+
+        internal static bool TryGetPreparedFiles(
+            ModContentPack mod,
+            string contentPath,
+            Func<string, bool> validateExtension,
+            out Dictionary<string, FileInfo> files)
+        {
+            TextureDdsCacheRuntime current = Volatile.Read(ref runtime);
+            if (current == null)
             {
-                operation.Dispose();
+                files = null;
+                return false;
             }
+
+            return current.TryGetPreparedFiles(
+                mod,
+                contentPath,
+                validateExtension,
+                out files);
         }
 
         internal static void Apply(
@@ -119,8 +106,181 @@ namespace FixWorld.Textures
             List<string> foldersToLoadDebug,
             Dictionary<string, FileInfo> files)
         {
-            if (!enabled ||
-                !Prefs.TextureCompression ||
+            Volatile.Read(ref runtime)?.Apply(
+                mod,
+                contentPath,
+                foldersToLoadDebug,
+                files);
+        }
+
+        internal static void Complete()
+        {
+            Volatile.Read(ref runtime)?.Complete();
+        }
+
+        internal static void StartDeferredBuild()
+        {
+            Volatile.Read(ref runtime)?.StartDeferredBuild();
+        }
+
+        internal static void Shutdown()
+        {
+            TextureDdsCacheRuntime current;
+            lock (Sync)
+            {
+                current = runtime;
+                runtime = null;
+                if (current != null)
+                {
+                    lastSnapshot = current.GetSnapshot(enabled: false);
+                }
+            }
+
+            current?.Shutdown();
+        }
+
+        internal static TextureDdsCacheSnapshot GetSnapshot()
+        {
+            TextureDdsCacheRuntime current = Volatile.Read(ref runtime);
+            return current?.GetSnapshot() ?? lastSnapshot;
+        }
+    }
+
+    internal sealed class TextureDdsCacheRuntime
+    {
+        private readonly object sync = new object();
+        private readonly string cacheRoot;
+        private readonly TextureDdsCacheBuilder builder;
+        private readonly TextureCacheStore store;
+        private readonly TextureDdsCacheMetrics metrics;
+        private readonly TextureDdsCachePlanner planner;
+        private readonly TextureDdsCacheBackground background;
+        private readonly long maxCacheBytes;
+        private readonly long minimumFreeBytes;
+        private readonly int workerCount;
+
+        private bool stopped;
+
+        private TextureDdsCacheRuntime(
+            string cacheRoot,
+            TextureDdsCacheBuilder builder,
+            TextureCacheStore store,
+            long maxCacheBytes,
+            long minimumFreeBytes,
+            int workerCount)
+        {
+            this.cacheRoot = cacheRoot;
+            this.builder = builder;
+            this.store = store;
+            this.maxCacheBytes = maxCacheBytes;
+            this.minimumFreeBytes = minimumFreeBytes;
+            this.workerCount = workerCount;
+            metrics = new TextureDdsCacheMetrics();
+            metrics.SetCacheBytes(store.CurrentBytes);
+            planner = new TextureDdsCachePlanner(
+                cacheRoot,
+                store,
+                builder,
+                metrics,
+                maxCacheBytes,
+                minimumFreeBytes,
+                workerCount);
+            background = new TextureDdsCacheBackground(
+                store,
+                builder,
+                metrics,
+                workerCount);
+        }
+
+        internal static TextureDdsCacheRuntime Open(
+            string modRoot,
+            FixWorldSettings settings,
+            int workerCount)
+        {
+            string cacheRoot = TextureDdsCacheConfiguration.ResolveCacheRoot();
+            long maxCacheBytes = TextureDdsCacheConfiguration.ReadMaximumCacheBytes(
+                settings);
+            long minimumFreeBytes =
+                TextureDdsCacheConfiguration.ReadMinimumFreeBytes();
+            TextureDdsCacheBuilder builder = new TextureDdsCacheBuilder(
+                cacheRoot,
+                modRoot);
+            TextureCacheStore store = null;
+            try
+            {
+                store = TextureCacheStore.Open(
+                    cacheRoot,
+                    DdsCacheContract.CacheIdentityVersion);
+                TextureDdsCacheRuntime result = new TextureDdsCacheRuntime(
+                    cacheRoot,
+                    builder,
+                    store,
+                    maxCacheBytes,
+                    minimumFreeBytes,
+                    workerCount);
+                result.LogConfiguration();
+                return result;
+            }
+            catch
+            {
+                store?.Dispose();
+                throw;
+            }
+        }
+
+        internal bool TryCreateValidationPlan(
+            IReadOnlyList<ModContentPack> mods,
+            out LoadingActionPlan plan)
+        {
+            lock (sync)
+            {
+                if (stopped)
+                {
+                    plan = default;
+                    return false;
+                }
+            }
+
+            return planner.TryCreateValidationPlan(mods, out plan);
+        }
+
+        internal bool TryGetPreparedFiles(
+            ModContentPack mod,
+            string contentPath,
+            Func<string, bool> validateExtension,
+            out Dictionary<string, FileInfo> files)
+        {
+            lock (sync)
+            {
+                if (stopped)
+                {
+                    files = null;
+                    return false;
+                }
+            }
+
+            return planner.TryGetPreparedFiles(
+                mod,
+                contentPath,
+                validateExtension,
+                out files);
+        }
+
+        internal void Apply(
+            ModContentPack mod,
+            string contentPath,
+            List<string> foldersToLoadDebug,
+            Dictionary<string, FileInfo> files)
+        {
+            lock (sync)
+            {
+                if (stopped)
+                {
+                    return;
+                }
+            }
+
+            if (!Prefs.TextureCompression ||
                 foldersToLoadDebug != null ||
                 files == null ||
                 !string.Equals(
@@ -131,91 +291,71 @@ namespace FixWorld.Textures
                 return;
             }
 
-            lock (Sync)
-            {
-                bool prepared = HasPreparedPlan(mod);
-                LoadingOperation operation = LoadingEvents.Begin(
-                    Descriptor(
-                        LoadingStage.Content,
-                        prepared
-                            ? LoadingStep.CommitTextureCache
-                            : LoadingStep.ValidateTextureCache,
-                        prepared
-                            ? "Commit texture cache"
-                            : "Validate texture cache",
-                        prepared
-                            ? "Applying prepared texture mapping for " + mod.Name
-                            : "Checking cached textures for " + mod.Name,
-                        LoadingModAttribution.Exact(mod)));
-                try
-                {
-                    if (TryApplyPrepared(mod, files))
-                    {
-                        return;
-                    }
+            planner.Apply(mod, files);
+        }
 
-                    PrepareAndApplyFallback(mod, files);
-                }
-                catch (Exception exception)
+        internal void Complete()
+        {
+            lock (sync)
+            {
+                if (stopped)
                 {
-                    operation.Fail();
-                    Log.Warning(
-                        "[FixWorld] DDS cache skipped for " + mod.PackageId + ": " + exception);
+                    return;
                 }
-                finally
-                {
-                    operation.Dispose();
-                }
+            }
+
+            try
+            {
+                background.Queue(planner.Complete());
+            }
+            catch (Exception exception)
+            {
+                Log.Warning("[FixWorld] DDS cache finalization failed: " + exception);
             }
         }
 
-        internal static void Complete()
+        internal void StartDeferredBuild()
         {
-            lock (Sync)
+            lock (sync)
             {
-                if (!enabled || cacheStore == null)
+                if (stopped)
+                {
+                    return;
+                }
+            }
+
+            background.Start();
+        }
+
+        internal TextureDdsCacheSnapshot GetSnapshot(bool enabled = true)
+        {
+            return metrics.GetSnapshot(
+                enabled,
+                maxCacheBytes,
+                workerCount);
+        }
+
+        internal void Shutdown()
+        {
+            lock (sync)
+            {
+                if (stopped)
                 {
                     return;
                 }
 
-                try
-                {
-                    PrepareCacheMaintenance();
-                    QueueDeferredBuild(TakeDeferredBuildEntries());
-                }
-                catch (Exception exception)
-                {
-                    Log.Warning("[FixWorld] DDS cache finalization failed: " + exception);
-                }
-                finally
-                {
-                    ClearPreparedPlans();
-                    currentCacheBytes = cacheStore.CurrentBytes;
-                }
-            }
-        }
-
-        internal static void Shutdown()
-        {
-            TextureCacheStore store;
-            lock (Sync)
-            {
-                enabled = false;
-                store = cacheStore;
-                cacheStore = null;
-                builder = null;
+                stopped = true;
             }
 
-            lock (BackgroundSync)
+            if (!background.Shutdown())
             {
-                pendingDeferredBuild = Array.Empty<TextureCacheEntry>();
-            }
-
-            if (store == null)
-            {
+                Log.Warning(
+                    "[FixWorld] DDS jobs did not stop within two seconds; " +
+                    "cache resources remain open until process exit.");
                 return;
             }
 
+            planner.Shutdown();
             try
             {
                 store.Save();
@@ -226,144 +366,189 @@ namespace FixWorld.Textures
             }
         }
 
-        internal static TextureDdsCacheSnapshot GetSnapshot()
-        {
-            return new TextureDdsCacheSnapshot(
-                enabled,
-                Interlocked.Read(ref hitCount),
-                Interlocked.Read(ref missCount),
-                Interlocked.Read(ref createdCount),
-                Interlocked.Read(ref invalidatedCount),
-                Interlocked.Read(ref excludedCount),
-                Interlocked.Read(ref unsupportedCount),
-                Interlocked.Read(ref budgetSkippedCount),
-                Interlocked.Read(ref failedCount),
-                Interlocked.Read(ref buildMilliseconds),
-                Interlocked.Read(ref currentCacheBytes),
-                maxCacheBytes,
-                workerCount,
-                Interlocked.Read(ref workerPreparedMods),
-                Interlocked.Read(ref workerAppliedMods),
-                Interlocked.Read(ref workerFallbackMods));
-        }
-
-
-        private static void PrepareCacheMaintenance()
-        {
-            LoadingOperation pruneOperation = LoadingEvents.Begin(
-                Descriptor(
-                    LoadingStage.Finalize,
-                    LoadingStep.PruneTextureCache,
-                    "Prepare texture cache maintenance",
-                    "Publishing active and in-budget DDS cache entries"));
-            try
-            {
-                HashSet<string> activePackageIds = new HashSet<string>(
-                    LoadedModManager.RunningModsListForReading
-                        .Select(mod => Normalize(mod.PackageId)),
-                    StringComparer.Ordinal);
-                int removedEntries = cacheStore.RemoveInactivePackages(activePackageIds);
-                int budgetRemovals = cacheStore.EnforceBudget(maxCacheBytes);
-                Interlocked.Add(
-                    ref invalidatedCount,
-                    removedEntries + budgetRemovals);
-            }
-            catch
-            {
-                pruneOperation.Fail();
-                throw;
-            }
-            finally
-            {
-                pruneOperation.Dispose();
-            }
-
-            currentCacheBytes = cacheStore.CurrentBytes;
-        }
-
-
-        private static void LogConfiguration()
+        private void LogConfiguration()
         {
             string maxCacheDescription =
-                ToGiB(maxCacheBytes).ToString("0.###", CultureInfo.InvariantCulture) + " GiB";
+                TextureDdsCacheConfiguration.ToGiB(maxCacheBytes)
+                    .ToString("0.###", CultureInfo.InvariantCulture) + " GiB";
             if (builder.Available)
             {
                 Log.Message(
                     "[FixWorld] DDS cache enabled at " + cacheRoot +
-                    "; index=" + cacheStore.LoadStatus +
-                    "; entries=" + cacheStore.EntryCount +
+                    "; index=" + store.LoadStatus +
+                    "; entries=" + store.EntryCount +
                     "; texconv=" + builder.TexconvPath +
                     "; ddsWorkers=" + workerCount +
                     "; maxCache=" + maxCacheDescription +
                     "; minFreeGiB=" +
-                    ToGiB(minimumFreeBytes).ToString("0.###", CultureInfo.InvariantCulture));
+                    TextureDdsCacheConfiguration.ToGiB(minimumFreeBytes)
+                        .ToString("0.###", CultureInfo.InvariantCulture));
                 return;
             }
 
             Log.Warning(
                 "[FixWorld] DDS cache can read existing entries, but texconv was not found; " +
                 "missing or changed entries will use their original textures. " +
-                "Index=" + cacheStore.LoadStatus + ".");
+                "Index=" + store.LoadStatus + ".");
+        }
+    }
+
+    internal sealed class TextureDdsCacheMetrics
+    {
+        private long hits;
+        private long misses;
+        private long created;
+        private long invalidated;
+        private long excluded;
+        private long unsupported;
+        private long budgetSkipped;
+        private long failed;
+        private long buildMilliseconds;
+        private long cacheBytes;
+        private long workerPreparedMods;
+        private long workerAppliedMods;
+        private long workerFallbackMods;
+
+        internal void Hit() => Interlocked.Increment(ref hits);
+        internal void Miss() => Interlocked.Increment(ref misses);
+        internal void Exclude() => Interlocked.Increment(ref excluded);
+        internal void Unsupported() => Interlocked.Increment(ref unsupported);
+        internal void PreparedMod() => Interlocked.Increment(ref workerPreparedMods);
+        internal void AppliedMod() => Interlocked.Increment(ref workerAppliedMods);
+        internal void FallbackMod() => Interlocked.Increment(ref workerFallbackMods);
+
+        internal void AddInvalidated(long count) =>
+            Interlocked.Add(ref invalidated, count);
+
+        internal void AddBudgetSkipped(long count) =>
+            Interlocked.Add(ref budgetSkipped, count);
+
+        internal void CompleteBuild(
+            int createdCount,
+            int failedCount,
+            double milliseconds)
+        {
+            Interlocked.Add(ref created, createdCount);
+            Interlocked.Add(ref failed, failedCount);
+            Interlocked.Add(
+                ref buildMilliseconds,
+                (long)Math.Round(milliseconds));
         }
 
-        private static LoadingStageEventDescriptor Descriptor(
-            LoadingStage stage,
-            LoadingStep step,
-            string displayName,
-            string activity,
-            LoadingModAttribution? attribution = null)
+        internal void SetCacheBytes(long bytes) =>
+            Interlocked.Exchange(ref cacheBytes, bytes);
+
+        internal TextureDdsCacheSnapshot GetSnapshot(
+            bool enabled,
+            long maxCacheBytes,
+            int workerCount)
         {
-            return new LoadingStageEventDescriptor(
-                stage,
-                step,
-                displayName,
-                activity,
-                attribution ?? LoadingModAttribution.Global);
+            return new TextureDdsCacheSnapshot(
+                enabled,
+                Interlocked.Read(ref hits),
+                Interlocked.Read(ref misses),
+                Interlocked.Read(ref created),
+                Interlocked.Read(ref invalidated),
+                Interlocked.Read(ref excluded),
+                Interlocked.Read(ref unsupported),
+                Interlocked.Read(ref budgetSkipped),
+                Interlocked.Read(ref failed),
+                Interlocked.Read(ref buildMilliseconds),
+                Interlocked.Read(ref cacheBytes),
+                maxCacheBytes,
+                workerCount,
+                Interlocked.Read(ref workerPreparedMods),
+                Interlocked.Read(ref workerAppliedMods),
+                Interlocked.Read(ref workerFallbackMods));
+        }
+    }
+
+    internal static class TextureDdsCacheConfiguration
+    {
+        private const string MaxCacheGiBEnvironmentVariable =
+            "FIXWORLD_DDS_CACHE_MAX_GIB";
+        private const string MinimumFreeGiBEnvironmentVariable =
+            "FIXWORLD_DDS_CACHE_MIN_FREE_GIB";
+        private const string WorkerCountEnvironmentVariable = "FIXWORLD_DDS_WORKERS";
+        private const long DefaultMinimumFreeBytes =
+            10L * 1024L * 1024L * 1024L;
+
+        internal static bool IsEnabled()
+        {
+            return !string.Equals(
+                Environment.GetEnvironmentVariable(
+                    DdsCacheContract.EnabledEnvironmentVariable),
+                "0",
+                StringComparison.Ordinal);
         }
 
-        private static string GetRelativeSourcePath(FileInfo source, string modRoot)
+        internal static string ResolveCacheRoot()
         {
-            return Normalize(source.FullName.Substring(modRoot.Length));
-        }
-
-        private static string GetContentCacheKey(
-            string sourcePath,
-            string sourceHash,
-            string converterIdentity)
-        {
-            return GetTextHash(
-                DdsCacheContract.CacheIdentityVersion + "\n" + sourcePath + "\n" +
-                sourceHash + "\n" +
-                (converterIdentity ?? "unavailable"));
-        }
-
-        private static string GetFileHash(string path)
-        {
-            using (SHA256 sha256 = SHA256.Create())
-            using (FileStream stream = new FileStream(
-                       path,
-                       FileMode.Open,
-                       FileAccess.Read,
-                       FileShare.Read))
+            string root = Environment.GetEnvironmentVariable(
+                DdsCacheContract.CacheRootEnvironmentVariable);
+            if (string.IsNullOrWhiteSpace(root))
             {
-                return ToHex(sha256.ComputeHash(stream));
+                root = Path.Combine(
+                    GenFilePaths.SaveDataFolderPath,
+                    "FixWorld",
+                    "TextureCache",
+                    DdsCacheContract.CacheDirectoryName);
             }
+
+            root = Path.GetFullPath(root);
+            Directory.CreateDirectory(root);
+            return root;
         }
 
-        private static string GetTextHash(string value)
+        internal static long ReadMaximumCacheBytes(FixWorldSettings settings)
         {
-            using (SHA256 sha256 = SHA256.Create())
+            long configuredMaximum = GiBToBytes(
+                settings?.DdsCacheMaxGiB ?? 6.0f);
+            return ReadGiBLimit(
+                MaxCacheGiBEnvironmentVariable,
+                configuredMaximum);
+        }
+
+        internal static long ReadMinimumFreeBytes()
+        {
+            return ReadGiBLimit(
+                MinimumFreeGiBEnvironmentVariable,
+                DefaultMinimumFreeBytes);
+        }
+
+        internal static int ReadWorkerCount()
+        {
+            string value = Environment.GetEnvironmentVariable(
+                WorkerCountEnvironmentVariable);
+            if (string.IsNullOrWhiteSpace(value))
             {
-                return ToHex(sha256.ComputeHash(Encoding.UTF8.GetBytes(value)));
+                return Math.Min(32, Math.Max(1, Environment.ProcessorCount / 2));
             }
+
+            if (!int.TryParse(
+                    value,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out int count) ||
+                count < 0 ||
+                count > 32)
+            {
+                throw new InvalidOperationException(
+                    "Invalid worker count in " + WorkerCountEnvironmentVariable +
+                    ": " + value);
+            }
+
+            return count;
         }
 
-        private static string ToHex(byte[] hash)
+        internal static double ToGiB(long bytes)
         {
-            return BitConverter.ToString(hash).Replace("-", string.Empty).ToLowerInvariant();
+            return bytes / (1024.0 * 1024.0 * 1024.0);
         }
 
-        private static long ReadGiBLimit(string environmentVariable, long defaultBytes)
+        private static long ReadGiBLimit(
+            string environmentVariable,
+            long defaultBytes)
         {
             string value = Environment.GetEnvironmentVariable(environmentVariable);
             if (string.IsNullOrWhiteSpace(value))
@@ -375,32 +560,15 @@ namespace FixWorld.Textures
                     value,
                     NumberStyles.Float,
                     CultureInfo.InvariantCulture,
-                    out double gibibytes) || gibibytes <= 0.0)
+                    out double gibibytes) ||
+                gibibytes <= 0.0)
             {
                 throw new InvalidOperationException(
-                    "Invalid positive GiB value in " + environmentVariable + ": " + value);
+                    "Invalid positive GiB value in " + environmentVariable +
+                    ": " + value);
             }
 
             return GiBToBytes(gibibytes);
-        }
-
-        private static int ReadWorkerCount()
-        {
-            string value = Environment.GetEnvironmentVariable(WorkerCountEnvironmentVariable);
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return Math.Min(32, Math.Max(1, Environment.ProcessorCount / 2));
-            }
-
-            if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int count) ||
-                count < 0 ||
-                count > 32)
-            {
-                throw new InvalidOperationException(
-                    "Invalid worker count in " + WorkerCountEnvironmentVariable + ": " + value);
-            }
-
-            return count;
         }
 
         private static long GiBToBytes(double gibibytes)
@@ -413,26 +581,6 @@ namespace FixWorld.Textures
 
             return (long)Math.Floor(bytes);
         }
-
-        private static double ToGiB(long bytes)
-        {
-            return bytes / (1024.0 * 1024.0 * 1024.0);
-        }
-
-        private static string SanitizePathSegment(string value)
-        {
-            HashSet<char> invalidCharacters = new HashSet<char>(
-                Path.GetInvalidFileNameChars());
-            return new string(Normalize(value)
-                .Select(character => invalidCharacters.Contains(character) ? '_' : character)
-                .ToArray());
-        }
-
-        private static string Normalize(string value)
-        {
-            return value.Replace('\\', '/').ToLowerInvariant();
-        }
-
     }
 
     internal readonly struct TextureDdsCacheSnapshot
@@ -488,6 +636,27 @@ namespace FixWorld.Textures
             WorkerPreparedMods = workerPreparedMods;
             WorkerAppliedMods = workerAppliedMods;
             WorkerFallbackMods = workerFallbackMods;
+        }
+
+        internal static TextureDdsCacheSnapshot Disabled(int workerCount)
+        {
+            return new TextureDdsCacheSnapshot(
+                false,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                workerCount,
+                0L,
+                0L,
+                0L);
         }
     }
 }
