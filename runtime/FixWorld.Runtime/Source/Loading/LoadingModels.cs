@@ -14,6 +14,11 @@ namespace FixWorld.Loading
 
     internal enum LoadingStep
     {
+        InitializeMods,
+        InitializeMod,
+        ClearXmlInheritance,
+        CreateModClasses,
+        PrepareModContent,
         LoadXml,
         DiscoverXml,
         ParseXml,

@@ -38,7 +38,6 @@ namespace FixWorld.Lifecycle
         private static readonly object Sync = new object();
 
         private static bool playDataReady;
-        private static bool entryInterfaceInitialized;
         private static bool mainMenuPublished;
         private static bool shuttingDown;
         private static int gameGeneration;
@@ -68,17 +67,26 @@ namespace FixWorld.Lifecycle
             FixWorldEvents.Publish(lifecycleEvent);
         }
 
-        internal static void NotifyEntryInterfaceInitialized()
+        internal static void NotifyMainMenuReady()
         {
+            RimWorldLifecycleEvent? lifecycleEvent = null;
             lock (Sync)
             {
-                if (shuttingDown)
+                if (shuttingDown || !playDataReady || mainMenuPublished)
                 {
                     return;
                 }
 
-                entryInterfaceInitialized = true;
-                mainMenuPublished = false;
+                mainMenuPublished = true;
+                lifecycleEvent = CreateEvent(
+                    RimWorldLifecycleEventKind.MainMenuReady,
+                    null,
+                    playDataSource + "+main-menu-draw");
+            }
+
+            if (lifecycleEvent.HasValue)
+            {
+                FixWorldEvents.Publish(lifecycleEvent.Value);
             }
         }
 
@@ -92,15 +100,7 @@ namespace FixWorld.Lifecycle
                     return;
                 }
 
-                if (CanPublishMainMenuReady())
-                {
-                    mainMenuPublished = true;
-                    lifecycleEvent = CreateEvent(
-                        RimWorldLifecycleEventKind.MainMenuReady,
-                        null,
-                        playDataSource + "+uiroot_entry");
-                }
-                else if (CanPublishGameReady())
+                if (CanPublishGameReady())
                 {
                     readyGame = Current.Game;
                     gameGeneration++;
@@ -156,16 +156,6 @@ namespace FixWorld.Lifecycle
             }
 
             FixWorldEvents.Publish(lifecycleEvent);
-        }
-
-        private static bool CanPublishMainMenuReady()
-        {
-            return playDataReady &&
-                   entryInterfaceInitialized &&
-                   !mainMenuPublished &&
-                   GenScene.InEntryScene &&
-                   Current.Game == null &&
-                   !LongEventHandler.AnyEventNowOrWaiting;
         }
 
         private static bool CanPublishGameReady()

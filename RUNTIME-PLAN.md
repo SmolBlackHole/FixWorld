@@ -1,6 +1,6 @@
 # FixWorld Runtime
 
-Status: **freigegeben, Revision 1, Phase 3 abgeschlossen**
+Status: **freigegeben, Revision 1, Phase 4 in Arbeit**
 
 Baseline: `94fe7cf fix: harden early loader handoff`
 
@@ -289,7 +289,15 @@ relevante Fehler. Runtime-Start, Pipeline, Mod-Attach und Main-Menü-Ereignis tr
 dabei jeweils genau einmal auf. Der Solution-Build ist warnungsfrei und alle 86
 Contract-Assertions sind erfolgreich.
 
-Der nächste ausführbare Schnitt ist Phase 4. Dabei wird der bisher top-level
-übernommene Mod-Boot in explizite, typisierte Stages zerlegt. Zuerst wird
-`InitializeMods()` isoliert, ohne die Stage-Reihenfolge oder beobachtbare
-Mod-Semantik zu ändern.
+Phase 4 besitzt jetzt eine lineare `ModBootPipeline` mit einem typisierten
+Run-Kontext und einem zentralen Stage-Runner. `InitializeMods()` und die
+`ModContentPack`-Erzeugung gehören FixWorld; die übrigen Schritte laufen zunächst
+verhaltensgleich über explizite RimWorld-Adapter. Der vollständige 88-Mod-Lauf
+initialisiert 88 von 88 Mods und erreicht das Hauptmenü ohne relevante Fehler.
+
+Der nächste ausführbare Schnitt zerlegt RimWorlds irreführend benanntes
+`LoadModContent()`: synchron werden dort Assemblies geladen, während Audio,
+Texturen, Strings und Asset Bundles nur als spätere LongEvent-Arbeit eingereiht
+werden. FixWorld übernimmt zuerst Assembly-Discovery und Assembly-Loading als
+eigene typisierte Stage. Die eingereihte Asset-Arbeit bleibt bis zum gesonderten
+Cutover in unveränderter Reihenfolge.

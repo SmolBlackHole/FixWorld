@@ -30,7 +30,7 @@ namespace FixWorld.Integration
                 }
 
                 PreloaderTimelineContract.PublishRuntimeOwnsModBoot();
-                ModLoadingCoordinator.Run(hotReload);
+                ModBootPipeline.Run(hotReload);
                 return false;
             }
         }

@@ -4,6 +4,7 @@ using FixWorld.Loading;
 using FixWorld.Runtime;
 using FixWorld.Scheduling;
 using HarmonyLib;
+using RimWorld;
 using RimWorld.IO;
 using Verse;
 
@@ -16,7 +17,7 @@ namespace FixWorld.Integration
             typeof(RuntimePumpPatch),
             typeof(RuntimeShutdownPatch),
             typeof(PlayDataReadyPatch),
-            typeof(EntryInterfaceInitializedPatch),
+            typeof(MainMenuReadyPatch),
             typeof(GameEndedPatch)
         };
 
@@ -57,13 +58,13 @@ namespace FixWorld.Integration
             }
         }
 
-        [HarmonyPatch(typeof(UIRoot_Entry), nameof(UIRoot.Init))]
-        private static class EntryInterfaceInitializedPatch
+        [HarmonyPatch(typeof(MainMenuDrawer), nameof(MainMenuDrawer.MainMenuOnGUI))]
+        private static class MainMenuReadyPatch
         {
-            [HarmonyPostfix]
-            private static void Postfix()
+            [HarmonyPrefix]
+            private static void Prefix()
             {
-                RimWorldLifecycle.NotifyEntryInterfaceInitialized();
+                RimWorldLifecycle.NotifyMainMenuReady();
             }
         }
 

@@ -18,10 +18,12 @@ Der abgeschlossene Stand gehört in Git, Benchmarks und Logs. Diese Datei enthä
 - [x] Hauptassembly in `FixWorld.Mod.dll` umbenennen und alte `FixWorld.dll` aus Build und Paket entfernen
 - [x] sicherstellen, dass Runtime und Modassembly jeweils genau einmal geladen werden
 - [x] `ModContentPack` und Settings-Daten über den typisierten `AttachMod()`-Snapshot anbinden
-- [ ] `InitializeMods()` als eigene Stage für Metadaten und `ModContentPack` übernehmen
+- [x] den Mod-Boot als lineare `ModBootPipeline` mit einem Run-Kontext und zentralem Stage-Runner abbilden
+- [x] `InitializeMods()` als eigene Stage für Metadaten und `ModContentPack` übernehmen
+- [x] noch nicht übernommene RimWorld-Schritte hinter ehrlichen Stage-Adaptern kapseln
 - [ ] Assembly-Discovery und Assembly-Loading als eigene Stages übernehmen und typisiert messen
-- [ ] `LoadModContent()` hinter einen FixWorld-Adapter legen und pro Mod erfassen
-- [ ] `CreateModClasses()` hinter einen FixWorld-Adapter legen und Konstruktor- sowie Harmony-Zeiten erfassen
+- [ ] die heutige Mischstage `LoadModContent()` in Assembly-Load und nur eingereihte Asset-Arbeit zerlegen und pro Mod erfassen
+- [ ] `CreateModClasses()` vollständig übernehmen und Konstruktor- sowie Harmony-Zeiten erfassen
 - [ ] Ursache des langen frühen `...`-Abschnitts mit dieser Telemetrie belegen
 - [ ] `GetAllFilesForModPreserveOrder()` und Assembly-Discovery in die eigene Stage-Pipeline übernehmen
 - [ ] LongEvent-Thread, synchrone Events, Szenenwechsel und Exception-Lebenszyklus als FixWorld-Vertrag erfassen
