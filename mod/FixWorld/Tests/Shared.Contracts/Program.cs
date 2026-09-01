@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using FixWorld.Caching;
+using FixWorld.Profiling;
 using FixWorld.Scheduling;
 
 internal static class Program
@@ -13,6 +14,9 @@ internal static class Program
         try
         {
             CacheSnapshotsAreImmutable();
+            ProfilingAggregatesImmutableSnapshots();
+            ProfileScopesCompleteExactlyOnce();
+            ProfilingIsThreadSafe();
             SchedulerDeduplicatesAndReusesKeys();
             SchedulerHonorsDependencies();
             FailedDependenciesCancelChildren();
@@ -73,6 +77,126 @@ internal static class Program
         Assert(
             ReferenceEquals(cache.Writer.Publish(), removed),
             "An unchanged writer published a redundant snapshot.");
+    }
+
+    private static void ProfilingAggregatesImmutableSnapshots()
+    {
+        Profiler<string> profiler = new Profiler<string>(
+            StringComparer.OrdinalIgnoreCase);
+        profiler.Observe("parse", TimeSpan.FromMilliseconds(10));
+        profiler.Observe(
+            "PARSE",
+            TimeSpan.FromMilliseconds(30),
+            succeeded: false);
+
+        ProfileSnapshot<string> original = profiler.Snapshot();
+        Assert(original.Count == 1, "Equivalent profile keys were separated.");
+        Assert(
+            original.TryGet(
+                "parse",
+                out ProfileMeasurement<string> measurement),
+            "Profile measurement was not published.");
+        Assert(measurement.Calls == 2, "Profile call count is incorrect.");
+        Assert(measurement.Failures == 1, "Profile failure count is incorrect.");
+        Assert(
+            measurement.TotalTime == TimeSpan.FromMilliseconds(40),
+            "Profile total duration is incorrect.");
+        Assert(
+            measurement.MinimumTime == TimeSpan.FromMilliseconds(10),
+            "Profile minimum duration is incorrect.");
+        Assert(
+            measurement.MaximumTime == TimeSpan.FromMilliseconds(30),
+            "Profile maximum duration is incorrect.");
+        Assert(
+            measurement.AverageTime == TimeSpan.FromMilliseconds(20),
+            "Profile average duration is incorrect.");
+
+        profiler.Observe("parse", TimeSpan.FromMilliseconds(50));
+        Assert(
+            measurement.Calls == 2 &&
+            measurement.TotalTime == TimeSpan.FromMilliseconds(40),
+            "A later observation changed an existing profile snapshot.");
+        Assert(
+            profiler.Snapshot().TryGet(
+                "parse",
+                out ProfileMeasurement<string> changed) &&
+            changed.Calls == 3 &&
+            changed.TotalTime == TimeSpan.FromMilliseconds(90),
+            "A later profile snapshot omitted an observation.");
+        AssertThrows<ArgumentOutOfRangeException>(() =>
+            profiler.Observe("invalid", TimeSpan.FromTicks(-1L)));
+        AssertThrows<ArgumentNullException>(() =>
+            profiler.Observe(null, TimeSpan.Zero));
+    }
+
+    private static void ProfileScopesCompleteExactlyOnce()
+    {
+        Profiler<string> profiler = new Profiler<string>(StringComparer.Ordinal);
+        using (profiler.Measure("success"))
+        {
+        }
+
+        ProfileScope<string> failed = profiler.Measure("failure");
+        failed.Fail();
+        failed.Dispose();
+        ProfileScope<string> completed = profiler.Measure("completed");
+        completed.Complete();
+        completed.Dispose();
+
+        ProfileSnapshot<string> snapshot = profiler.Snapshot();
+        Assert(
+            snapshot.TryGet(
+                "success",
+                out ProfileMeasurement<string> success) &&
+            success.Calls == 1 &&
+            success.Failures == 0,
+            "A successful profile scope was not recorded once.");
+        Assert(
+            snapshot.TryGet(
+                "failure",
+                out ProfileMeasurement<string> failure) &&
+            failure.Calls == 1 &&
+            failure.Failures == 1,
+            "A failed profile scope was not recorded once.");
+        Assert(
+            snapshot.TryGet(
+                "completed",
+                out ProfileMeasurement<string> explicitCompletion) &&
+            explicitCompletion.Calls == 1,
+            "An explicitly completed profile scope was recorded more than once.");
+    }
+
+    private static void ProfilingIsThreadSafe()
+    {
+        const int ThreadCount = 4;
+        const int ObservationsPerThread = 250;
+        Profiler<int> profiler = new Profiler<int>();
+        Thread[] threads = new Thread[ThreadCount];
+        for (int threadIndex = 0; threadIndex < threads.Length; threadIndex++)
+        {
+            threads[threadIndex] = new Thread(() =>
+            {
+                for (int index = 0; index < ObservationsPerThread; index++)
+                {
+                    profiler.Observe(1, TimeSpan.FromTicks(1L));
+                }
+            });
+            threads[threadIndex].Start();
+        }
+
+        foreach (Thread thread in threads)
+        {
+            thread.Join();
+        }
+
+        Assert(
+            profiler.Snapshot().TryGet(
+                1,
+                out ProfileMeasurement<int> measurement) &&
+            measurement.Calls == ThreadCount * ObservationsPerThread &&
+            measurement.TotalTime == TimeSpan.FromTicks(
+                ThreadCount * ObservationsPerThread),
+            "Concurrent profile observations were lost.");
     }
 
     private static void SchedulerDeduplicatesAndReusesKeys()

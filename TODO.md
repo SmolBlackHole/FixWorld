@@ -45,6 +45,25 @@ Der abgeschlossene Stand gehört in Git, Benchmarks und Logs. Diese Datei enthä
 - [ ] `MainMenuReady` nach `Menü -> Spiel -> Menü` in einem realen Save-Lauf erneut auslösen und verifizieren
 - [ ] RimWorld- und Harmony-Operationen nur noch hinter expliziten FixWorld-Adaptern aufrufen
 
+### Vollständige Play-Data-Pipeline
+
+- [ ] `PlayDataLoader.DoPlayLoad()` als obersten FixWorld-Pipeline-Einstieg übernehmen, damit nicht nur `LoadAllActiveMods()` unter eigener Kontrolle steht
+- [ ] die neue `PlayDataLoadPipeline` als eine geordnete Folge expliziter Stages modellieren:
+  - [ ] Initialize mods
+  - [ ] Prepare mod content
+  - [ ] Create mod classes
+  - [ ] Load and patch XML
+  - [ ] Parse definitions
+  - [ ] Resolve definitions
+  - [ ] Generate implied definitions
+  - [ ] Execute deferred main-thread work
+  - [ ] Finalize static initialization
+  - [ ] Complete
+- [ ] Stage-Fortschritt, Fehler und Laufzeiten ausschließlich über typisierte Observer veröffentlichen; Pipeline-Code schreibt weder UI noch Benchmark-Reports direkt
+- [ ] Worker-Vorbereitung und geordneten Main-Thread-Commit über die Shared-Scheduling-Verträge abbilden
+- [ ] nach dem verifizierten Cutover die Delegate-Rekonstruktion aus `VanillaDelayedActionBridge`, `VanillaLoadingActionAdapter`, `LoadingCoordinator`, `LoadingStageExecutor` und `LoadingWork` vollständig entfernen
+- [ ] vollständige Modliste, Quarry-Save, Hauptmenüabschluss und Benchmark-Ausgabe vor dem Löschen des alten Pfads verifizieren
+
 ## Loader und Worker
 
 - [ ] vorhandene RimWorld-Parallelisierung im Def-Aufbau erfassen, bevor FixWorld zusätzliche Worker einsetzt
