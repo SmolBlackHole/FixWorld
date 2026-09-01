@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
-using FixWorld.Scheduling;
+using FixWorld.Runtime;
 using Verse;
 
 namespace FixWorld.Loading
@@ -99,14 +99,8 @@ namespace FixWorld.Loading
 
     internal static class LoadingEvents
     {
-        private const int MaximumEventsPerDrain = 1024;
-        private const string ProgressEventKey = "loading/progress";
+        internal const string ProgressEventKey = "loading/progress";
         private const string DetailEventKey = "loading/detail";
-        private static readonly EventMailbox<LoadingStageEvent> Events =
-            new EventMailbox<LoadingStageEvent>(
-                MaximumEventsPerDrain,
-                exception => Log.Error(
-                    "[FixWorld] Loading event hook failed: " + exception));
 
         private static long nextOperationId;
 
@@ -118,23 +112,9 @@ namespace FixWorld.Loading
                 descriptor,
                 Stopwatch.GetTimestamp(),
                 UnityData.IsInMainThread);
-            Publish(operation.CreateEvent(LoadingStageEventKind.Started, 0, 0, 0L));
+            FixWorldEvents.Publish(
+                operation.CreateEvent(LoadingStageEventKind.Started, 0, 0, 0L));
             return operation;
-        }
-
-        internal static IDisposable Subscribe(Action<LoadingStageEvent> subscriber)
-        {
-            return Events.Subscribe(subscriber);
-        }
-
-        internal static void Publish(LoadingStageEvent stageEvent)
-        {
-            Events.Publish(stageEvent);
-        }
-
-        internal static void PublishLatest(LoadingStageEvent stageEvent)
-        {
-            Events.PublishLatest(ProgressEventKey, stageEvent);
         }
 
         internal static void ReportStage(
@@ -142,7 +122,9 @@ namespace FixWorld.Loading
             int completedTasks,
             int totalTasks)
         {
-            PublishLatest(new LoadingStageEvent(
+            FixWorldEvents.PublishLatest(
+                ProgressEventKey,
+                new LoadingStageEvent(
                 0L,
                 LoadingStageEventKind.Progress,
                 LoadingStageEventSource.FixWorld,
@@ -165,7 +147,7 @@ namespace FixWorld.Loading
             int currentAction,
             int totalActions)
         {
-            PublishLatest(new LoadingStageEvent(
+            FixWorldEvents.PublishLatest(ProgressEventKey, new LoadingStageEvent(
                 0L,
                 LoadingStageEventKind.Progress,
                 LoadingStageEventSource.FixWorld,
@@ -190,7 +172,7 @@ namespace FixWorld.Loading
             string activity = descriptor.ModName == null
                 ? null
                 : descriptor.ModActivity + " for " + descriptor.ModName;
-            PublishLatest(new LoadingStageEvent(
+            FixWorldEvents.PublishLatest(ProgressEventKey, new LoadingStageEvent(
                 0L,
                 LoadingStageEventKind.Progress,
                 LoadingStageEventSource.RimWorld,
@@ -211,7 +193,7 @@ namespace FixWorld.Loading
             LoadingStage stage,
             bool mainThread)
         {
-            PublishLatest(new LoadingStageEvent(
+            FixWorldEvents.PublishLatest(ProgressEventKey, new LoadingStageEvent(
                 0L,
                 LoadingStageEventKind.Progress,
                 LoadingStageEventSource.RimWorld,
@@ -232,7 +214,7 @@ namespace FixWorld.Loading
             string label,
             bool mainThread)
         {
-            Events.PublishLatest(
+            FixWorldEvents.PublishLatest(
                 DetailEventKey,
                 new LoadingStageEvent(
                     0L,
@@ -292,7 +274,7 @@ namespace FixWorld.Loading
 
             Interlocked.Exchange(ref nextProgressAt, now + ProgressIntervalTicks);
 
-            LoadingEvents.PublishLatest(new LoadingStageEvent(
+            FixWorldEvents.PublishLatest(LoadingEvents.ProgressEventKey, new LoadingStageEvent(
                 operationId,
                 LoadingStageEventKind.Progress,
                 descriptor.Source,
@@ -349,7 +331,7 @@ namespace FixWorld.Loading
                 return;
             }
 
-            LoadingEvents.Publish(CreateEvent(
+            FixWorldEvents.Publish(CreateEvent(
                 kind,
                 1,
                 1,

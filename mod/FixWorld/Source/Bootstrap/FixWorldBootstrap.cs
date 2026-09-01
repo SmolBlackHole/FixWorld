@@ -4,6 +4,7 @@ using FixWorld.Integration;
 using FixWorld.Lifecycle;
 using FixWorld.Loading;
 using FixWorld.Preloader;
+using FixWorld.Runtime;
 using FixWorld.Scheduling;
 using FixWorld.Textures;
 using Verse;
@@ -31,6 +32,7 @@ namespace FixWorld
                 PreloaderTimelineSnapshot preloaderTimeline =
                     PreloaderTimelineState.Capture();
                 FixWorldScheduler.Initialize();
+                FixWorldEvents.Initialize();
                 try
                 {
                     if (!RimWorldHooks.Install(BenchmarkRecorder.Enabled))
@@ -45,7 +47,8 @@ namespace FixWorld
                     PreloaderManager.Configure(content.RootDir);
                     PreloaderPrompt.Configure(owner, settings);
                     lifecycleSubscription =
-                        RimWorldLifecycle.Subscribe(ConsumeLifecycleEvent);
+                        FixWorldEvents.Subscribe<RimWorldLifecycleEvent>(
+                            ConsumeLifecycleEvent);
                 }
                 catch
                 {
@@ -53,6 +56,7 @@ namespace FixWorld
                     lifecycleSubscription = null;
                     RimWorldHooks.Uninstall();
                     FixWorldScheduler.Shutdown();
+                    FixWorldEvents.Shutdown();
                     throw;
                 }
 

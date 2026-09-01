@@ -44,7 +44,7 @@ Status: **Scheduler- und Lifecycle-Cleanup sowie Hauptmenü-Smokes sind abgeschl
 - [x] Mod-Zuordnung als `Exact`, `Inferred` oder `Global` mit Zeiten pro Operation berichten
 - [x] FixWorld-Eigenaufwand für Klassifizierung, Scheduling und Telemetrie separat messen
 - [x] vollständige 88-Mod-Liste mit Stage-Graph und Quarry erneut fehlerfrei testen
-- [x] Stage-, Work-Item-, Profiler- und Cache-Zustände über eine gemeinsame Mailbox an UI und Telemetrie verteilen
+- [x] Stage-, Work-Item-, Profiler- und Cache-Zustände über den zentralen typisierten Event-Bus an UI und Telemetrie verteilen
 - [x] häufige UI-Zwischenstände zusammenfassen und Start-/Abschluss-/Fehlerereignisse verlustfrei erhalten
 
 ## Audit: offene Loading-Kontrolle
@@ -105,13 +105,13 @@ Status: **Scheduler- und Lifecycle-Cleanup sowie Hauptmenü-Smokes sind abgeschl
 
 Die Stage-Struktur bleibt für Reihenfolge und Barrieren zuständig. Der Scheduler entscheidet unabhängig davon, wann, wo und mit welchem Budget ein Job läuft.
 
-- [x] `LoadingScheduler` zu einem gemeinsamen FixWorld-Scheduler für Startup und laufendes Spiel erweitern
+- [x] `FixWorldScheduler` als gemeinsamen Scheduler für Startup und laufendes Spiel bereitstellen
 - [x] Ausführungsmodus (`MainThread`, `Ordered`, `Parallel`, `ParallelThenCommit`) von Lebenszeit (`Critical`, `Background`) trennen
 - [x] typisierte Jobs und Handles mit Zustand, Ergebnis, Fehler, Abhängigkeiten, Priorität und Abbruch modellieren
 - [x] einen begrenzten, langlebigen Worker-Pool statt eigener `Task.Run`-Logik pro Feature verwenden
 - [x] Parallelitäts-, Queue-, Byte-, CPU- und I/O-Budgets mit Backpressure unterstützen
 - [x] Main-Thread-Arbeit explizit halten: vorbereitete Loader-Ergebnisse direkt committen, Background-Ergebnisse über den Dispatcher zustellen
-- [x] RimWorld-Lifecycle und Loading-Events über typisierte Mailboxes veröffentlichen und ausschließlich in `Root.Update` plus finalem Shutdown-Flush pumpen
+- [x] RimWorld-Lifecycle und Loading-Events über einen zentralen typisierten Event-Bus veröffentlichen und ausschließlich in `Root.Update` plus finalem Shutdown-Flush pumpen
 - [ ] generischen Job-Fortschritt nur bei einem echten Verbraucher über Loading-Events oder eine gezielte Telemetrie veröffentlichen
 - [x] Jobs per stabilem Schlüssel deduplizieren und wiederholte RimWorld-/Harmony-Aufrufe idempotent behandeln
 - [x] Shutdown, Abbruch und unvollständige Jobs ohne beschädigte veröffentlichte Ergebnisse behandeln
@@ -119,7 +119,7 @@ Die Stage-Struktur bleibt für Reihenfolge und Barrieren zuständig. Der Schedul
 - [x] unbekannte Verträge und inkompatible fremde Patches weiterhin kontrolliert an den Originalpfad zurückgeben
 - [x] Worker von Unity, Harmony, veränderlichen Verse-Daten und direkter UI-Nutzung fernhalten
 - [x] deterministische Scheduler-Vertragstests für aktive Deduplizierung, terminale Wiederholung, Abbruch vor Start, FIFO-Dispatch und finalen Shutdown bauen
-- [ ] Scheduler-Vertragstests um Dependencies, Priorität, Concurrency-Gruppen und Byte-Budget ergänzen
+- [x] Scheduler-Vertragstests um Dependencies, Priorität, Concurrency-Gruppen und Byte-Budget ergänzen
 - [x] terminale deduplizierte Handles sofort freigeben, statt eine Retention-Registry aufzubauen
 - [ ] Telemetrie-Hochrechnung gegen GC- und Scheduling-Ausreißer robust machen
 

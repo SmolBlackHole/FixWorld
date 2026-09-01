@@ -8,7 +8,7 @@ using Verse;
 
 namespace FixWorld.Loading
 {
-    internal sealed class LoadingScheduler
+    internal sealed class LoadingStageExecutor
     {
         private const int UiRefreshMilliseconds = 150;
         private static readonly long UiRefreshTicks =

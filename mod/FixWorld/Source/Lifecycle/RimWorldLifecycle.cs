@@ -1,5 +1,5 @@
 using System;
-using FixWorld.Scheduling;
+using FixWorld.Runtime;
 using Verse;
 
 namespace FixWorld.Lifecycle
@@ -35,13 +35,7 @@ namespace FixWorld.Lifecycle
 
     internal static class RimWorldLifecycle
     {
-        private const int MaximumEventsPerDrain = 64;
         private static readonly object Sync = new object();
-        private static readonly EventMailbox<RimWorldLifecycleEvent> Events =
-            new EventMailbox<RimWorldLifecycleEvent>(
-                MaximumEventsPerDrain,
-                exception => Log.Error(
-                    "[FixWorld] Lifecycle subscriber failed: " + exception));
 
         private static bool playDataReady;
         private static bool entryInterfaceInitialized;
@@ -50,12 +44,6 @@ namespace FixWorld.Lifecycle
         private static int gameGeneration;
         private static Game readyGame;
         private static string playDataSource;
-
-        internal static IDisposable Subscribe(
-            Action<RimWorldLifecycleEvent> subscriber)
-        {
-            return Events.Subscribe(subscriber);
-        }
 
         internal static void NotifyPlayDataReady(string source)
         {
@@ -77,7 +65,7 @@ namespace FixWorld.Lifecycle
                     playDataSource);
             }
 
-            Events.Publish(lifecycleEvent);
+            FixWorldEvents.Publish(lifecycleEvent);
         }
 
         internal static void NotifyEntryInterfaceInitialized()
@@ -125,7 +113,7 @@ namespace FixWorld.Lifecycle
 
             if (lifecycleEvent.HasValue)
             {
-                Events.Publish(lifecycleEvent.Value);
+                FixWorldEvents.Publish(lifecycleEvent.Value);
             }
         }
 
@@ -146,7 +134,7 @@ namespace FixWorld.Lifecycle
 
             if (lifecycleEvent.HasValue)
             {
-                Events.Publish(lifecycleEvent.Value);
+                FixWorldEvents.Publish(lifecycleEvent.Value);
             }
         }
 
@@ -167,7 +155,7 @@ namespace FixWorld.Lifecycle
                     "root-shutdown");
             }
 
-            Events.Publish(lifecycleEvent);
+            FixWorldEvents.Publish(lifecycleEvent);
         }
 
         private static bool CanPublishMainMenuReady()

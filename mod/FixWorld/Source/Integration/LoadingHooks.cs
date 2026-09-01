@@ -442,7 +442,7 @@ namespace FixWorld.Integration
             [HarmonyPrefix]
             private static bool Prefix()
             {
-                return StagedLoadingRunner.ShouldRunOriginal();
+                return VanillaDelayedActionBridge.ShouldRunOriginal();
             }
         }
 
@@ -492,8 +492,8 @@ namespace FixWorld.Integration
                 deadlinePassed.labels.AddRange(branch.labels);
                 deadlinePassed.blocks.AddRange(branch.blocks);
                 MethodInfo shouldStop = AccessTools.Method(
-                    typeof(LoadingScheduler),
-                    nameof(LoadingScheduler.ConsumeFrameBoundaryRequest));
+                    typeof(LoadingStageExecutor),
+                    nameof(LoadingStageExecutor.ConsumeFrameBoundaryRequest));
                 rewritten.RemoveAt(branchIndex);
                 rewritten.InsertRange(
                     branchIndex,

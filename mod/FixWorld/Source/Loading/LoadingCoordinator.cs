@@ -9,7 +9,7 @@ namespace FixWorld.Loading
 {
     internal sealed class LoadingCoordinator
     {
-        private readonly LoadingScheduler scheduler = new LoadingScheduler();
+        private readonly LoadingStageExecutor executor = new LoadingStageExecutor();
 
         internal IEnumerable Run(IReadOnlyList<Action> actions)
         {
@@ -17,7 +17,7 @@ namespace FixWorld.Loading
             int stagedFinalizationActions = 0;
             int preparedContentThrough = -1;
             bool outerProfilerStarted = false;
-            scheduler.BeginRun();
+            executor.BeginRun();
             try
             {
                 if (actions.Count > 0)
@@ -38,7 +38,7 @@ namespace FixWorld.Loading
                             contentMods,
                             out LoadingActionPlan validationPlan))
                     {
-                        foreach (object frame in scheduler.RunPlan(
+                        foreach (object frame in executor.RunPlan(
                                      validationPlan,
                                      actionIndex + 1,
                                      actions.Count))
@@ -49,7 +49,8 @@ namespace FixWorld.Loading
 
                     Action action = actions[actionIndex];
                     string label = GetActionLabel(action);
-                    LoadingActionPlan plan = LoadingActionAdapter.CreatePlan(action, label);
+                    LoadingActionPlan plan =
+                        VanillaLoadingActionAdapter.CreatePlan(action, label);
                     if (ContainsOperation(plan, LoadingStep.LoadAudio))
                     {
                         stagedContentActions++;
@@ -60,7 +61,7 @@ namespace FixWorld.Loading
                         stagedFinalizationActions++;
                     }
 
-                    foreach (object frame in scheduler.RunPlan(
+                    foreach (object frame in executor.RunPlan(
                                  plan,
                                  actionIndex + 1,
                                  actions.Count))
@@ -94,7 +95,7 @@ namespace FixWorld.Loading
                 }
                 finally
                 {
-                    scheduler.EndRun();
+                    executor.EndRun();
                 }
             }
         }

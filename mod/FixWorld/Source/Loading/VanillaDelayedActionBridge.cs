@@ -9,7 +9,7 @@ using Verse;
 
 namespace FixWorld.Loading
 {
-    internal static class StagedLoadingRunner
+    internal static class VanillaDelayedActionBridge
     {
         private static readonly FieldInfo PendingActionsField = RequireField(
             "toExecuteWhenFinished");

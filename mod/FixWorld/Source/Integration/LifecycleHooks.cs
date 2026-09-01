@@ -1,6 +1,7 @@
 using System;
 using FixWorld.Lifecycle;
 using FixWorld.Loading;
+using FixWorld.Runtime;
 using FixWorld.Scheduling;
 using HarmonyLib;
 using RimWorld.IO;
@@ -28,7 +29,7 @@ namespace FixWorld.Integration
                 FixWorldScheduler.BindMainThread();
                 FixWorldScheduler.PumpMainThread();
                 RimWorldLifecycle.ObserveFrame();
-                EventMailboxPump.DrainAll();
+                FixWorldEvents.Pump();
             }
         }
 
@@ -39,8 +40,9 @@ namespace FixWorld.Integration
             private static void Prefix()
             {
                 RimWorldLifecycle.NotifyShuttingDown();
-                EventMailboxPump.DrainAll();
+                FixWorldEvents.Pump();
                 FixWorldScheduler.Shutdown();
+                FixWorldEvents.Shutdown();
             }
         }
 
@@ -50,7 +52,7 @@ namespace FixWorld.Integration
             [HarmonyPostfix]
             private static void Postfix()
             {
-                if (!StagedLoadingRunner.IsRunning)
+                if (!VanillaDelayedActionBridge.IsRunning)
                 {
                     RimWorldLifecycle.NotifyPlayDataReady(
                         "play-data-clear-cache");

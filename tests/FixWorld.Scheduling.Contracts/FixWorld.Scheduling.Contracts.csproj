@@ -9,6 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\mod\FixWorld\Source\Runtime\FixWorldEventBus.cs"
+      Link="Runtime\FixWorldEventBus.cs" />
     <Compile Include="..\..\mod\FixWorld\Source\Scheduling\FixWorldScheduler.cs"
       Link="Scheduling\FixWorldScheduler.cs" />
     <Compile Include="..\..\mod\FixWorld\Source\Scheduling\MainThreadDispatcher.cs"

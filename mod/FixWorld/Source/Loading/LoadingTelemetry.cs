@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using FixWorld.Runtime;
 using Verse;
 
 namespace FixWorld.Loading
@@ -60,7 +61,8 @@ namespace FixWorld.Loading
                 startedAt = Stopwatch.GetTimestamp();
                 completedAt = 0L;
                 staticConstructorTailTicks = 0L;
-                stageEventSubscription = LoadingEvents.Subscribe(ConsumeStageEvent);
+                stageEventSubscription =
+                    FixWorldEvents.Subscribe<LoadingStageEvent>(ConsumeStageEvent);
                 active = true;
             }
         }

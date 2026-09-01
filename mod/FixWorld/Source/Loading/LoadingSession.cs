@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
+using FixWorld.Runtime;
 
 namespace FixWorld.Loading
 {
@@ -45,7 +46,8 @@ namespace FixWorld.Loading
                 estimatedDurationMilliseconds = previousDuration;
                 currentActivity = null;
                 currentSource = LoadingStageEventSource.FixWorld;
-                stageSubscription = LoadingEvents.Subscribe(ConsumeStageEvent);
+                stageSubscription =
+                    FixWorldEvents.Subscribe<LoadingStageEvent>(ConsumeStageEvent);
                 active = true;
             }
         }

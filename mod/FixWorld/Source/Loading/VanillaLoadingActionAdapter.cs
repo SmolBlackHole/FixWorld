@@ -5,7 +5,7 @@ using System.Reflection;
 
 namespace FixWorld.Loading
 {
-    internal static class LoadingActionAdapter
+    internal static class VanillaLoadingActionAdapter
     {
         private static readonly Dictionary<MethodInfo, AdapterKind> Kinds =
             new Dictionary<MethodInfo, AdapterKind>();
