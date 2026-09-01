@@ -25,8 +25,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\Shared\PreloaderTimeline.cs"
-      Link="PreloaderTimeline.cs" />
     <Compile Include="..\Shared\RuntimeContract.cs"
       Link="RuntimeContract.cs" />
   </ItemGroup>
@@ -36,16 +34,10 @@
       <HintPath>$(RimWorldManagedDir)\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="0Harmony">
-      <HintPath>$(HarmonyAssemblyPath)</HintPath>
-      <Private>false</Private>
-    </Reference>
   </ItemGroup>
 
   <Target Name="ValidateLocalReferences" BeforeTargets="ResolveReferences">
     <Error Condition="!Exists('$(RimWorldManagedDir)\Assembly-CSharp.dll')"
       Text="Assembly-CSharp.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
-    <Error Condition="!Exists('$(HarmonyAssemblyPath)')"
-      Text="0Harmony.dll is missing. Set HarmonyAssemblyPath in mod/Local.Build.props or RIMWORLD_HARMONY_ASSEMBLY." />
   </Target>
 </Project>

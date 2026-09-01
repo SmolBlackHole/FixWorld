@@ -3,19 +3,21 @@ using System.Collections.Generic;
 using System.Xml;
 using Verse;
 
-namespace FixWorld.Loader
+namespace FixWorld.Loading
 {
     internal static class ModLoadingCoordinator
     {
         internal static void Run(bool hotReload)
         {
             Log.Message(
-                "[FixWorld.Loader] Running the owned mod-loading pipeline.");
+                "[FixWorld.Runtime] Running the owned mod-loading pipeline.");
             RunStage("XmlInheritance.Clear()", XmlInheritance.Clear);
             if (!hotReload)
             {
                 RunStage("InitializeMods()", LoadedModManager.InitializeMods);
             }
+
+            LoadingSession.LoadEstimate();
 
             RunStage(
                 "LoadModContent()",

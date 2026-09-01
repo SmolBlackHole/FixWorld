@@ -26,9 +26,8 @@ namespace FixWorld.Loading
 
         internal static bool IsActive => active;
 
-        internal static void Start(bool readEstimate)
+        internal static void Start()
         {
-            double previousDuration = readEstimate ? LoadingEstimateStore.Read() : 0.0;
             lock (Sync)
             {
                 if (active || startedAt != 0L)
@@ -43,12 +42,24 @@ namespace FixWorld.Loading
                 currentDetailName = null;
                 pendingDetailLabel = null;
                 nextDetailRefreshAt = 0L;
-                estimatedDurationMilliseconds = previousDuration;
+                estimatedDurationMilliseconds = 0.0;
                 currentActivity = null;
                 currentSource = LoadingStageEventSource.FixWorld;
                 stageSubscription =
                     FixWorldEvents.Subscribe<LoadingStageEvent>(ConsumeStageEvent);
                 active = true;
+            }
+        }
+
+        internal static void LoadEstimate()
+        {
+            double previousDuration = LoadingEstimateStore.Read();
+            lock (Sync)
+            {
+                if (active)
+                {
+                    estimatedDurationMilliseconds = previousDuration;
+                }
             }
         }
 

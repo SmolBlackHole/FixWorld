@@ -100,7 +100,7 @@ namespace FixWorld.Preloader
                     loaderStarted = true;
                     AppDomain.CurrentDomain.AssemblyLoad -= OnAssemblyLoad;
                     log.Write(
-                        "FixWorld.Loader claimed LoadedModManager.LoadAllActiveMods().");
+                        "FixWorld.Loader started FixWorld.Runtime.");
                     return true;
                 }
                 catch (Exception exception)

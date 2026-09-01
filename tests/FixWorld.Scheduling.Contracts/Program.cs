@@ -33,7 +33,6 @@ internal static class Program
             RuntimeLifecycleTransitionsAreStrict();
             ConcurrentRuntimeStartRunsOnce();
             RuntimeFailureIsTerminal();
-            PublicRuntimeEntrypointIsIdempotent();
             AtomicFileReplacesAndBacksUp();
             CacheWriterPublishesImmutableSnapshots();
             MainThreadDispatcherIsFifo();
@@ -59,24 +58,24 @@ internal static class Program
             PreloaderTimelineContract.ActiveVariable,
             staleProcessId);
         Environment.SetEnvironmentVariable(
-            PreloaderTimelineContract.LoaderOwnsModBootVariable,
+            PreloaderTimelineContract.RuntimeOwnsModBootVariable,
             staleProcessId);
 
         PreloaderTimelineSnapshot stale =
             PreloaderTimelineContract.CaptureAtBootstrap(1L, 0);
         Assert(!stale.Active, "An inherited preloader signal must be stale.");
         Assert(
-            !PreloaderTimelineContract.LoaderOwnsModBoot(),
-            "An inherited loader signal must be stale.");
+            !PreloaderTimelineContract.RuntimeOwnsModBoot(),
+            "An inherited runtime signal must be stale.");
 
         PreloaderTimelineContract.PublishEntry(1L, 0);
-        PreloaderTimelineContract.PublishLoaderOwnsModBoot();
+        PreloaderTimelineContract.PublishRuntimeOwnsModBoot();
         PreloaderTimelineSnapshot current =
             PreloaderTimelineContract.CaptureAtBootstrap(1L, 0);
         Assert(current.Active, "The current preloader signal was not accepted.");
         Assert(
-            PreloaderTimelineContract.LoaderOwnsModBoot(),
-            "The current loader signal was not accepted.");
+            PreloaderTimelineContract.RuntimeOwnsModBoot(),
+            "The current runtime signal was not accepted.");
     }
 
     private static void RuntimeLifecycleTransitionsAreStrict()
@@ -177,28 +176,17 @@ internal static class Program
             attachFailure.Snapshot.State == FixWorldRuntimeState.Failed &&
             attachFailure.Snapshot.HasAttachedMod,
             "A failed attachment did not enter the terminal failure state.");
-    }
 
-    private static void PublicRuntimeEntrypointIsIdempotent()
-    {
-        object mod = new object();
-        int attaches = 0;
-        int shutdowns = 0;
-
-        FixWorldRuntime.StartEarly();
-        FixWorldRuntime.StartEarly();
-        FixWorldRuntime.AttachMod(mod, () => attaches++);
-        FixWorldRuntime.AttachMod(mod, () => attaches++);
+        RuntimeLifecycle externalFailure = new RuntimeLifecycle();
+        externalFailure.StartEarly(() => { });
+        externalFailure.MarkFailed(
+            new InvalidOperationException("expected mod-boot failure"));
         Assert(
-            attaches == 1 &&
-            FixWorldRuntime.Snapshot.State == FixWorldRuntimeState.Running,
-            "The public runtime entrypoint was not idempotent.");
-        FixWorldRuntime.Shutdown(() => shutdowns++);
-        FixWorldRuntime.Shutdown(() => shutdowns++);
-        Assert(
-            shutdowns == 1 &&
-            FixWorldRuntime.Snapshot.State == FixWorldRuntimeState.Stopped,
-            "The public runtime entrypoint did not shut down exactly once.");
+            externalFailure.Snapshot.State == FixWorldRuntimeState.Failed &&
+            externalFailure.Snapshot.FailureMessage.Contains("mod-boot failure"),
+            "A mod-boot failure did not become terminal.");
+        AssertThrows<InvalidOperationException>(
+            () => externalFailure.AttachMod(new object(), () => { }));
     }
 
     private static void ActiveKeyIsDeduplicatedAndTerminalKeyCanRunAgain()

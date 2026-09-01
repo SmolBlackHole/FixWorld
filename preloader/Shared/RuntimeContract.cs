@@ -32,11 +32,11 @@ namespace FixWorld.RuntimeBridge
             attachMod = RequireMethod(
                 entrypoint,
                 "AttachMod",
-                new[] { typeof(object), typeof(Action) });
+                new[] { typeof(object), typeof(string), typeof(float) });
             shutdown = RequireMethod(
                 entrypoint,
                 "Shutdown",
-                new[] { typeof(Action) });
+                Type.EmptyTypes);
         }
 
         internal static RuntimeContract Bind(Assembly assembly)
@@ -82,14 +82,17 @@ namespace FixWorld.RuntimeBridge
             Invoke(startEarly, null);
         }
 
-        internal void AttachMod(object mod, Action initialize)
+        internal void AttachMod(
+            object mod,
+            string modRoot,
+            float ddsCacheMaxGiB)
         {
-            Invoke(attachMod, new object[] { mod, initialize });
+            Invoke(attachMod, new object[] { mod, modRoot, ddsCacheMaxGiB });
         }
 
-        internal void Shutdown(Action shutdownAction)
+        internal void Shutdown()
         {
-            Invoke(shutdown, new object[] { shutdownAction });
+            Invoke(shutdown, null);
         }
 
         private static MethodInfo RequireMethod(

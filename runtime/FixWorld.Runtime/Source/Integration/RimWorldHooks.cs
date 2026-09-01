@@ -8,6 +8,10 @@ namespace FixWorld.Integration
     {
         private const string OwnerPrefix = "smolblackhole.fixworld";
         private static readonly object Sync = new object();
+        private static readonly HookGroup ModBootHookGroup = new HookGroup(
+            "mod boot",
+            OwnerPrefix + ".modboot",
+            ModBootHooks.PatchTypes);
         private static readonly HookGroup LoadingHookGroup = new HookGroup(
             "loading",
             OwnerPrefix + ".loading",
@@ -21,7 +25,15 @@ namespace FixWorld.Integration
             OwnerPrefix + ".diagnostics",
             DiagnosticHooks.PatchTypes);
 
-        internal static bool Install(bool diagnosticsEnabled)
+        internal static bool InstallModBoot()
+        {
+            lock (Sync)
+            {
+                return ModBootHookGroup.Install();
+            }
+        }
+
+        internal static bool InstallRuntime(bool diagnosticsEnabled)
         {
             lock (Sync)
             {
@@ -60,6 +72,7 @@ namespace FixWorld.Integration
                 DiagnosticHookGroup.Uninstall();
                 LifecycleHookGroup.Uninstall();
                 LoadingHookGroup.Uninstall();
+                ModBootHookGroup.Uninstall();
             }
         }
 

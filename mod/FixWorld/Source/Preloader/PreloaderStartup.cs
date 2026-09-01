@@ -12,13 +12,13 @@ namespace FixWorld.Preloader
             if (state.Status == PreloaderStatus.Enabled &&
                 state.ActiveThisLaunch)
             {
-                if (PreloaderTimelineContract.LoaderOwnsModBoot())
+                if (PreloaderTimelineContract.RuntimeOwnsModBoot())
                 {
                     return true;
                 }
 
                 Log.Error(
-                    "[FixWorld] Doorstop is active, but FixWorld.Loader did not " +
+                    "[FixWorld] Doorstop is active, but FixWorld.Runtime did not " +
                     "claim the mod-loading pipeline. FixWorld remains disabled " +
                     "for this launch and RimWorld continues with its original loader.");
                 return false;
@@ -66,7 +66,7 @@ namespace FixWorld.Preloader
 
                 Log.Message(
                     "[FixWorld] Installed the required early loader. Restarting " +
-                    "RimWorld so FixWorld.Loader can own the mod-loading pipeline.");
+                    "RimWorld so FixWorld.Runtime can own the mod-loading pipeline.");
                 GenCommandLine.Restart();
                 return false;
             }

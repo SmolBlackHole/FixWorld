@@ -21,14 +21,16 @@ ERROR_PATTERNS = (
     r"Could not load file or assembly",
     r"MissingMethodException",
     r"TypeLoadException",
-    r"\[FixWorld\].*(?:error|exception)",
+    r"\[FixWorld(?:\.Runtime|\.Loader)?\].*(?:error|exception)",
 )
 FATAL_STARTUP_MARKERS = (
     "[FixWorld] The active Doorstop installation is invalid",
     "[FixWorld] Doorstop was still inactive after the automatic restart",
     "[FixWorld] The required early loader could not be installed",
+    "[FixWorld] Doorstop is active, but FixWorld.Runtime did not claim",
 )
-EARLY_PIPELINE_MARKER = "[FixWorld.Loader] Running the owned mod-loading pipeline."
+EARLY_PIPELINE_MARKER = "[FixWorld.Runtime] Running the owned mod-loading pipeline."
+RUNTIME_ATTACHED_MARKER = "[FixWorld.Runtime] Normal mod attached;"
 
 
 def bounded_int(minimum: int, maximum: int):
@@ -133,7 +135,7 @@ def main() -> int:
         while time.monotonic() - started < args.timeout:
             if log_path.is_file():
                 log = log_path.read_text(encoding="utf-8", errors="replace")
-                loaded = "[FixWorld] Initialized;" in log
+                loaded = RUNTIME_ATTACHED_MARKER in log
                 ready = "[FixWorld] Main menu ready." in log
                 early_pipeline = EARLY_PIPELINE_MARKER in log
                 fatal_marker = next(

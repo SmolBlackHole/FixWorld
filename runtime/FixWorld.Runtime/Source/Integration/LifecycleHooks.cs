@@ -39,7 +39,7 @@ namespace FixWorld.Integration
             [HarmonyPrefix]
             private static void Prefix()
             {
-                FixWorldBootstrap.Shutdown();
+                FixWorldRuntime.Shutdown();
             }
         }
 

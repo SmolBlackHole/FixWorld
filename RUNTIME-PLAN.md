@@ -1,6 +1,6 @@
 # FixWorld Runtime
 
-Status: **freigegeben, Revision 1, Phase 1 abgeschlossen, Phase 2 nicht begonnen**
+Status: **freigegeben, Revision 1, Phase 2 abgeschlossen**
 
 Baseline: `94fe7cf fix: harden early loader handoff`
 
@@ -275,11 +275,17 @@ Abnahme:
 
 ## Nächster ausführbarer Schnitt
 
-Phase 1 ist als verhaltensgleicher Assembly-Schnitt abgeschlossen. Der Solution-Build
-ist warnungsfrei, 86 Contract-Assertions sind erfolgreich, die absichtlich fehlende
-Runtime fällt ohne Neustart auf Vanilla zurück und die vollständige 88-Mod-Liste
-erreicht das Hauptmenü ohne relevante Fehler.
+Phase 2 ist abgeschlossen. `FixWorld.Runtime` besitzt EventBus, Scheduler,
+Main-Thread-Dispatcher, Lifecycle, Loading-Pipeline und den top-level Patch auf
+`LoadAllActiveMods()`. Der Loader prüft nur noch die Umgebung, lädt die Runtime und
+ruft `StartEarly()` auf. Die normale Mod bindet Installer, Settings und
+`ModContentPack` über `AttachMod()` an die bereits laufende Runtime.
 
-Der nächste ausführbare Schnitt ist Phase 2. Dabei wandern Infrastruktur und
-Mod-Boot in die Runtime, ohne bestehende Loading-Stages parallel auszuführen oder
-`InitializeMods()` bereits zu ersetzen.
+Der Solution-Build ist warnungsfrei, 86 Contract-Assertions sind erfolgreich und
+die absichtlich fehlende Runtime fällt ohne Neustart-Schleife auf Vanilla zurück.
+Die vollständige 88-Mod-Liste erreicht das Hauptmenü in 55,7 Sekunden ohne
+relevante Fehler. Das Windows-Pilotpaket enthält Loader, Preloader und Runtime.
+
+Der nächste ausführbare Schnitt ist Phase 3. Dabei wird die normale Modassembly zur
+dünnen, eindeutig benannten Brücke. Die bestehende Stage-Reihenfolge und ihre
+Ausführung bleiben dabei unverändert.

@@ -8,8 +8,9 @@ namespace FixWorld.Preloader
     {
         private static readonly object Sync = new object();
 
+        private static int assembliesAtBootstrap;
+        private static long bootstrapTimestamp;
         private static bool captured;
-        private static PreloaderTimelineSnapshot snapshot;
 
         internal static PreloaderTimelineSnapshot Capture()
         {
@@ -17,13 +18,15 @@ namespace FixWorld.Preloader
             {
                 if (!captured)
                 {
-                    snapshot = PreloaderTimelineContract.CaptureAtBootstrap(
-                        Stopwatch.GetTimestamp(),
-                        AppDomain.CurrentDomain.GetAssemblies().Length);
+                    bootstrapTimestamp = Stopwatch.GetTimestamp();
+                    assembliesAtBootstrap =
+                        AppDomain.CurrentDomain.GetAssemblies().Length;
                     captured = true;
                 }
 
-                return snapshot;
+                return PreloaderTimelineContract.CaptureAtBootstrap(
+                    bootstrapTimestamp,
+                    assembliesAtBootstrap);
             }
         }
 

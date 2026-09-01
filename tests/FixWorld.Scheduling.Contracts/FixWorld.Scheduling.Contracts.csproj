@@ -9,27 +9,25 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\runtime\FixWorld.Runtime\FixWorldRuntime.cs"
-      Link="Runtime\FixWorldRuntime.cs" />
-    <Compile Include="..\..\runtime\FixWorld.Runtime\RuntimeLifecycle.cs"
+    <Compile Include="..\..\runtime\FixWorld.Runtime\Source\Runtime\RuntimeLifecycle.cs"
       Link="Runtime\RuntimeLifecycle.cs" />
     <Compile Include="..\..\preloader\Shared\PreloaderTimeline.cs"
       Link="Preloader\PreloaderTimeline.cs" />
-    <Compile Include="..\..\mod\FixWorld\Source\Caching\CacheModels.cs"
+    <Compile Include="..\..\runtime\FixWorld.Runtime\Source\Caching\CacheModels.cs"
       Link="Caching\CacheModels.cs" />
-    <Compile Include="..\..\mod\FixWorld\Source\Caching\CacheRuntime.cs"
+    <Compile Include="..\..\runtime\FixWorld.Runtime\Source\Caching\CacheRuntime.cs"
       Link="Caching\CacheRuntime.cs" />
-    <Compile Include="..\..\mod\FixWorld\Source\Runtime\AtomicFile.cs"
+    <Compile Include="..\..\runtime\FixWorld.Runtime\Source\Runtime\AtomicFile.cs"
       Link="Runtime\AtomicFile.cs" />
-    <Compile Include="..\..\mod\FixWorld\Source\Runtime\FixWorldEventBus.cs"
+    <Compile Include="..\..\runtime\FixWorld.Runtime\Source\Runtime\FixWorldEventBus.cs"
       Link="Runtime\FixWorldEventBus.cs" />
-    <Compile Include="..\..\mod\FixWorld\Source\Scheduling\FixWorldScheduler.cs"
+    <Compile Include="..\..\runtime\FixWorld.Runtime\Source\Scheduling\FixWorldScheduler.cs"
       Link="Scheduling\FixWorldScheduler.cs" />
-    <Compile Include="..\..\mod\FixWorld\Source\Scheduling\MainThreadDispatcher.cs"
+    <Compile Include="..\..\runtime\FixWorld.Runtime\Source\Scheduling\MainThreadDispatcher.cs"
       Link="Scheduling\MainThreadDispatcher.cs" />
-    <Compile Include="..\..\mod\FixWorld\Source\Scheduling\SchedulerJobs.cs"
+    <Compile Include="..\..\runtime\FixWorld.Runtime\Source\Scheduling\SchedulerJobs.cs"
       Link="Scheduling\SchedulerJobs.cs" />
-    <Compile Include="..\..\mod\FixWorld\Source\Scheduling\SchedulerRuntime.cs"
+    <Compile Include="..\..\runtime\FixWorld.Runtime\Source\Scheduling\SchedulerRuntime.cs"
       Link="Scheduling\SchedulerRuntime.cs" />
   </ItemGroup>
 </Project>

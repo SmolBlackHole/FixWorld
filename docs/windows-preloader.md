@@ -13,16 +13,18 @@ Ab dem nächsten Start gilt genau ein Pfad:
 
 ```text
 Doorstop -> FixWorld.Preloader -> FixWorld.Loader -> FixWorld.Runtime
-                                      |
-                                      -> ModLoadingCoordinator
+                                                        |
+                                                        -> ModLoadingCoordinator
 ```
 
 Der Preloader lädt die DLL der installierten Harmony-Mod. `FixWorld.Loader` prüft die
-RimWorld-Assembly per MVID und den versionierten Runtime-Vertrag. Erst nachdem
-`FixWorld.Runtime` den Zustand `EarlyReady` erreicht hat, übernimmt der Loader
-`LoadedModManager.LoadAllActiveMods()`. Die normale FixWorld-Modinstanz bindet sich
-später genau einmal an dieselbe Runtime. Unbekannte `winhttp.dll`- oder
-`doorstop_config.ini`-Dateien werden nicht überschrieben.
+RimWorld-Assembly per MVID und den versionierten Runtime-Vertrag, lädt
+`FixWorld.Runtime` und ruft `StartEarly()` auf. Die Runtime richtet die langlebige
+Infrastruktur ein und übernimmt danach `LoadedModManager.LoadAllActiveMods()`.
+Der Loader besitzt weder einen Harmony-Patch noch eine fachliche Loading-Stage. Die
+normale FixWorld-Modinstanz bindet sich später genau einmal an dieselbe Runtime.
+Unbekannte `winhttp.dll`- oder `doorstop_config.ini`-Dateien werden nicht
+überschrieben.
 
 Es gibt keine Legacy-Konfiguration, keinen optionalen Spätpfad und keinen
 Enable-/Disable-Modus. Das Testscript installiert denselben produktiven Pfad über
@@ -30,9 +32,8 @@ Enable-/Disable-Modus. Das Testscript installiert denselben produktiven Pfad üb
 
 Ist Doorstop nach dem Neustart zwar aktiviert, aber nicht im Prozess aktiv,
 startet FixWorld RimWorld nicht erneut. Ist Doorstop aktiv, konnte
-`FixWorld.Loader` die Mod-Ladepipeline aber nicht übernehmen, bleibt die normale
-FixWorld-Runtime für diesen Start deaktiviert und RimWorld verwendet seinen
-ursprünglichen Loader.
+`FixWorld.Runtime` die Mod-Ladepipeline aber nicht übernehmen, bleibt FixWorld für
+diesen Start deaktiviert und RimWorld verwendet seinen ursprünglichen Loader.
 
 ## DDS-Read-ahead
 

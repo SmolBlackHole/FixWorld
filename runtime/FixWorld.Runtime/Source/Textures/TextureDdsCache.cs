@@ -17,7 +17,9 @@ namespace FixWorld.Textures
         private static TextureDdsCacheRuntime runtime;
         private static TextureDdsCacheSnapshot lastSnapshot;
 
-        internal static void Initialize(string modRoot, FixWorldSettings settings)
+        internal static void Initialize(
+            string modRoot,
+            float ddsCacheMaxGiB)
         {
             lock (Sync)
             {
@@ -46,7 +48,7 @@ namespace FixWorld.Textures
                 {
                     runtime = TextureDdsCacheRuntime.Open(
                         modRoot,
-                        settings,
+                        ddsCacheMaxGiB,
                         workerCount);
                     lastSnapshot = runtime.GetSnapshot();
                 }
@@ -194,12 +196,12 @@ namespace FixWorld.Textures
 
         internal static TextureDdsCacheRuntime Open(
             string modRoot,
-            FixWorldSettings settings,
+            float ddsCacheMaxGiB,
             int workerCount)
         {
             string cacheRoot = TextureDdsCacheConfiguration.ResolveCacheRoot();
             long maxCacheBytes = TextureDdsCacheConfiguration.ReadMaximumCacheBytes(
-                settings);
+                ddsCacheMaxGiB);
             long minimumFreeBytes =
                 TextureDdsCacheConfiguration.ReadMinimumFreeBytes();
             TextureDdsCacheBuilder builder = new TextureDdsCacheBuilder(
@@ -500,10 +502,9 @@ namespace FixWorld.Textures
             return root;
         }
 
-        internal static long ReadMaximumCacheBytes(FixWorldSettings settings)
+        internal static long ReadMaximumCacheBytes(float ddsCacheMaxGiB)
         {
-            long configuredMaximum = GiBToBytes(
-                settings?.DdsCacheMaxGiB ?? 6.0f);
+            long configuredMaximum = GiBToBytes(ddsCacheMaxGiB);
             return ReadGiBLimit(
                 MaxCacheGiBEnvironmentVariable,
                 configuredMaximum);

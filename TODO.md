@@ -1,6 +1,6 @@
 # TODO
 
-Aktuell: **Phase 2 aus [RUNTIME-PLAN.md](RUNTIME-PLAN.md) vorbereiten: Infrastruktur und Mod-Boot in `FixWorld.Runtime` verschieben.**
+Aktuell: **Phase 3 aus [RUNTIME-PLAN.md](RUNTIME-PLAN.md): die normale Modassembly als dünne Brücke eindeutig von der frühen Runtime trennen.**
 
 Der abgeschlossene Stand gehört in Git, Benchmarks und Logs. Diese Datei enthält nur noch bewusst verschobene Arbeit.
 
@@ -8,13 +8,16 @@ Der abgeschlossene Stand gehört in Git, Benchmarks und Logs. Diese Datei enthä
 
 - [x] `FixWorld.Runtime.dll` mit idempotentem Start-, Attach- und Shutdown-Vertrag früh laden
 - [x] fehlende oder inkompatible Runtime ohne FixWorld-Hooks auf Vanilla zurückfallen lassen
-- [ ] EventBus, Scheduler, Dispatcher und Mod-Boot aus Loader und normaler Mod in die Runtime verschieben
+- [x] EventBus, Scheduler, Dispatcher und Mod-Boot aus Loader und normaler Mod in die Runtime verschieben
 - [x] den normalen Mod auf einen einmaligen Doorstop-Installer mit automatischem Neustart reduzieren
 - [x] bei aktiviertem, aber inaktivem Doorstop ohne vererbte Prozessmarke sicher abbrechen und Neustart-Schleifen verhindern
 - [x] den normalen FixWorld-Runtime-Start nur nach nachgewiesener Übernahme von `LoadAllActiveMods()` erlauben
 - [x] `FixWorld.Loader.dll` nach dem Laden von `Assembly-CSharp` über Doorstop starten
 - [x] RimWorld-Version, Assembly-MVID und `LoadAllActiveMods(bool)`-Signatur vor der Übernahme prüfen
 - [x] `LoadedModManager.LoadAllActiveMods()` vollständig durch den FixWorld-Coordinator ersetzen
+- [ ] Hauptassembly in `FixWorld.Mod.dll` umbenennen und alte `FixWorld.dll` aus Build und Paket entfernen
+- [ ] sicherstellen, dass Runtime und Modassembly jeweils genau einmal geladen werden
+- [ ] Settings und Mod-UI ausschließlich über den typisierten `AttachMod()`-Snapshot anbinden
 - [ ] `InitializeMods()` als eigene Stage für Metadaten und `ModContentPack` übernehmen
 - [ ] Assembly-Discovery und Assembly-Loading als eigene Stages übernehmen und typisiert messen
 - [ ] `LoadModContent()` hinter einen FixWorld-Adapter legen und pro Mod erfassen

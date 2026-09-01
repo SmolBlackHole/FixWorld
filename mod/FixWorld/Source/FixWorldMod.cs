@@ -20,7 +20,8 @@ namespace FixWorld
 
             RuntimeContract.BindLoaded().AttachMod(
                 this,
-                () => FixWorldBootstrap.Initialize(content, settings));
+                content.RootDir,
+                settings.DdsCacheMaxGiB);
         }
 
         public override string SettingsCategory()

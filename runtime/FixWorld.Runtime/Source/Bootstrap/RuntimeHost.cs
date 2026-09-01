@@ -4,90 +4,128 @@ using FixWorld.Integration;
 using FixWorld.Lifecycle;
 using FixWorld.Loading;
 using FixWorld.Preloader;
-using FixWorld.Runtime;
-using FixWorld.RuntimeBridge;
 using FixWorld.Scheduling;
 using FixWorld.Textures;
 using Verse;
 
-namespace FixWorld
+namespace FixWorld.Runtime
 {
-    internal static class FixWorldBootstrap
+    internal static class RuntimeHost
     {
         private static readonly object Sync = new object();
-        private static IDisposable lifecycleSubscription;
-        private static bool initialized;
 
-        internal static void Initialize(
-            ModContentPack content,
-            FixWorldSettings settings)
+        private static IDisposable lifecycleSubscription;
+        private static bool earlyReady;
+        private static bool modBootReady;
+
+        internal static void StartEarly()
         {
             lock (Sync)
             {
-                if (initialized)
+                if (earlyReady)
                 {
                     return;
                 }
 
-                PreloaderTimelineSnapshot preloaderTimeline =
+                PreloaderTimelineSnapshot timeline =
                     PreloaderTimelineState.Capture();
                 FixWorldScheduler.Initialize(ReportMainThreadError);
                 FixWorldEvents.Initialize();
                 try
                 {
-                    if (!RimWorldHooks.Install(BenchmarkRecorder.Enabled))
+                    if (!RimWorldHooks.InstallModBoot())
                     {
                         throw new InvalidOperationException(
-                            "FixWorld could not install its required RimWorld hooks.");
+                            "FixWorld.Runtime could not install its mod-boot hook.");
                     }
-
-                    LoadingSession.Start(true);
-                    LoadingTelemetry.Start(BenchmarkRecorder.Enabled);
-                    TextureDdsCache.Initialize(content.RootDir, settings);
-                    lifecycleSubscription =
-                        FixWorldEvents.Subscribe<RimWorldLifecycleEvent>(
-                            ConsumeLifecycleEvent);
                 }
                 catch
                 {
-                    lifecycleSubscription?.Dispose();
-                    lifecycleSubscription = null;
                     RimWorldHooks.Uninstall();
-                    if (FixWorldScheduler.Shutdown())
-                    {
-                        TextureDdsCache.Shutdown();
-                    }
-
+                    FixWorldScheduler.Shutdown();
                     FixWorldEvents.Shutdown();
                     throw;
                 }
 
-                initialized = true;
+                earlyReady = true;
                 Log.Message(
-                    "[FixWorld] Initialized; hooks=True" +
-                    ", benchmark=" + BenchmarkRecorder.Enabled +
-                    ", workers=" + FixWorldScheduler.WorkerCount +
-                    ", earlyLoader=" + preloaderTimeline.Active + ".");
+                    "[FixWorld.Runtime] Early infrastructure ready; workers=" +
+                    FixWorldScheduler.WorkerCount + ".");
                 Log.Message(
-                    "[FixWorld] Early timeline; " +
-                    PreloaderTimelineState.Format(preloaderTimeline) + ".");
+                    "[FixWorld.Runtime] Early timeline; " +
+                    PreloaderTimelineState.Format(timeline) + ".");
             }
         }
 
-        internal static void Shutdown()
+        internal static bool BeginModBoot()
         {
             lock (Sync)
             {
-                if (!initialized)
+                if (modBootReady)
                 {
-                    return;
+                    return true;
                 }
-            }
 
-            RuntimeContract.BindLoaded().Shutdown(ShutdownCore);
+                if (!earlyReady)
+                {
+                    throw new InvalidOperationException(
+                        "FixWorld.Runtime is not early-ready.");
+                }
+
+                try
+                {
+                    LoadingSession.Start();
+                    LoadingTelemetry.Start(BenchmarkRecorder.Enabled);
+                    lifecycleSubscription =
+                        FixWorldEvents.Subscribe<RimWorldLifecycleEvent>(
+                            ConsumeLifecycleEvent);
+                    if (!RimWorldHooks.InstallRuntime(
+                            BenchmarkRecorder.Enabled))
+                    {
+                        throw new InvalidOperationException(
+                            "FixWorld.Runtime could not install its runtime hooks.");
+                    }
+                }
+                catch (Exception exception)
+                {
+                    lifecycleSubscription?.Dispose();
+                    lifecycleSubscription = null;
+                    RimWorldHooks.Uninstall();
+                    FixWorldScheduler.Shutdown();
+                    FixWorldEvents.Shutdown();
+                    FixWorldRuntime.Fail(exception);
+                    Log.Error(
+                        "[FixWorld.Runtime] Mod-boot initialization failed; " +
+                        "RimWorld will use its original loader: " + exception);
+                    return false;
+                }
+
+                modBootReady = true;
+                Log.Message(
+                    "[FixWorld.Runtime] Runtime hooks installed before mod boot; " +
+                    "benchmark=" + BenchmarkRecorder.Enabled + ".");
+                return true;
+            }
         }
 
-        private static void ShutdownCore()
+        internal static void AttachMod(
+            string modRoot,
+            float ddsCacheMaxGiB)
+        {
+            if (string.IsNullOrWhiteSpace(modRoot))
+            {
+                throw new ArgumentException(
+                    "The FixWorld mod root is required.",
+                    nameof(modRoot));
+            }
+
+            TextureDdsCache.Initialize(modRoot, ddsCacheMaxGiB);
+            Log.Message(
+                "[FixWorld.Runtime] Normal mod attached; hooks=True, workers=" +
+                FixWorldScheduler.WorkerCount + ".");
+        }
+
+        internal static void Shutdown()
         {
             try
             {
@@ -97,7 +135,7 @@ namespace FixWorld
             catch (Exception exception)
             {
                 Log.Error(
-                    "[FixWorld] Could not publish shutdown lifecycle: " +
+                    "[FixWorld.Runtime] Could not publish shutdown lifecycle: " +
                     exception);
             }
 
@@ -113,7 +151,7 @@ namespace FixWorld
             {
                 workersStopped = false;
                 Log.Error(
-                    "[FixWorld] Scheduler shutdown failed: " + exception);
+                    "[FixWorld.Runtime] Scheduler shutdown failed: " + exception);
             }
 
             if (workersStopped)
@@ -125,14 +163,14 @@ namespace FixWorld
                 catch (Exception exception)
                 {
                     Log.Error(
-                        "[FixWorld] DDS shutdown failed: " + exception);
+                        "[FixWorld.Runtime] DDS shutdown failed: " + exception);
                 }
             }
             else
             {
                 Log.Warning(
-                    "[FixWorld] Scheduler workers did not stop within two seconds; " +
-                    "DDS resources remain open until process exit.");
+                    "[FixWorld.Runtime] Scheduler workers did not stop within " +
+                    "two seconds; DDS resources remain open until process exit.");
             }
 
             try
@@ -142,14 +180,10 @@ namespace FixWorld
             catch (Exception exception)
             {
                 Log.Error(
-                    "[FixWorld] Event bus shutdown failed: " + exception);
+                    "[FixWorld.Runtime] Event bus shutdown failed: " + exception);
             }
 
             RimWorldHooks.Uninstall();
-            lock (Sync)
-            {
-                initialized = false;
-            }
         }
 
         private static void ConsumeLifecycleEvent(
@@ -185,8 +219,8 @@ namespace FixWorld
             Exception exception)
         {
             Log.Error(
-                "[FixWorld] Main-thread action failed (" + name + "): " +
-                exception);
+                "[FixWorld.Runtime] Main-thread action failed (" + name +
+                "): " + exception);
         }
 
         private static bool CompleteStartup(string source)
