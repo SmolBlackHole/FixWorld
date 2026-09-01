@@ -4,5 +4,7 @@
   <Project Path="mod/FixWorld/Source/Preloader/FixWorld.Preloader.csproj" />
   <Project Path="mod/FixWorld/Source/Tool/FixWorld.Tool.csproj" />
   <Project Path="mod/FixWorld/Source/Runtime/FixWorld.Runtime.csproj" />
+  <Project Path="mod/FixWorld/Source/Shared/FixWorld.Shared.csproj" />
+  <Project Path="mod/FixWorld/Tests/Shared.Contracts/FixWorld.Shared.Contracts.csproj" />
   <Project Path="mod/FixWorld/Tests/Scheduling.Contracts/FixWorld.Scheduling.Contracts.csproj" />
 </Solution>
