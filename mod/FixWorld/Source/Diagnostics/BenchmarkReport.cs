@@ -13,7 +13,7 @@ namespace FixWorld.Diagnostics
     [DataContract]
     internal sealed class BenchmarkReport
     {
-        private const int CurrentSchemaVersion = 4;
+        private const int CurrentSchemaVersion = 5;
 
         [DataMember(Name = "schemaVersion", Order = 1)]
         public int SchemaVersion { get; private set; }
@@ -27,16 +27,19 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "loader", Order = 4)]
         public LoaderReport Loader { get; private set; }
 
-        [DataMember(Name = "files", Order = 5)]
+        [DataMember(Name = "xml", Order = 5)]
+        public XmlLoadingReport Xml { get; private set; }
+
+        [DataMember(Name = "files", Order = 6)]
         public FileDiscoveryReport Files { get; private set; }
 
-        [DataMember(Name = "texturePaths", Order = 6)]
+        [DataMember(Name = "texturePaths", Order = 7)]
         public TexturePathReport TexturePaths { get; private set; }
 
-        [DataMember(Name = "textures", Order = 7)]
+        [DataMember(Name = "textures", Order = 8)]
         public TextureReport Textures { get; private set; }
 
-        [DataMember(Name = "ddsCache", Order = 8)]
+        [DataMember(Name = "ddsCache", Order = 9)]
         public DdsCacheReport DdsCache { get; private set; }
 
         private BenchmarkReport()
@@ -47,6 +50,7 @@ namespace FixWorld.Diagnostics
             string completionSource,
             LoadingMeasurement loading,
             FileDiscoverySnapshot files,
+            XmlLoadingSnapshot xml,
             TexturePathSnapshot texturePaths,
             TextureProbeSnapshot textures,
             TextureDdsCacheSnapshot ddsCache)
@@ -82,6 +86,7 @@ namespace FixWorld.Diagnostics
                     loading.Overhead
                         .Select(item => new LoadingOverheadReport(item))
                         .ToList()),
+                Xml = new XmlLoadingReport(xml),
                 Files = new FileDiscoveryReport(files),
                 TexturePaths = new TexturePathReport(texturePaths),
                 Textures = new TextureReport(textures),
@@ -131,6 +136,104 @@ namespace FixWorld.Diagnostics
                     File.Delete(temporaryPath);
                 }
             }
+        }
+    }
+
+    [DataContract]
+    internal sealed class XmlLoadingReport
+    {
+        [DataMember(Name = "owned", Order = 1)]
+        public bool Owned { get; private set; }
+
+        [DataMember(Name = "hotReload", Order = 2)]
+        public bool HotReload { get; private set; }
+
+        [DataMember(Name = "workerCount", Order = 3)]
+        public int WorkerCount { get; private set; }
+
+        [DataMember(Name = "mods", Order = 4)]
+        public int Mods { get; private set; }
+
+        [DataMember(Name = "files", Order = 5)]
+        public int Files { get; private set; }
+
+        [DataMember(Name = "bytes", Order = 6)]
+        public long Bytes { get; private set; }
+
+        [DataMember(Name = "fallbackMods", Order = 7)]
+        public int FallbackMods { get; private set; }
+
+        [DataMember(Name = "failedMods", Order = 8)]
+        public int FailedMods { get; private set; }
+
+        [DataMember(Name = "wallMs", Order = 9)]
+        public double WallMilliseconds { get; private set; }
+
+        [DataMember(Name = "fallbackReason", Order = 10)]
+        public string FallbackReason { get; private set; }
+
+        [DataMember(Name = "modDetails", Order = 11)]
+        public List<XmlModLoadingReport> ModDetails { get; private set; }
+
+        internal XmlLoadingReport(XmlLoadingSnapshot snapshot)
+        {
+            Owned = snapshot.Owned;
+            HotReload = snapshot.HotReload;
+            WorkerCount = snapshot.WorkerCount;
+            Mods = snapshot.Mods;
+            Files = snapshot.Files;
+            Bytes = snapshot.Bytes;
+            FallbackMods = snapshot.FallbackMods;
+            FailedMods = snapshot.FailedMods;
+            WallMilliseconds = snapshot.WallMilliseconds;
+            FallbackReason = snapshot.FallbackReason;
+            ModDetails = snapshot.ModDetails
+                .Select(item => new XmlModLoadingReport(item))
+                .ToList();
+        }
+    }
+
+    [DataContract]
+    internal sealed class XmlModLoadingReport
+    {
+        [DataMember(Name = "packageId", Order = 1)]
+        public string PackageId { get; private set; }
+
+        [DataMember(Name = "mod", Order = 2)]
+        public string ModName { get; private set; }
+
+        [DataMember(Name = "files", Order = 3)]
+        public int Files { get; private set; }
+
+        [DataMember(Name = "bytes", Order = 4)]
+        public long Bytes { get; private set; }
+
+        [DataMember(Name = "discoveryMs", Order = 5)]
+        public double DiscoveryMilliseconds { get; private set; }
+
+        [DataMember(Name = "parseMs", Order = 6)]
+        public double ParseMilliseconds { get; private set; }
+
+        [DataMember(Name = "waitMs", Order = 7)]
+        public double WaitMilliseconds { get; private set; }
+
+        [DataMember(Name = "fallback", Order = 8)]
+        public bool Fallback { get; private set; }
+
+        [DataMember(Name = "failed", Order = 9)]
+        public bool Failed { get; private set; }
+
+        internal XmlModLoadingReport(XmlModLoadingSnapshot snapshot)
+        {
+            PackageId = snapshot.PackageId;
+            ModName = snapshot.ModName;
+            Files = snapshot.Files;
+            Bytes = snapshot.Bytes;
+            DiscoveryMilliseconds = snapshot.DiscoveryMilliseconds;
+            ParseMilliseconds = snapshot.ParseMilliseconds;
+            WaitMilliseconds = snapshot.WaitMilliseconds;
+            Fallback = snapshot.Fallback;
+            Failed = snapshot.Failed;
         }
     }
 

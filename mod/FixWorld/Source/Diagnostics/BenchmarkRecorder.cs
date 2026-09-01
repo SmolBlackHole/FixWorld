@@ -93,6 +93,7 @@ namespace FixWorld.Diagnostics
                     source,
                     LoadingTelemetry.GetMeasurement(),
                     GetFileDiscoverySnapshot(),
+                    XmlLoadingPipeline.GetSnapshot(),
                     GetTexturePathSnapshot(),
                     TextureProbe.GetSnapshot(),
                     TextureDdsCache.GetSnapshot());

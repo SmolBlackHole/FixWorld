@@ -47,14 +47,14 @@ namespace FixWorld.Loading
                 case "TKeySystem.Parse()":
                     descriptor = Step(LoadingStep.ParseTranslationKeys, LoadingStage.XmlAndPatches, "Parse translation keys");
                     return true;
-                case "ErrorCheckPatches()":
-                    descriptor = Step(LoadingStep.CheckPatches, LoadingStage.XmlAndPatches, "Check patches");
-                    return true;
-                case "ApplyPatches()":
-                    descriptor = Step(LoadingStep.ApplyPatches, LoadingStage.XmlAndPatches, "Apply patches");
-                    return true;
                 case "ParseAndProcessXML()":
                     descriptor = Step(LoadingStep.ParseDefinitions, LoadingStage.XmlAndPatches, "Parse definitions");
+                    return true;
+                case "XmlInheritance.Resolve()":
+                    descriptor = Step(
+                        LoadingStep.ResolveXmlInheritance,
+                        LoadingStage.XmlAndPatches,
+                        "Resolve XML inheritance");
                     return true;
                 case "ClearCachedPatches()":
                     descriptor = Step(LoadingStep.ClearPatchCache, LoadingStage.XmlAndPatches, "Clear patch cache");
@@ -139,6 +139,24 @@ namespace FixWorld.Loading
                         LoadingStage.Finalize,
                         "Initialize interface");
                     return true;
+            }
+
+            if (StartsWith(label, "Loading asset nodes "))
+            {
+                descriptor = Step(
+                    LoadingStep.RegisterXmlInheritance,
+                    LoadingStage.XmlAndPatches,
+                    "Register XML inheritance");
+                return true;
+            }
+
+            if (StartsWith(label, "Loading defs for "))
+            {
+                descriptor = Step(
+                    LoadingStep.MaterializeDefinitions,
+                    LoadingStage.XmlAndPatches,
+                    "Create definitions");
+                return true;
             }
 
             if (StartsWith(label, "Resolve cross-references"))

@@ -1,8 +1,8 @@
 # TODO
 
-Aktuell: **`LoadModXML()` als nächsten vollständig kontrollierten Loader-Slice vorbereiten**
+Aktuell: **RimWorlds Def-Aufbau und vorhandene Parallelisierung messen, bevor FixWorld dort weitere Arbeit übernimmt**
 
-Planstatus: **Scheduler, Cache-Grundlage und DDS-Background-Pipeline umgesetzt; frühe RimWorld-Loading-Flächen auditiert**
+Planstatus: **Scheduler, Cache-Grundlage, DDS-Background-Pipeline, paralleles `LoadModXML()` und geordnete Patch-Pipeline umgesetzt**
 
 ## Erledigter Stand
 
@@ -54,8 +54,13 @@ Planstatus: **Scheduler, Cache-Grundlage und DDS-Background-Pipeline umgesetzt; 
 - [x] aktuelle Kontrolle festhalten: Delayed Actions, kompatibles per-Mod-Content, Dateisuche, DDS und Teile der Finalisierung
 - [x] verzögerte Actions, unterstütztes per-Mod-Content, Dateisuche und Finalisierung mit kontrolliertem Original-Fallback übernehmen
 - [x] Loader-Abschluss erst nach erfolgreichem `uiRoot.Init()` und beendetem `InitializingInterface`-LongEvent melden
-- [ ] `LoadedModManager.LoadModXML()` ohne Doorstop als ersten vollständigen neuen FixWorld-Slice übernehmen: begrenzt parallel lesen und parsen, strikt geordnet committen
-- [ ] XML-Kombination, Patch-Operationen, Def-Erzeugung und Def-Auflösung zunächst getrennt messen
+- [x] `LoadedModManager.LoadModXML()` ohne Doorstop übernehmen: begrenzt parallel entdecken und parsen, strikt geordnet committen
+- [x] 1.813 XML-Assets aus 88 Mods positionsgenau gegen RimWorlds Originalreihenfolge prüfen
+- [x] XML-Dateien, Bytes, Workerzeit, Fallbacks und Fehler pro Mod im typisierten Benchmark berichten
+- [x] XML-Kombination, Patch-Operationen, Def-Erzeugung und Def-Auflösung zunächst getrennt messen
+- [x] XML-Vererbung und Def-Materialisierung innerhalb von `ParseAndProcessXML()` getrennt sichtbar machen
+- [x] Patch-Dateien, Prüfung und Anwendung geordnet über FixWorld ausführen und pro Mod zuordnen
+- [x] bekannten `ModSettingsFrameworkMod`-Prefix binär versioniert vor der FixWorld-Patch-Pipeline erhalten
 - [ ] vorhandene RimWorld-Parallelisierung im Def-Aufbau erfassen, bevor FixWorld dort zusätzliche Worker einsetzt
 - [ ] private Queue-Felder, Closure-Namen, IL-Shape und Harmony-Verträge pro unterstützter RimWorld-Version prüfen und mit Original-Fallback absichern
 - [ ] frühen Doorstop-Einstieg für Mod-Metadaten, Assembly-Loading, Mod-Konstruktoren und Harmony-Zeiten instrumentieren
@@ -200,16 +205,29 @@ Der Preloader ist für den aktuellen Staged Loader nicht erforderlich und bleibt
 
 - [ ] eingefrorenen komplexen Save zweimal messen
 - [ ] mit Dubs den dominanten Tick-Pfad bestimmen
+- [ ] RimWorld 1.6 als Runtime-Baseline instrumentieren: `TickManager`-Phasen, `MapPreTick`, `MapPostTick`, Unity-Job-, FixWorld-Worker- und Hauptthreadzeit
+- [ ] Background-Jobs anhand von `UnityData.MaxJobWorkerCount`, TPS, Framezeit sowie CPU- und I/O-Druck drosseln, damit FixWorld nicht mit Unity um dieselben Kerne konkurriert
 - [ ] genau eine Optimierung implementieren und per A/B-Test bewerten
+
+RimThreaded dient nur als Musterkatalog. Die alten 1.3/1.4-Patches werden nicht portiert: RimWorld 1.6 besitzt insbesondere für Pathfinding bereits eine grundlegend andere Unity-Job-Pipeline. Brauchbar bleiben `Prepare -> Parallel -> Barrier -> Ordered Commit`, Main-Thread-Broker, worker-lokale Scratch-Daten und ereignisgetriebene Invalidierung.
+
+- [ ] einen gemessenen Hotpath auswählen und dort RimThreadeds mehrstufigen räumlichen Kandidatenindex als kleinen A/B-Prototyp prüfen, etwa Hauling oder Pflanzenarbeit
+- [ ] mutable statische Scratch-Daten in nachgewiesenen 1.6-Hotpaths finden und nur dort durch explizite Worker-Kontexte oder Pools ersetzen
+- [ ] teure Harmony- und IL-Vertragsscans optional nach Assembly-MVID, RimWorld-Version, FixWorld-Version und Patchset-Fingerprint cachen
 
 ### Pathfinding-Slice (später)
 
+- [ ] RimWorlds vorhandene 1.6-Path-Jobs instrumentieren, nicht in den FixWorld-Worker-Pool verschieben
+- [ ] `PushRequest` und `FindPathNow`, Queue-Latenz, Requests pro Tick, Batchgröße sowie Anzahl und Wiederverwendung verschiedener `MapGridRequest`s erfassen
+- [ ] `PathFinderMapData` getrennt messen: vollständige Recomputes, inkrementelle Updates, betroffene Zellen und Zeit je DataSource
 - [ ] Path-Requests nach Pawn, Ziel, Traversal-Modus und relevanten Kostenprofilen erfassen
 - [ ] Kosten und Abhängigkeiten für Türen, Gefahren, Feuer, Reservierungen, Terrain, Gebäude, temporäre Hindernisse, Regionen und Zonen untersuchen
-- [ ] Path-Reuse und gestufte Path-Caches für identische oder hinreichend ähnliche Requests prüfen
-- [ ] präzise Invalidierung bei Änderungen an Türen, Feuer, Reservierungen, Terrain, Gebäuden, Hindernissen, Regionen und Zonen modellieren
+- [ ] Reachability und `ReachabilityCache` getrennt vom eigentlichen PathFinder profilieren
+- [ ] falls Reachability dominiert, request-lokale BFS-Scratch-Daten, unveränderlichen Cache-Snapshot und geordneten Single-Writer-Commit als A/B-Prototyp testen
+- [ ] erst danach Path-Reuse und gestufte Path-Caches prüfen, da Vanilla Cost-Grids bereits innerhalb eines Ticks wiederverwendet
+- [ ] präzise Invalidierung bei Änderungen an Türen, Walkability, Feuer, Reservierungen, Terrain, Gebäuden, Spawn/Despawn, Fog, Gefahren, Regionen, Zonen und Areas modellieren
 - [ ] Verhalten und Contention bei vielen gleichzeitig pfadsuchenden Pawns messen
-- [ ] Zeit pro Path-Request, Requests pro Tick, expandierte Nodes, Pfadlänge, Worst-Case-Nodes, Cache-Hit-Rate und Invalidierungen berichten
+- [ ] Zeit pro Path-Request, Queue-Latenz, Requests pro Tick, Batchgröße, expandierte Nodes, Pfadlänge, Worst-Case-Nodes, Cache-Hit-Rate und Invalidierungen berichten
 - [ ] Path-Reuse als erste Hypothese per A/B-Test gegen unverändertes RimWorld prüfen
 
 ## Später

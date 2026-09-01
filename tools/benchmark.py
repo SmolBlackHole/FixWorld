@@ -139,10 +139,37 @@ class DdsCacheData(TypedDict):
     workerFallbackMods: int
 
 
+class XmlModData(TypedDict):
+    packageId: str
+    mod: str
+    files: int
+    bytes: int
+    discoveryMs: float
+    parseMs: float
+    waitMs: float
+    fallback: bool
+    failed: bool
+
+
+class XmlLoadingData(TypedDict):
+    owned: bool
+    hotReload: bool
+    workerCount: int
+    mods: int
+    files: int
+    bytes: int
+    fallbackMods: int
+    failedMods: int
+    wallMs: float
+    fallbackReason: str | None
+    modDetails: list[XmlModData]
+
+
 class BenchmarkReport(TypedDict):
     schemaVersion: int
     completion: CompletionData
     loader: LoaderData
+    xml: XmlLoadingData
     files: FileData
     texturePaths: TexturePathData
     textures: TextureData
@@ -248,7 +275,7 @@ def wait_for_json_file(
 
 def validate_report(raw: object) -> BenchmarkReport:
     report = _string_dict(raw, "benchmark report")
-    if report.get("schemaVersion") != 4:
+    if report.get("schemaVersion") != 5:
         raise RuntimeError(
             f"Unsupported benchmark schema: {report.get('schemaVersion')!r}"
         )
@@ -277,6 +304,10 @@ def validate_report(raw: object) -> BenchmarkReport:
         or overhead is None
     ):
         raise RuntimeError("Benchmark report contains incomplete loader measurements.")
+    xml = _string_dict(report.get("xml"), "xml")
+    xml_mods = _object_list(xml.get("modDetails"))
+    if xml_mods is None:
+        raise RuntimeError("Benchmark report contains incomplete XML measurements.")
     for section in ("files", "texturePaths", "textures", "ddsCache"):
         _string_dict(report.get(section), section)
     return cast(BenchmarkReport, report)
@@ -351,6 +382,21 @@ def write_loader_csvs(run_root: Path, report: BenchmarkReport) -> None:
         run_root / "fixworld-overhead.csv",
         ("operation", "calls", "totalMs", "maxMs", "estimated"),
         loader["overhead"],
+    )
+    _write_csv(
+        run_root / "xml-mods.csv",
+        (
+            "packageId",
+            "mod",
+            "files",
+            "bytes",
+            "discoveryMs",
+            "parseMs",
+            "waitMs",
+            "fallback",
+            "failed",
+        ),
+        report["xml"]["modDetails"],
     )
 
 
@@ -458,6 +504,7 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
         files = report["files"]
         paths = report["texturePaths"]
         cache = report["ddsCache"]
+        xml = report["xml"]
         top_steps = sorted(
             loader["steps"], key=lambda item: float(item["exclusiveMs"]), reverse=True
         )[:5]
@@ -483,6 +530,14 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                 f"monitor={monitor.friendly_name}/{rimworld.actual_monitor}",
                 f"relevantErrors={error_count}",
                 f"observedLoaderMs={float(loader['observedMs']):.3f}",
+                f"xmlOwned={xml['owned']}",
+                f"xmlWorkers={xml['workerCount']}",
+                f"xmlMods={xml['mods']}",
+                f"xmlFiles={xml['files']}",
+                f"xmlBytes={xml['bytes']}",
+                f"xmlWallMs={float(xml['wallMs']):.3f}",
+                f"xmlFallbackMods={xml['fallbackMods']}",
+                f"xmlFailedMods={xml['failedMods']}",
                 f"discoveryMs={float(files['totalMs']):.3f}",
                 f"textureLoadMs={float(textures['totalMs']):.3f}",
                 f"ddsLoadMs={float(textures['ddsMs']):.3f}",

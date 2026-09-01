@@ -35,6 +35,11 @@ namespace FixWorld.Textures
 
         internal static void StartDeferredBuild()
         {
+            if (!enabled || cacheStore == null)
+            {
+                return;
+            }
+
             IReadOnlyList<TextureCacheEntry> entries;
             lock (BackgroundSync)
             {

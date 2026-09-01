@@ -15,11 +15,18 @@ namespace FixWorld.Loading
     internal enum LoadingStep
     {
         LoadXml,
+        DiscoverXml,
+        ParseXml,
+        CommitXml,
         CombineXml,
         ParseTranslationKeys,
         CheckPatches,
         ApplyPatches,
         ParseDefinitions,
+        LoadPatchFiles,
+        RegisterXmlInheritance,
+        ResolveXmlInheritance,
+        MaterializeDefinitions,
         ClearPatchCache,
         LoadLanguageMetadata,
         CopyDefinitions,

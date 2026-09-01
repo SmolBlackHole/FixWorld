@@ -36,6 +36,39 @@ namespace FixWorld.Loading
             return files;
         }
 
+        internal static FileInfo[] DiscoverXml(IReadOnlyList<string> folders)
+        {
+            Dictionary<string, FileInfo> files = new Dictionary<string, FileInfo>();
+            for (int folderIndex = 0; folderIndex < folders.Count; folderIndex++)
+            {
+                string folder = folders[folderIndex];
+                DirectoryInfo directory = new DirectoryInfo(Path.Combine(folder, "Defs"));
+                if (!directory.Exists)
+                {
+                    continue;
+                }
+
+                foreach (FileInfo file in directory.GetFiles(
+                             "*.xml",
+                             SearchOption.AllDirectories))
+                {
+                    if (file.Name.StartsWith("._", StringComparison.Ordinal) ||
+                        file.Name.StartsWith(".", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    string key = file.FullName.Substring(folder.Length + 1);
+                    if (!files.ContainsKey(key))
+                    {
+                        files.Add(key, file);
+                    }
+                }
+            }
+
+            return new List<FileInfo>(files.Values).ToArray();
+        }
+
         internal static Dictionary<string, FileInfo> DiscoverTextures(
             IReadOnlyList<string> folders,
             string contentPath)

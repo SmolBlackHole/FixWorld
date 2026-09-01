@@ -183,7 +183,9 @@ namespace FixWorld.Loading
                 0L));
         }
 
-        internal static void ReportProfilerStep(StepDescriptor descriptor)
+        internal static void ReportProfilerStep(
+            StepDescriptor descriptor,
+            bool mainThread)
         {
             string activity = descriptor.ModName == null
                 ? null
@@ -199,13 +201,15 @@ namespace FixWorld.Loading
                 descriptor.ModName,
                 LoadingModAttribution.Global,
                 LoadingThreadAffinity.MainThread,
-                true,
+                mainThread,
                 0,
                 0,
                 0L));
         }
 
-        internal static void ReportStageFallback(LoadingStage stage)
+        internal static void ReportStageFallback(
+            LoadingStage stage,
+            bool mainThread)
         {
             PublishLatest(new LoadingStageEvent(
                 0L,
@@ -218,13 +222,15 @@ namespace FixWorld.Loading
                 null,
                 LoadingModAttribution.Global,
                 LoadingThreadAffinity.MainThread,
-                true,
+                mainThread,
                 0,
                 0,
                 0L));
         }
 
-        internal static void ReportProfilerDetail(string label)
+        internal static void ReportProfilerDetail(
+            string label,
+            bool mainThread)
         {
             Events.PublishLatest(
                 DetailEventKey,
@@ -239,7 +245,7 @@ namespace FixWorld.Loading
                     null,
                     LoadingModAttribution.Global,
                     LoadingThreadAffinity.MainThread,
-                    true,
+                    mainThread,
                     0,
                     0,
                     0L));

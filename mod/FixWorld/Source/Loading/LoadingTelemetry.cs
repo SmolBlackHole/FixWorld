@@ -111,18 +111,13 @@ namespace FixWorld.Loading
                     descriptor,
                     mainThread));
 
-                if (!mainThread)
-                {
-                    return;
-                }
-
                 if (recognized)
                 {
-                    LoadingEvents.ReportProfilerStep(descriptor);
+                    LoadingEvents.ReportProfilerStep(descriptor, mainThread);
                 }
-                else
+                else if (mainThread)
                 {
-                    LoadingEvents.ReportProfilerDetail(label);
+                    LoadingEvents.ReportProfilerDetail(label, mainThread);
                 }
             }
             finally
@@ -185,19 +180,16 @@ namespace FixWorld.Loading
                     }
                 }
 
-                if (!scope.MainThread)
-                {
-                    return;
-                }
-
                 bool hasParent = TryFindParentDescriptor(out StepDescriptor parentDescriptor);
                 if (hasParent)
                 {
-                    LoadingEvents.ReportProfilerStep(parentDescriptor);
+                    LoadingEvents.ReportProfilerStep(parentDescriptor, scope.MainThread);
                 }
                 else
                 {
-                    LoadingEvents.ReportStageFallback(scope.Descriptor.Stage);
+                    LoadingEvents.ReportStageFallback(
+                        scope.Descriptor.Stage,
+                        scope.MainThread);
                 }
             }
             finally

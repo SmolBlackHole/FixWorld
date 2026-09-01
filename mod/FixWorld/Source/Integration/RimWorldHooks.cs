@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 using FixWorld.Diagnostics;
 using FixWorld.Loading;
 using FixWorld.Scheduling;
@@ -28,6 +29,8 @@ namespace FixWorld.Integration
             typeof(ModFileLoaderPatch),
             typeof(DeepProfilerStartPatch),
             typeof(DeepProfilerEndPatch),
+            typeof(XmlLoadingPatch),
+            typeof(PatchLoadingPatch),
             typeof(DelayedInitializationPatch),
             typeof(EnumeratorFrameBoundaryPatch),
             typeof(SchedulerPumpPatch),
@@ -115,7 +118,7 @@ namespace FixWorld.Integration
             private static bool foreignPatchReported;
 
             [HarmonyPrefix]
-            [HarmonyPriority(Priority.First)]
+            [HarmonyPriority(Priority.Last)]
             private static bool Prefix(
                 ModContentPack mod,
                 string contentPath,
@@ -209,6 +212,272 @@ namespace FixWorld.Integration
                     DiscoveryStartedAt = discoveryStartedAt;
                     OwnedByFixWorld = false;
                 }
+            }
+        }
+
+        [HarmonyPatch(typeof(LoadedModManager), nameof(LoadedModManager.LoadModXML))]
+        private static class XmlLoadingPatch
+        {
+            private static readonly MethodInfo LoadModXmlMethod = AccessTools.Method(
+                typeof(LoadedModManager),
+                nameof(LoadedModManager.LoadModXML),
+                new[] { typeof(bool) });
+            private static readonly MethodInfo LoadDefsMethod = AccessTools.Method(
+                typeof(ModContentPack),
+                nameof(ModContentPack.LoadDefs),
+                new[] { typeof(bool) });
+            private static readonly MethodInfo XmlAssetsMethod = AccessTools.Method(
+                typeof(DirectXmlLoader),
+                nameof(DirectXmlLoader.XmlAssetsInModFolder),
+                new[]
+                {
+                    typeof(ModContentPack),
+                    typeof(string),
+                    typeof(List<string>)
+                });
+            private static bool foreignPatchReported;
+
+            [HarmonyPrefix]
+            [HarmonyPriority(Priority.First)]
+            private static bool Prefix(
+                bool hotReload,
+                ref List<LoadableXmlAsset> __result)
+            {
+                if (TryGetForeignOwners(out string owners))
+                {
+                    XmlLoadingPipeline.RecordOriginalFallback(
+                        hotReload,
+                        "foreign Harmony patches: " + owners);
+                    if (!foreignPatchReported)
+                    {
+                        foreignPatchReported = true;
+                        Log.Warning(
+                            "[FixWorld] XML loading remains with RimWorld because " +
+                            "another mod patches its XML contract: " + owners + ".");
+                    }
+
+                    return true;
+                }
+
+                try
+                {
+                    __result = XmlLoadingPipeline.Run(hotReload);
+                    return false;
+                }
+                catch (Exception exception)
+                {
+                    XmlLoadingPipeline.RecordOriginalFallback(
+                        hotReload,
+                        "FixWorld XML pipeline failed");
+                    Log.Warning(
+                        "[FixWorld] XML loading fell back to RimWorld: " + exception);
+                    return true;
+                }
+            }
+
+            private static bool TryGetForeignOwners(out string owners)
+            {
+                HashSet<string> foreignOwners = new HashSet<string>(
+                    StringComparer.Ordinal);
+                CollectForeignOwners(LoadModXmlMethod, foreignOwners);
+                CollectForeignOwners(LoadDefsMethod, foreignOwners);
+                CollectForeignOwners(XmlAssetsMethod, foreignOwners);
+
+                IteratorStateMachineAttribute iterator =
+                    LoadDefsMethod?.GetCustomAttribute<IteratorStateMachineAttribute>();
+                MethodInfo moveNext = iterator?.StateMachineType.GetMethod(
+                    "MoveNext",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                CollectForeignOwners(moveNext, foreignOwners);
+
+                owners = string.Join(", ", foreignOwners.OrderBy(item => item));
+                return foreignOwners.Count > 0;
+            }
+
+            private static void CollectForeignOwners(
+                MethodBase method,
+                ISet<string> owners)
+            {
+                if (method == null)
+                {
+                    return;
+                }
+
+                Patches patches = Harmony.GetPatchInfo(method);
+                if (patches == null)
+                {
+                    return;
+                }
+
+                foreach (Patch patch in patches.Prefixes
+                             .Concat(patches.Postfixes)
+                             .Concat(patches.Transpilers)
+                             .Concat(patches.Finalizers))
+                {
+                    if (!string.Equals(patch.owner, HarmonyId, StringComparison.Ordinal))
+                    {
+                        owners.Add(patch.owner);
+                    }
+                }
+            }
+        }
+
+        [HarmonyPatch]
+        private static class PatchLoadingPatch
+        {
+            private static readonly Guid CompatibleModSettingsFrameworkMvid =
+                new Guid("1190b201-8e2b-4c34-9d77-d6756e7177af");
+            private static readonly MethodInfo CheckPatchesMethod = AccessTools.Method(
+                typeof(LoadedModManager),
+                nameof(LoadedModManager.ErrorCheckPatches));
+            private static readonly MethodInfo ApplyPatchesMethod = AccessTools.Method(
+                typeof(LoadedModManager),
+                nameof(LoadedModManager.ApplyPatches),
+                new[]
+                {
+                    typeof(System.Xml.XmlDocument),
+                    typeof(Dictionary<System.Xml.XmlNode, LoadableXmlAsset>)
+                });
+            private static readonly HashSet<string> ReportedForeignOwners =
+                new HashSet<string>(StringComparer.Ordinal);
+
+            private static IEnumerable<MethodBase> TargetMethods()
+            {
+                yield return CheckPatchesMethod ??
+                             throw new MissingMethodException(
+                                 typeof(LoadedModManager).FullName,
+                                 nameof(LoadedModManager.ErrorCheckPatches));
+                yield return ApplyPatchesMethod ??
+                             throw new MissingMethodException(
+                                 typeof(LoadedModManager).FullName,
+                                 nameof(LoadedModManager.ApplyPatches));
+            }
+
+            [HarmonyPrefix]
+            [HarmonyPriority(Priority.First)]
+            private static bool Prefix(
+                MethodBase __originalMethod,
+                object[] __args,
+                out LoadingOperation __state)
+            {
+                __state = null;
+                if (TryGetForeignOwners(__originalMethod, out string owners))
+                {
+                    ReportForeignOwners(__originalMethod, owners);
+                    __state = PatchLoadingPipeline.BeginOriginal(
+                        GetStep(__originalMethod),
+                        GetDisplayName(__originalMethod),
+                        GetActivity(__originalMethod));
+                    return true;
+                }
+
+                if (__originalMethod == CheckPatchesMethod)
+                {
+                    PatchLoadingPipeline.Check();
+                }
+                else
+                {
+                    PatchLoadingPipeline.Apply((System.Xml.XmlDocument)__args[0]);
+                }
+
+                return false;
+            }
+
+            [HarmonyPostfix]
+            private static void Postfix(LoadingOperation __state)
+            {
+                __state?.Dispose();
+            }
+
+            [HarmonyFinalizer]
+            private static Exception Finalizer(
+                Exception __exception,
+                LoadingOperation __state)
+            {
+                if (__exception != null)
+                {
+                    __state?.Fail();
+                }
+
+                __state?.Dispose();
+                return __exception;
+            }
+
+            private static bool TryGetForeignOwners(
+                MethodBase method,
+                out string owners)
+            {
+                Patches patches = Harmony.GetPatchInfo(method);
+                string[] foreignOwners = patches == null
+                    ? Array.Empty<string>()
+                    : patches.Prefixes
+                        .Where(patch => !IsCompatiblePrefix(method, patch))
+                        .Concat(patches.Postfixes)
+                        .Concat(patches.Transpilers)
+                        .Concat(patches.Finalizers)
+                        .Where(patch => patch.owner != HarmonyId)
+                        .Select(patch => patch.owner)
+                        .Distinct(StringComparer.Ordinal)
+                        .OrderBy(owner => owner)
+                        .ToArray();
+                owners = string.Join(", ", foreignOwners);
+                return foreignOwners.Length > 0;
+            }
+
+            private static bool IsCompatiblePrefix(MethodBase method, Patch patch)
+            {
+                MethodInfo patchMethod = patch.PatchMethod;
+                return method == ApplyPatchesMethod &&
+                       string.Equals(
+                           patch.owner,
+                           "ModSettingsFrameworkMod",
+                           StringComparison.Ordinal) &&
+                       string.Equals(
+                           patchMethod?.DeclaringType?.FullName,
+                           "ModSettingsFramework.LoadedModManager_ApplyPatches_Patch",
+                           StringComparison.Ordinal) &&
+                       string.Equals(
+                           patchMethod.Name,
+                           "Prefix",
+                           StringComparison.Ordinal) &&
+                       patchMethod.ReturnType == typeof(void) &&
+                       patchMethod.GetParameters().Length == 0 &&
+                       patchMethod.Module.ModuleVersionId ==
+                       CompatibleModSettingsFrameworkMvid;
+            }
+
+            private static void ReportForeignOwners(MethodBase method, string owners)
+            {
+                string key = method.Name + ":" + owners;
+                if (!ReportedForeignOwners.Add(key))
+                {
+                    return;
+                }
+
+                Log.Warning(
+                    "[FixWorld] Patch processing remains with RimWorld because " +
+                    "another mod patches " + method.Name + ": " + owners + ".");
+            }
+
+            private static LoadingStep GetStep(MethodBase method)
+            {
+                return method == CheckPatchesMethod
+                    ? LoadingStep.CheckPatches
+                    : LoadingStep.ApplyPatches;
+            }
+
+            private static string GetDisplayName(MethodBase method)
+            {
+                return method == CheckPatchesMethod
+                    ? "Check patches"
+                    : "Apply patches";
+            }
+
+            private static string GetActivity(MethodBase method)
+            {
+                return method == CheckPatchesMethod
+                    ? "RimWorld is checking mod patches"
+                    : "RimWorld is applying mod patches";
             }
         }
 
