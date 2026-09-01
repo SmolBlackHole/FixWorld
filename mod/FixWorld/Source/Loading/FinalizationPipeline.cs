@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using FixWorld.Integration;
 using HarmonyLib;
 using RimWorld;
 using RimWorld.IO;
@@ -111,11 +112,8 @@ namespace FixWorld.Loading
 
         internal LoadingActionPlan CreatePlan(Action originalAction, string label)
         {
-            int tailSteps = Prefs.DevMode ? 5 : 4;
             List<LoadingPipelineStage> stages =
-                new List<LoadingPipelineStage>(tailSteps + 1);
-            int nextStageId = 0;
-            int previousStageId = -1;
+                new List<LoadingPipelineStage>(Prefs.DevMode ? 6 : 5);
 
             if (constructors.Count > 0)
             {
@@ -134,26 +132,20 @@ namespace FixWorld.Loading
                         "StaticConstructorOnStartupUtility.CallAll()",
                         typeName,
                         LoadingModAttribution.Exact(target.PackageId, target.ModName),
-                        index + 1,
-                        constructors.Count,
                         continueOnFailure: true,
                         execute: () => RunConstructor(target));
                 }
 
                 stages.Add(new LoadingPipelineStage(
-                    nextStageId,
                     "Static constructors",
                     LoadingStage.Finalize,
                     LoadingStep.RunStaticConstructors,
-                    LoadingExecutionMode.Ordered,
+                    LoadingExecutionMode.MainThread,
                     constructorTasks));
-                previousStageId = nextStageId++;
             }
 
             AddMainThreadStage(
                 stages,
-                ref nextStageId,
-                ref previousStageId,
                 new LoadingWorkItem(
                     LoadingStage.Finalize,
                     LoadingStep.FinalizeStaticInitialization,
@@ -164,8 +156,6 @@ namespace FixWorld.Loading
                     "Finalize static initialization",
                     "Static initialization",
                     LoadingModAttribution.Global,
-                    1,
-                    tailSteps,
                     continueOnFailure: false,
                     execute: CompleteStaticInitialization));
 
@@ -173,8 +163,6 @@ namespace FixWorld.Loading
             {
                 AddMainThreadStage(
                     stages,
-                    ref nextStageId,
-                    ref previousStageId,
                     new LoadingWorkItem(
                         LoadingStage.Finalize,
                         LoadingStep.CheckStaticConstructorAttributes,
@@ -183,17 +171,12 @@ namespace FixWorld.Loading
                         "Check static constructor attributes",
                         "Static constructor attributes",
                         LoadingModAttribution.Global,
-                        2,
-                        tailSteps,
                         continueOnFailure: false,
                         execute: CheckMissingAttributes));
             }
 
-            int tailIndex = Prefs.DevMode ? 3 : 2;
             AddMainThreadStage(
                 stages,
-                ref nextStageId,
-                ref previousStageId,
                 new LoadingWorkItem(
                     LoadingStage.Finalize,
                     LoadingStep.InitializeFloatMenus,
@@ -202,14 +185,10 @@ namespace FixWorld.Loading
                     null,
                     "Float menus",
                     LoadingModAttribution.Global,
-                    tailIndex,
-                    tailSteps,
                     continueOnFailure: false,
                     execute: InitializeFloatMenus));
             AddMainThreadStage(
                 stages,
-                ref nextStageId,
-                ref previousStageId,
                 new LoadingWorkItem(
                     LoadingStage.Finalize,
                     LoadingStep.BakeAtlases,
@@ -218,14 +197,10 @@ namespace FixWorld.Loading
                     "Atlas baking.",
                     "Texture atlases",
                     LoadingModAttribution.Global,
-                    tailIndex + 1,
-                    tailSteps,
                     continueOnFailure: false,
                     execute: BakeAtlases));
             AddMainThreadStage(
                 stages,
-                ref nextStageId,
-                ref previousStageId,
                 new LoadingWorkItem(
                     LoadingStage.Finalize,
                     LoadingStep.GarbageCollection,
@@ -234,8 +209,6 @@ namespace FixWorld.Loading
                     "Garbage Collection",
                     "Loading cleanup",
                     LoadingModAttribution.Global,
-                    tailIndex + 2,
-                    tailSteps,
                     continueOnFailure: false,
                     execute: CleanUp));
 
@@ -247,20 +220,14 @@ namespace FixWorld.Loading
 
         private static void AddMainThreadStage(
             ICollection<LoadingPipelineStage> stages,
-            ref int nextStageId,
-            ref int previousStageId,
             LoadingWorkItem task)
         {
-            int currentStageId = nextStageId++;
             stages.Add(new LoadingPipelineStage(
-                currentStageId,
                 task.DisplayName,
                 task.Stage,
                 task.Operation,
                 LoadingExecutionMode.MainThread,
-                task,
-                previousStageId < 0 ? null : new[] { previousStageId }));
-            previousStageId = currentStageId;
+                task));
         }
 
         private static void RunConstructor(StaticConstructorTarget target)
@@ -307,42 +274,23 @@ namespace FixWorld.Loading
 
         private static string GetHarmonyPatchOwners(MethodBase method)
         {
-            Patches patches = Harmony.GetPatchInfo(method);
-            return patches == null
-                ? null
-                : JoinOwners(
-                    patches.Prefixes
-                        .Concat(patches.Postfixes)
-                        .Concat(patches.Transpilers)
-                        .Concat(patches.Finalizers));
+            return HarmonyPatchInspector.GetOwners(method);
         }
 
         private static string GetUnsupportedCallAllPatchOwners()
         {
-            Patches patches = Harmony.GetPatchInfo(CallAllMethod);
-            return patches == null
-                ? null
-                : JoinOwners(
-                    patches.Prefixes
-                        .Concat(patches.Transpilers)
-                        .Concat(patches.Finalizers));
+            return HarmonyPatchInspector.GetOwners(
+                CallAllMethod,
+                HarmonyPatchKinds.Prefix |
+                HarmonyPatchKinds.Transpiler |
+                HarmonyPatchKinds.Finalizer);
         }
 
         private static string GetHarmonyPostfixOwners(MethodBase method)
         {
-            Patches patches = Harmony.GetPatchInfo(method);
-            return patches == null ? null : JoinOwners(patches.Postfixes);
-        }
-
-        private static string JoinOwners(IEnumerable<Patch> patches)
-        {
-            string[] owners = patches
-                .Select(item => item.owner)
-                .Where(owner => !string.IsNullOrWhiteSpace(owner))
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(owner => owner, StringComparer.Ordinal)
-                .ToArray();
-            return owners.Length == 0 ? null : string.Join(",", owners);
+            return HarmonyPatchInspector.GetOwners(
+                method,
+                HarmonyPatchKinds.Postfix);
         }
     }
 

@@ -13,8 +13,6 @@ namespace FixWorld.Loading
 
         internal IEnumerable Run(IReadOnlyList<Action> actions)
         {
-            int stagedContentActions = 0;
-            int stagedFinalizationActions = 0;
             int preparedContentThrough = -1;
             bool outerProfilerStarted = false;
             executor.BeginRun();
@@ -51,16 +49,6 @@ namespace FixWorld.Loading
                     string label = GetActionLabel(action);
                     LoadingActionPlan plan =
                         VanillaLoadingActionAdapter.CreatePlan(action, label);
-                    if (ContainsOperation(plan, LoadingStep.LoadAudio))
-                    {
-                        stagedContentActions++;
-                    }
-
-                    if (ContainsOperation(plan, LoadingStep.RunStaticConstructors))
-                    {
-                        stagedFinalizationActions++;
-                    }
-
                     foreach (object frame in executor.RunPlan(
                                  plan,
                                  actionIndex + 1,
@@ -70,19 +58,6 @@ namespace FixWorld.Loading
                     }
                 }
 
-                if (stagedContentActions > 0)
-                {
-                    Log.Message(
-                        "[FixWorld] Staged content loading completed for " +
-                        stagedContentActions + " mods.");
-                }
-
-                if (stagedFinalizationActions > 0)
-                {
-                    Log.Message(
-                        "[FixWorld] Staged static initialization completed for " +
-                        stagedFinalizationActions + " finalization action.");
-                }
             }
             finally
             {
@@ -98,21 +73,6 @@ namespace FixWorld.Loading
                     executor.EndRun();
                 }
             }
-        }
-
-        private static bool ContainsOperation(
-            LoadingActionPlan plan,
-            LoadingStep operation)
-        {
-            for (int stageIndex = 0; stageIndex < plan.StageCount; stageIndex++)
-            {
-                if (plan.GetStage(stageIndex).Operation == operation)
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         private static string GetActionLabel(Action action)

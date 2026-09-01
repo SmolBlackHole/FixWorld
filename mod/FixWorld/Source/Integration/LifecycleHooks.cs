@@ -39,10 +39,7 @@ namespace FixWorld.Integration
             [HarmonyPrefix]
             private static void Prefix()
             {
-                RimWorldLifecycle.NotifyShuttingDown();
-                FixWorldEvents.Pump();
-                FixWorldScheduler.Shutdown();
-                FixWorldEvents.Shutdown();
+                FixWorldBootstrap.Shutdown();
             }
         }
 

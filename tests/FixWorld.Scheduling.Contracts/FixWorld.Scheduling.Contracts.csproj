@@ -9,6 +9,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\mod\FixWorld\Source\Caching\CacheModels.cs"
+      Link="Caching\CacheModels.cs" />
+    <Compile Include="..\..\mod\FixWorld\Source\Caching\CacheRuntime.cs"
+      Link="Caching\CacheRuntime.cs" />
+    <Compile Include="..\..\mod\FixWorld\Source\Runtime\AtomicFile.cs"
+      Link="Runtime\AtomicFile.cs" />
     <Compile Include="..\..\mod\FixWorld\Source\Runtime\FixWorldEventBus.cs"
       Link="Runtime\FixWorldEventBus.cs" />
     <Compile Include="..\..\mod\FixWorld\Source\Scheduling\FixWorldScheduler.cs"

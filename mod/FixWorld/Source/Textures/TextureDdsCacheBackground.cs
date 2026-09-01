@@ -9,6 +9,7 @@ using System.Runtime.Serialization.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
+using FixWorld.Runtime;
 using FixWorld.Scheduling;
 using Verse;
 
@@ -305,49 +306,19 @@ namespace FixWorld.Textures
                 return null;
             }
 
-            string resolvedPath = Path.GetFullPath(path);
-            string directory = Path.GetDirectoryName(resolvedPath);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            string temporaryPath = resolvedPath + ".tmp-" + Guid.NewGuid().ToString("N");
             try
             {
                 DataContractJsonSerializer serializer =
                     new DataContractJsonSerializer(typeof(DeferredTextureCacheReport));
-                using (FileStream stream = new FileStream(
-                           temporaryPath,
-                           FileMode.CreateNew,
-                           FileAccess.Write,
-                           FileShare.None))
-                {
-                    serializer.WriteObject(stream, report);
-                    stream.Flush(true);
-                }
-
-                if (File.Exists(resolvedPath))
-                {
-                    File.Replace(temporaryPath, resolvedPath, null);
-                }
-                else
-                {
-                    File.Move(temporaryPath, resolvedPath);
-                }
+                AtomicFile.Write(
+                    path,
+                    stream => serializer.WriteObject(stream, report));
 
                 return null;
             }
             catch (Exception exception)
             {
                 return "[FixWorld] Could not write deferred DDS report: " + exception;
-            }
-            finally
-            {
-                if (File.Exists(temporaryPath))
-                {
-                    File.Delete(temporaryPath);
-                }
             }
         }
 
@@ -360,8 +331,7 @@ namespace FixWorld.Textures
         {
             try
             {
-                FixWorldScheduler.Dispatch(
-                    "dds/log/" + buildIdentity,
+                FixWorldScheduler.Post(
                     "Report deferred DDS cache",
                     () =>
                     {

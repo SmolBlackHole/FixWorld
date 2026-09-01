@@ -68,8 +68,7 @@ namespace FixWorld.Textures
                     LoadingStage.Bootstrap,
                     LoadingStep.LoadTextureCache,
                     "Load texture cache index",
-                    "Opening the DDS cache index",
-                    affinity: LoadingThreadAffinity.WorkerSafe));
+                    "Opening the DDS cache index"));
             try
             {
                 cacheRoot = Environment.GetEnvironmentVariable(
@@ -147,9 +146,7 @@ namespace FixWorld.Textures
                         prepared
                             ? "Applying prepared texture mapping for " + mod.Name
                             : "Checking cached textures for " + mod.Name,
-                        LoadingModAttribution.Exact(mod),
-                        mod.PackageId,
-                        LoadingThreadAffinity.WorkerSafe));
+                        LoadingModAttribution.Exact(mod)));
                 try
                 {
                     if (TryApplyPrepared(mod, files))
@@ -198,6 +195,37 @@ namespace FixWorld.Textures
             }
         }
 
+        internal static void Shutdown()
+        {
+            TextureCacheStore store;
+            lock (Sync)
+            {
+                enabled = false;
+                store = cacheStore;
+                cacheStore = null;
+                builder = null;
+            }
+
+            lock (BackgroundSync)
+            {
+                pendingDeferredBuild = Array.Empty<TextureCacheEntry>();
+            }
+
+            if (store == null)
+            {
+                return;
+            }
+
+            try
+            {
+                store.Save();
+            }
+            finally
+            {
+                store.Dispose();
+            }
+        }
+
         internal static TextureDdsCacheSnapshot GetSnapshot()
         {
             return new TextureDdsCacheSnapshot(
@@ -227,8 +255,7 @@ namespace FixWorld.Textures
                     LoadingStage.Finalize,
                     LoadingStep.PruneTextureCache,
                     "Prepare texture cache maintenance",
-                    "Publishing active and in-budget DDS cache entries",
-                    affinity: LoadingThreadAffinity.WorkerSafe));
+                    "Publishing active and in-budget DDS cache entries"));
             try
             {
                 HashSet<string> activePackageIds = new HashSet<string>(
@@ -284,18 +311,14 @@ namespace FixWorld.Textures
             LoadingStep step,
             string displayName,
             string activity,
-            LoadingModAttribution? attribution = null,
-            string subject = null,
-            LoadingThreadAffinity affinity = LoadingThreadAffinity.MainThread)
+            LoadingModAttribution? attribution = null)
         {
             return new LoadingStageEventDescriptor(
                 stage,
                 step,
                 displayName,
                 activity,
-                subject,
-                attribution ?? LoadingModAttribution.Global,
-                affinity);
+                attribution ?? LoadingModAttribution.Global);
         }
 
         private static string GetRelativeSourcePath(FileInfo source, string modRoot)

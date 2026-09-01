@@ -45,7 +45,6 @@ namespace FixWorld.Textures
             for (int index = 0; index < targets.Length; index++)
             {
                 TextureLoadTarget target = targets[index];
-                int current = index + 1;
                 tasks[index] = LoadingWorkItem.CreateParallelThenCommit(
                     LoadingStage.Content,
                     LoadingStep.ValidateTextureCache,
@@ -53,8 +52,6 @@ namespace FixWorld.Textures
                     "Discovering and validating textures for " + target.ModName,
                     target.ModName,
                     LoadingModAttribution.Exact(target.PackageId, target.ModName),
-                    current,
-                    targets.Length,
                     continueOnFailure: true,
                     prepare: () => CreateLoadPlan(target, cacheSnapshot, null),
                     commit: StorePreparedPlan);
@@ -64,7 +61,6 @@ namespace FixWorld.Textures
                 "FixWorld texture discovery and DDS validation",
                 LoadingModAttribution.Global,
                 new LoadingPipelineStage(
-                    0,
                     "Prepare texture cache",
                     LoadingStage.Content,
                     LoadingStep.ValidateTextureCache,
@@ -125,9 +121,7 @@ namespace FixWorld.Textures
                     LoadingStep.ValidateTextureCache,
                     "Prepare texture cache",
                     "Discovering textures for " + target.ModName,
-                    LoadingModAttribution.Exact(target.PackageId, target.ModName),
-                    target.PackageId,
-                    LoadingThreadAffinity.WorkerSafe));
+                    LoadingModAttribution.Exact(target.PackageId, target.ModName)));
             try
             {
                 Dictionary<string, FileInfo> files = discoveredFiles ??
@@ -145,8 +139,6 @@ namespace FixWorld.Textures
                 {
                     KeyValuePair<string, FileInfo> item = sources[sourceIndex];
                     operation.ReportProgress(
-                        sourceIndex + 1,
-                        sources.Count,
                         "Checking cached textures for " + target.ModName);
                     FileInfo source = item.Value;
                     string sourceKey = Normalize(item.Key);

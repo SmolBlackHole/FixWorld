@@ -286,8 +286,6 @@ namespace FixWorld.Loading
                     cancellationToken.ThrowIfCancellationRequested();
                     totalBytes += files[index].Length;
                     operation.ReportProgress(
-                        index + 1,
-                        files.Length,
                         "Indexing XML for " + target.ModName);
                 }
 
@@ -326,8 +324,6 @@ namespace FixWorld.Loading
                         source.Files[start + index],
                         target.Mod);
                     operation.ReportProgress(
-                        index + 1,
-                        count,
                         "Parsing XML for " + target.ModName);
                 }
 
@@ -362,9 +358,8 @@ namespace FixWorld.Loading
                 }
 
                 operation.ReportProgress(
-                    assets.Count,
-                    assets.Count,
-                    "Committed XML for " + target.ModName);
+                    "Committed XML for " + target.ModName,
+                    force: true);
             }
             catch
             {
@@ -428,9 +423,7 @@ namespace FixWorld.Loading
                 step,
                 displayName,
                 activity,
-                target.PackageId,
-                LoadingModAttribution.Exact(target.PackageId, target.ModName),
-                LoadingThreadAffinity.WorkerSafe);
+                LoadingModAttribution.Exact(target.PackageId, target.ModName));
         }
 
         private static void WaitFor<TResult>(

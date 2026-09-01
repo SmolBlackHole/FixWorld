@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using FixWorld.Scheduling;
@@ -61,30 +60,15 @@ namespace FixWorld.Loading
             DeepProfiler.Start(plan.Label);
             try
             {
-                if (plan.StageCount == 1)
+                for (int stageIndex = 0; stageIndex < plan.StageCount; stageIndex++)
                 {
-                    LoadingPipelineStage stage = plan.GetStage(0);
-                    if (stage.Dependencies.Count != 0)
-                    {
-                        throw new InvalidOperationException(
-                            "A single loading stage cannot have dependencies: " +
-                            plan.Label);
-                    }
-
+                    LoadingPipelineStage stage = plan.GetStage(stageIndex);
                     ValidateStage(stage);
-                    foreach (object frame in RunStage(stage, currentAction, totalActions))
-                    {
-                        yield return frame;
-                    }
-
-                    yield break;
-                }
-
-                int[] executionOrder = BuildExecutionOrder(plan);
-                for (int index = 0; index < executionOrder.Length; index++)
-                {
-                    LoadingPipelineStage stage = plan.GetStage(executionOrder[index]);
-                    foreach (object frame in RunStage(stage, currentAction, totalActions))
+                    foreach (object frame in RunStage(
+                                 stage,
+                                 stageIndex,
+                                 currentAction,
+                                 totalActions))
                     {
                         yield return frame;
                     }
@@ -106,15 +90,19 @@ namespace FixWorld.Loading
 
         private IEnumerable RunStage(
             LoadingPipelineStage stage,
+            int stageIndex,
             int currentAction,
             int totalActions)
         {
             currentStageSucceeded = true;
-            IEnumerable execution =
-                stage.ExecutionMode == LoadingExecutionMode.Parallel ||
-                stage.ExecutionMode == LoadingExecutionMode.ParallelThenCommit
-                    ? RunParallelStage(stage, currentAction, totalActions)
-                    : RunSequentialStage(stage, currentAction, totalActions);
+            IEnumerable execution = stage.ExecutionMode ==
+                                    LoadingExecutionMode.ParallelThenCommit
+                ? RunParallelStage(
+                    stage,
+                    stageIndex,
+                    currentAction,
+                    totalActions)
+                : RunSequentialStage(stage, currentAction, totalActions);
             foreach (object frame in execution)
             {
                 yield return frame;
@@ -159,6 +147,7 @@ namespace FixWorld.Loading
 
         private IEnumerable RunParallelStage(
             LoadingPipelineStage stage,
+            int stageIndex,
             int currentAction,
             int totalActions)
         {
@@ -168,7 +157,7 @@ namespace FixWorld.Loading
                 ? stage.MaxParallelism
                 : FixWorldScheduler.WorkerCount;
             string concurrencyKey =
-                "loader/" + runId + "/" + currentPlanId + "/" + stage.Id;
+                "loader/" + runId + "/" + currentPlanId + "/" + stageIndex;
             ScheduledJobHandle<PreparedLoadingWork>[] handles =
                 new ScheduledJobHandle<PreparedLoadingWork>[stage.TaskCount];
 
@@ -189,14 +178,7 @@ namespace FixWorld.Loading
                             cancellationToken.ThrowIfCancellationRequested();
                             LoadingWorkItem scheduledItem =
                                 stage.GetTask(scheduledTaskIndex);
-                            if (stage.ExecutionMode ==
-                                LoadingExecutionMode.ParallelThenCommit)
-                            {
-                                return scheduledItem.Prepare();
-                            }
-
-                            scheduledItem.Execute();
-                            return null;
+                            return scheduledItem.Prepare();
                         },
                         concurrencyKey: concurrencyKey,
                         maxConcurrency: Math.Min(workerLimit, stage.TaskCount)));
@@ -248,8 +230,7 @@ namespace FixWorld.Loading
                     LogFailure(item, result.Exception);
                 }
 
-                if (stage.ExecutionMode == LoadingExecutionMode.ParallelThenCommit &&
-                    result.Succeeded)
+                if (result.Succeeded)
                 {
                     if (RequestFrameIfDue())
                     {
@@ -360,79 +341,6 @@ namespace FixWorld.Loading
             frameBoundaryRequested = true;
         }
 
-        private static int[] BuildExecutionOrder(LoadingActionPlan plan)
-        {
-            Dictionary<int, int> stageIndices = new Dictionary<int, int>(plan.StageCount);
-            for (int stageIndex = 0; stageIndex < plan.StageCount; stageIndex++)
-            {
-                LoadingPipelineStage stage = plan.GetStage(stageIndex);
-                if (stageIndices.ContainsKey(stage.Id))
-                {
-                    throw new InvalidOperationException(
-                        "Duplicate loading stage id " + stage.Id + " in " + plan.Label);
-                }
-
-                stageIndices.Add(stage.Id, stageIndex);
-                ValidateStage(stage);
-            }
-
-            for (int stageIndex = 0; stageIndex < plan.StageCount; stageIndex++)
-            {
-                LoadingPipelineStage stage = plan.GetStage(stageIndex);
-                foreach (int dependency in stage.Dependencies)
-                {
-                    if (!stageIndices.ContainsKey(dependency))
-                    {
-                        throw new InvalidOperationException(
-                            "Loading stage " + stage.Id + " depends on unavailable stage " +
-                            dependency + " in " + plan.Label);
-                    }
-                }
-            }
-
-            int[] executionOrder = new int[plan.StageCount];
-            bool[] scheduled = new bool[plan.StageCount];
-            for (int orderIndex = 0; orderIndex < executionOrder.Length; orderIndex++)
-            {
-                int readyStageIndex = -1;
-                for (int stageIndex = 0; stageIndex < plan.StageCount; stageIndex++)
-                {
-                    if (scheduled[stageIndex])
-                    {
-                        continue;
-                    }
-
-                    LoadingPipelineStage stage = plan.GetStage(stageIndex);
-                    bool ready = true;
-                    foreach (int dependency in stage.Dependencies)
-                    {
-                        if (!scheduled[stageIndices[dependency]])
-                        {
-                            ready = false;
-                            break;
-                        }
-                    }
-
-                    if (ready)
-                    {
-                        readyStageIndex = stageIndex;
-                        break;
-                    }
-                }
-
-                if (readyStageIndex < 0)
-                {
-                    throw new InvalidOperationException(
-                        "Loading stage graph contains a dependency cycle in " + plan.Label);
-                }
-
-                scheduled[readyStageIndex] = true;
-                executionOrder[orderIndex] = readyStageIndex;
-            }
-
-            return executionOrder;
-        }
-
         private static void ValidateStage(LoadingPipelineStage stage)
         {
             if (stage.MaxParallelism < 0)
@@ -444,10 +352,8 @@ namespace FixWorld.Loading
             for (int taskIndex = 0; taskIndex < stage.TaskCount; taskIndex++)
             {
                 LoadingWorkItem item = stage.GetTask(taskIndex);
-                bool parallel =
-                    stage.ExecutionMode == LoadingExecutionMode.Parallel ||
-                    stage.ExecutionMode == LoadingExecutionMode.ParallelThenCommit;
-                if (parallel && item.Affinity != LoadingThreadAffinity.WorkerSafe)
+                if (stage.ExecutionMode == LoadingExecutionMode.ParallelThenCommit &&
+                    item.Affinity != LoadingThreadAffinity.WorkerSafe)
                 {
                     throw new InvalidOperationException(
                         "Parallel loading stage contains a main-thread task: " +
@@ -462,7 +368,7 @@ namespace FixWorld.Loading
                         item.Subject);
                 }
 
-                if (stage.ExecutionMode != LoadingExecutionMode.ParallelThenCommit &&
+                if (stage.ExecutionMode == LoadingExecutionMode.MainThread &&
                     item.Execute == null)
                 {
                     throw new InvalidOperationException(

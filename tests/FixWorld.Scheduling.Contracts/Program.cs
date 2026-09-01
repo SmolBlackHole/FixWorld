@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 using System.Threading;
+using FixWorld.Caching;
 using FixWorld.Runtime;
 using FixWorld.Scheduling;
 
@@ -24,7 +27,10 @@ internal static class Program
             EventChannelsPreserveOrderAndCoalesceLatestValues();
             EventSubscribersAreIsolatedAndDisposable();
             EventBusShutdownIsFinal();
+            AtomicFileReplacesAndBacksUp();
+            CacheWriterPublishesImmutableSnapshots();
             MainThreadDispatcherIsFifo();
+            MainThreadDispatcherReportsAndIsolatesFailures();
             DispatcherShutdownIsAtomic();
             RuntimeShutdownCancelsCooperativeWorker();
             ShutdownIsFinal();
@@ -140,11 +146,13 @@ internal static class Program
 
     private static void MainThreadDispatcherIsFifo()
     {
-        MainThreadDispatcher dispatcher = new MainThreadDispatcher(8);
+        MainThreadDispatcher dispatcher = new MainThreadDispatcher(
+            8,
+            (_, exception) => throw exception);
         List<int> order = new List<int>();
-        dispatcher.Enqueue("one", "one", () => order.Add(1));
-        dispatcher.Enqueue("two", "two", () => order.Add(2));
-        dispatcher.Enqueue("three", "three", () => order.Add(3));
+        dispatcher.Post("one", () => order.Add(1));
+        dispatcher.Post("two", () => order.Add(2));
+        dispatcher.Post("three", () => order.Add(3));
         dispatcher.BindCurrentThread();
 
         Assert(
@@ -156,6 +164,114 @@ internal static class Program
         Assert(
             dispatcher.Pump(2, 1000) == 1 && order[2] == 3,
             "The dispatcher did not execute the remaining action.");
+        dispatcher.CancelAll();
+    }
+
+    private static void AtomicFileReplacesAndBacksUp()
+    {
+        string directory = Path.Combine(
+            Path.GetTempPath(),
+            "FixWorld-contract-" + Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(directory, "state.txt");
+        string backup = Path.Combine(directory, "state.backup.txt");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(path, "old", new UTF8Encoding(false));
+            AtomicFile.WriteText(path, "new", new UTF8Encoding(false));
+            Assert(
+                File.ReadAllText(path) == "new",
+                "Atomic text writing did not publish the replacement.");
+
+            AtomicFile.Write(
+                path,
+                stream =>
+                {
+                    byte[] bytes = Encoding.UTF8.GetBytes("newer");
+                    stream.Write(bytes, 0, bytes.Length);
+                },
+                backup);
+            Assert(
+                File.ReadAllText(path) == "newer" &&
+                File.ReadAllText(backup) == "new",
+                "Atomic replacement did not preserve the requested backup.");
+            Assert(
+                Directory.GetFiles(directory, "*.tmp-*").Length == 0,
+                "Atomic writing left a temporary file behind.");
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, true);
+            }
+        }
+    }
+
+    private static void CacheWriterPublishesImmutableSnapshots()
+    {
+        Dictionary<string, CacheEntry<string, int>> initial =
+            new Dictionary<string, CacheEntry<string, int>>(StringComparer.Ordinal)
+            {
+                ["first"] = new CacheEntry<string, int>("old", 1)
+            };
+        CacheRuntime<string, string, int> runtime =
+            new CacheRuntime<string, string, int>(initial, StringComparer.Ordinal);
+        CacheWriter<string, string, int> writer = runtime.Writer;
+        CacheSnapshot<string, string, int> original = runtime.Snapshot;
+
+        writer.Upsert("second", "new", 2);
+        Assert(
+            writer.TryGet("second", out CacheEntry<string, int> pending) &&
+            pending.Value == "new" &&
+            !original.TryGet("second", out _),
+            "The cache writer did not isolate unpublished changes.");
+        Assert(
+            writer.Remove("first") &&
+            !writer.TryGet("first", out _) &&
+            original.TryGet("first", out CacheEntry<string, int> retained) &&
+            retained.Value == "old",
+            "A writer mutation changed an existing immutable snapshot.");
+
+        CacheSnapshot<string, string, int> published = writer.Publish();
+        Assert(
+            ReferenceEquals(published, runtime.Snapshot) &&
+            published.TryGet("second", out CacheEntry<string, int> value) &&
+            value.Stamp == 2 &&
+            !published.TryGet("first", out _),
+            "Publishing did not expose the writer state atomically.");
+        Assert(
+            ReferenceEquals(published, writer.Publish()),
+            "Publishing an unchanged writer created another snapshot.");
+
+        writer.Upsert("third", "later", 3);
+        Assert(
+            !published.TryGet("third", out _),
+            "A published snapshot changed after another writer mutation.");
+    }
+
+    private static void MainThreadDispatcherReportsAndIsolatesFailures()
+    {
+        List<string> errors = new List<string>();
+        MainThreadDispatcher dispatcher = new MainThreadDispatcher(
+            4,
+            (name, exception) => errors.Add(name + ":" + exception.Message));
+        int healthyExecutions = 0;
+        dispatcher.Post(
+            "failing",
+            () => throw new InvalidOperationException("expected"));
+        dispatcher.Post("healthy", () => healthyExecutions++);
+        dispatcher.BindCurrentThread();
+
+        Assert(
+            dispatcher.Pump(4, 1000) == 2,
+            "A failing main-thread action stopped the dispatcher pump.");
+        Assert(
+            errors.Count == 1 && errors[0] == "failing:expected",
+            "The dispatcher did not report a main-thread action failure.");
+        Assert(
+            healthyExecutions == 1,
+            "A healthy action after a failure was not executed.");
         dispatcher.CancelAll();
     }
 
@@ -498,19 +614,21 @@ internal static class Program
 
     private static void DispatcherShutdownIsAtomic()
     {
-        MainThreadDispatcher dispatcher = new MainThreadDispatcher(1);
+        MainThreadDispatcher dispatcher = new MainThreadDispatcher(
+            1,
+            (_, exception) => throw exception);
         AssertThrows<ArgumentNullException>(
-            () => dispatcher.Enqueue("invalid", "invalid", null));
-        MainThreadActionHandle queued = dispatcher.Enqueue(
+            () => dispatcher.Post("invalid", null));
+        int executions = 0;
+        dispatcher.Post(
             "queued",
-            "queued",
-            () => { });
+            () => executions++);
         dispatcher.CancelAll();
         Assert(
-            queued.State == SchedulerJobState.Cancelled,
-            "Dispatcher shutdown did not cancel an existing action.");
+            dispatcher.Pump(1, 1000) == 0 && executions == 0,
+            "Dispatcher shutdown did not discard an existing action.");
         AssertThrows<ObjectDisposedException>(
-            () => dispatcher.Enqueue("late", "late", () => { }));
+            () => dispatcher.Post("late", () => { }));
     }
 
     private static void RuntimeShutdownCancelsCooperativeWorker()
@@ -542,7 +660,8 @@ internal static class Program
         Assert(FixWorldScheduler.WorkerCount == 1, "The scheduler did not start.");
         FixWorldScheduler.Shutdown();
         Assert(FixWorldScheduler.WorkerCount == 0, "Shutdown retained workers.");
-        AssertThrows<ObjectDisposedException>(FixWorldScheduler.Initialize);
+        AssertThrows<ObjectDisposedException>(
+            () => FixWorldScheduler.Initialize());
         AssertThrows<ObjectDisposedException>(
             () => FixWorldScheduler.Schedule(Job("after-stop", _ => 0)));
     }

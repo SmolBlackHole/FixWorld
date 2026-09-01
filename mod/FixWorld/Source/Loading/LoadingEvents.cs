@@ -24,12 +24,8 @@ namespace FixWorld.Loading
         internal readonly LoadingStep Operation;
         internal readonly string DisplayName;
         internal readonly string Activity;
-        internal readonly string Subject;
         internal readonly LoadingModAttribution Attribution;
-        internal readonly LoadingThreadAffinity Affinity;
         internal readonly bool MainThread;
-        internal readonly int Current;
-        internal readonly int Total;
         internal readonly long ElapsedTicks;
 
         internal LoadingStageEvent(
@@ -40,12 +36,8 @@ namespace FixWorld.Loading
             LoadingStep operation,
             string displayName,
             string activity,
-            string subject,
             LoadingModAttribution attribution,
-            LoadingThreadAffinity affinity,
             bool mainThread,
-            int current,
-            int total,
             long elapsedTicks)
         {
             OperationId = operationId;
@@ -55,12 +47,8 @@ namespace FixWorld.Loading
             Operation = operation;
             DisplayName = displayName;
             Activity = activity;
-            Subject = subject;
             Attribution = attribution;
-            Affinity = affinity;
             MainThread = mainThread;
-            Current = current;
-            Total = total;
             ElapsedTicks = elapsedTicks;
         }
     }
@@ -71,9 +59,7 @@ namespace FixWorld.Loading
         internal readonly LoadingStep Operation;
         internal readonly string DisplayName;
         internal readonly string Activity;
-        internal readonly string Subject;
         internal readonly LoadingModAttribution Attribution;
-        internal readonly LoadingThreadAffinity Affinity;
         internal readonly LoadingStageEventSource Source;
 
         internal LoadingStageEventDescriptor(
@@ -81,18 +67,14 @@ namespace FixWorld.Loading
             LoadingStep operation,
             string displayName,
             string activity,
-            string subject,
             LoadingModAttribution attribution,
-            LoadingThreadAffinity affinity = LoadingThreadAffinity.MainThread,
             LoadingStageEventSource source = LoadingStageEventSource.FixWorld)
         {
             Stage = stage;
             Operation = operation;
             DisplayName = displayName;
             Activity = activity;
-            Subject = subject;
             Attribution = attribution;
-            Affinity = affinity;
             Source = source;
         }
     }
@@ -113,7 +95,7 @@ namespace FixWorld.Loading
                 Stopwatch.GetTimestamp(),
                 UnityData.IsInMainThread);
             FixWorldEvents.Publish(
-                operation.CreateEvent(LoadingStageEventKind.Started, 0, 0, 0L));
+                operation.CreateEvent(LoadingStageEventKind.Started, 0L));
             return operation;
         }
 
@@ -133,12 +115,8 @@ namespace FixWorld.Loading
                 stage.Name,
                 "Stage tasks " + completedTasks + " / " + totalTasks +
                 "   " + stage.ExecutionMode,
-                stage.Name,
                 LoadingModAttribution.Global,
-                LoadingThreadAffinity.MainThread,
                 true,
-                completedTasks,
-                totalTasks,
                 0L));
         }
 
@@ -156,12 +134,8 @@ namespace FixWorld.Loading
                 item.DisplayName,
                 item.Activity ?? "Delayed initialization task " + currentAction +
                 " / " + totalActions,
-                item.Subject,
                 item.Attribution,
-                item.Affinity,
                 true,
-                currentAction,
-                totalActions,
                 0L));
         }
 
@@ -180,12 +154,8 @@ namespace FixWorld.Loading
                 descriptor.Step,
                 descriptor.DisplayName,
                 activity,
-                descriptor.ModName,
                 LoadingModAttribution.Global,
-                LoadingThreadAffinity.MainThread,
                 mainThread,
-                0,
-                0,
                 0L));
         }
 
@@ -201,12 +171,8 @@ namespace FixWorld.Loading
                 default,
                 LoadingStageNames.GetFallback(stage),
                 null,
-                null,
                 LoadingModAttribution.Global,
-                LoadingThreadAffinity.MainThread,
                 mainThread,
-                0,
-                0,
                 0L));
         }
 
@@ -224,12 +190,8 @@ namespace FixWorld.Loading
                     default,
                     label,
                     null,
-                    null,
                     LoadingModAttribution.Global,
-                    LoadingThreadAffinity.MainThread,
                     mainThread,
-                    0,
-                    0,
                     0L));
         }
 
@@ -258,7 +220,7 @@ namespace FixWorld.Loading
             this.mainThread = mainThread;
         }
 
-        internal void ReportProgress(int current, int total, string activity = null)
+        internal void ReportProgress(string activity = null, bool force = false)
         {
             if (Volatile.Read(ref completed) != 0)
             {
@@ -267,7 +229,7 @@ namespace FixWorld.Loading
 
             long now = Stopwatch.GetTimestamp();
             long next = Interlocked.Read(ref nextProgressAt);
-            if (current < total && now < next)
+            if (!force && now < next)
             {
                 return;
             }
@@ -282,12 +244,8 @@ namespace FixWorld.Loading
                 descriptor.Operation,
                 descriptor.DisplayName,
                 activity ?? descriptor.Activity,
-                descriptor.Subject,
                 descriptor.Attribution,
-                descriptor.Affinity,
                 mainThread,
-                current,
-                total,
                 now - startedAt));
         }
 
@@ -303,8 +261,6 @@ namespace FixWorld.Loading
 
         internal LoadingStageEvent CreateEvent(
             LoadingStageEventKind kind,
-            int current,
-            int total,
             long elapsedTicks)
         {
             return new LoadingStageEvent(
@@ -315,12 +271,8 @@ namespace FixWorld.Loading
                 descriptor.Operation,
                 descriptor.DisplayName,
                 descriptor.Activity,
-                descriptor.Subject,
                 descriptor.Attribution,
-                descriptor.Affinity,
                 mainThread,
-                current,
-                total,
                 elapsedTicks);
         }
 
@@ -333,8 +285,6 @@ namespace FixWorld.Loading
 
             FixWorldEvents.Publish(CreateEvent(
                 kind,
-                1,
-                1,
                 Stopwatch.GetTimestamp() - startedAt));
         }
     }

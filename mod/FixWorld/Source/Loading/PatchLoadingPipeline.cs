@@ -44,8 +44,6 @@ namespace FixWorld.Loading
                         }
 
                         operation.ReportProgress(
-                            index + 1,
-                            patches.Length,
                             "Checking patches for " + mod.Name);
                     }
                 }
@@ -90,8 +88,6 @@ namespace FixWorld.Loading
                         }
 
                         operation.ReportProgress(
-                            index + 1,
-                            patches.Length,
                             "Applying patches from " + mod.Name);
                     }
                 }
@@ -117,7 +113,6 @@ namespace FixWorld.Loading
                 step,
                 displayName,
                 activity,
-                "RimWorld",
                 LoadingModAttribution.Global));
         }
 
@@ -132,9 +127,8 @@ namespace FixWorld.Loading
             {
                 PatchOperation[] patches = mod.Patches.ToArray();
                 operation.ReportProgress(
-                    patches.Length,
-                    patches.Length,
-                    "Loaded patch files for " + mod.Name);
+                    "Loaded patch files for " + mod.Name,
+                    force: true);
                 return patches;
             }
             catch
@@ -159,7 +153,6 @@ namespace FixWorld.Loading
                 step,
                 displayName,
                 activity,
-                mod.Name,
                 LoadingModAttribution.Exact(mod));
         }
     }

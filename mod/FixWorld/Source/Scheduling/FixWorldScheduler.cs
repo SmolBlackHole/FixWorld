@@ -12,7 +12,8 @@ namespace FixWorld.Scheduling
         internal static int WorkerCount =>
             Volatile.Read(ref runtime)?.WorkerCount ?? 0;
 
-        internal static void Initialize()
+        internal static void Initialize(
+            Action<string, Exception> mainThreadErrorHandler = null)
         {
             lock (Sync)
             {
@@ -21,7 +22,8 @@ namespace FixWorld.Scheduling
                     throw new ObjectDisposedException(nameof(FixWorldScheduler));
                 }
 
-                runtime ??= SchedulerRuntime.CreateDefault();
+                runtime ??= SchedulerRuntime.CreateDefault(
+                    mainThreadErrorHandler);
             }
         }
 
@@ -31,12 +33,11 @@ namespace FixWorld.Scheduling
             return RequireRuntime().Schedule(job);
         }
 
-        internal static MainThreadActionHandle Dispatch(
-            string key,
+        internal static void Post(
             string name,
             Action action)
         {
-            return RequireRuntime().Dispatch(key, name, action);
+            RequireRuntime().Post(name, action);
         }
 
         internal static void BindMainThread()
@@ -59,14 +60,14 @@ namespace FixWorld.Scheduling
             Volatile.Read(ref runtime)?.Cancel(handle);
         }
 
-        internal static void Shutdown()
+        internal static bool Shutdown()
         {
             SchedulerRuntime current;
             lock (Sync)
             {
                 if (stopped)
                 {
-                    return;
+                    return true;
                 }
 
                 stopped = true;
@@ -74,7 +75,7 @@ namespace FixWorld.Scheduling
                 runtime = null;
             }
 
-            current?.Dispose();
+            return current?.Shutdown(2000) ?? true;
         }
 
         private static SchedulerRuntime RequireRuntime()

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using FixWorld.Integration;
 using HarmonyLib;
 using UnityEngine;
 using Verse;
@@ -112,18 +113,14 @@ namespace FixWorld.Loading
                     step.ProfilerLabel,
                     step.DisplayName,
                     attribution,
-                    index + 1,
-                    steps.Length,
                     continueOnFailure: false,
                     execute: step.Execute);
                 stages[index] = new LoadingPipelineStage(
-                    index,
                     step.DisplayName,
                     LoadingStage.Content,
                     step.Operation,
                     LoadingExecutionMode.MainThread,
-                    item,
-                    index == 0 ? null : new[] { index - 1 });
+                    item);
             }
 
             return new LoadingActionPlan(
@@ -156,12 +153,7 @@ namespace FixWorld.Loading
 
         private static bool HasHarmonyPatches()
         {
-            Patches patches = Harmony.GetPatchInfo(ReloadContentMethod);
-            return patches != null &&
-                   (patches.Prefixes.Count > 0 ||
-                    patches.Postfixes.Count > 0 ||
-                    patches.Transpilers.Count > 0 ||
-                    patches.Finalizers.Count > 0);
+            return HarmonyPatchInspector.Any(ReloadContentMethod);
         }
 
         private static void ReloadAssetBundles(ModContentPack targetMod)

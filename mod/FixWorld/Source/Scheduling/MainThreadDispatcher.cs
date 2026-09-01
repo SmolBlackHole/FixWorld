@@ -8,14 +8,17 @@ namespace FixWorld.Scheduling
     internal sealed class MainThreadDispatcher
     {
         private readonly object sync = new object();
-        private readonly ConcurrentQueue<MainThreadActionHandle> actions =
-            new ConcurrentQueue<MainThreadActionHandle>();
+        private readonly ConcurrentQueue<MainThreadAction> actions =
+            new ConcurrentQueue<MainThreadAction>();
+        private readonly Action<string, Exception> reportError;
         private readonly int capacity;
         private int mainThreadId;
         private int queued;
         private bool cancelled;
 
-        internal MainThreadDispatcher(int capacity)
+        internal MainThreadDispatcher(
+            int capacity,
+            Action<string, Exception> reportError)
         {
             if (capacity <= 0)
             {
@@ -23,6 +26,8 @@ namespace FixWorld.Scheduling
             }
 
             this.capacity = capacity;
+            this.reportError = reportError ??
+                throw new ArgumentNullException(nameof(reportError));
         }
 
         internal void BindCurrentThread()
@@ -39,18 +44,10 @@ namespace FixWorld.Scheduling
             }
         }
 
-        internal MainThreadActionHandle Enqueue(
-            string key,
+        internal void Post(
             string name,
             Action action)
         {
-            if (string.IsNullOrWhiteSpace(key))
-            {
-                throw new ArgumentException(
-                    "A main-thread action needs a stable key.",
-                    nameof(key));
-            }
-
             if (action == null)
             {
                 throw new ArgumentNullException(nameof(action));
@@ -73,10 +70,7 @@ namespace FixWorld.Scheduling
                         capacity + ").");
                 }
 
-                MainThreadActionHandle handle =
-                    new MainThreadActionHandle(key, name, action);
-                actions.Enqueue(handle);
-                return handle;
+                actions.Enqueue(new MainThreadAction(name, action));
             }
         }
 
@@ -96,10 +90,18 @@ namespace FixWorld.Scheduling
             int executed = 0;
             while (executed < actionLimit &&
                    Stopwatch.GetTimestamp() <= deadline &&
-                   actions.TryDequeue(out MainThreadActionHandle handle))
+                   actions.TryDequeue(out MainThreadAction item))
             {
                 Interlocked.Decrement(ref queued);
-                handle.Run();
+                try
+                {
+                    item.Execute();
+                }
+                catch (Exception exception)
+                {
+                    reportError(item.Name, exception);
+                }
+
                 executed++;
             }
 
@@ -111,11 +113,24 @@ namespace FixWorld.Scheduling
             lock (sync)
             {
                 cancelled = true;
-                while (actions.TryDequeue(out MainThreadActionHandle handle))
+                while (actions.TryDequeue(out _))
                 {
                     Interlocked.Decrement(ref queued);
-                    handle.Cancel();
                 }
+            }
+        }
+
+        private readonly struct MainThreadAction
+        {
+            internal readonly string Name;
+            internal readonly Action Execute;
+
+            internal MainThreadAction(string name, Action execute)
+            {
+                Name = string.IsNullOrWhiteSpace(name)
+                    ? "Unnamed main-thread action"
+                    : name;
+                Execute = execute;
             }
         }
     }

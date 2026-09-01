@@ -15,8 +15,6 @@ namespace FixWorld.Loading
     internal enum LoadingExecutionMode
     {
         MainThread,
-        Ordered,
-        Parallel,
         ParallelThenCommit
     }
 
@@ -94,8 +92,6 @@ namespace FixWorld.Loading
         internal readonly string Subject;
         internal readonly LoadingModAttribution Attribution;
         internal readonly LoadingThreadAffinity Affinity;
-        internal readonly int Current;
-        internal readonly int Total;
         internal readonly bool ContinueOnFailure;
         internal readonly Action Execute;
         internal readonly Func<PreparedLoadingWork> Prepare;
@@ -108,8 +104,6 @@ namespace FixWorld.Loading
             string profilerLabel,
             string subject,
             LoadingModAttribution attribution,
-            int current,
-            int total,
             bool continueOnFailure,
             Action execute,
             LoadingThreadAffinity affinity = LoadingThreadAffinity.MainThread)
@@ -122,8 +116,6 @@ namespace FixWorld.Loading
             Subject = subject;
             Attribution = attribution;
             Affinity = affinity;
-            Current = current;
-            Total = total;
             ContinueOnFailure = continueOnFailure;
             Execute = execute ?? throw new ArgumentNullException(nameof(execute));
             Prepare = null;
@@ -136,8 +128,6 @@ namespace FixWorld.Loading
             string activity,
             string subject,
             LoadingModAttribution attribution,
-            int current,
-            int total,
             bool continueOnFailure,
             Func<PreparedLoadingWork> prepare)
         {
@@ -149,8 +139,6 @@ namespace FixWorld.Loading
             Subject = subject;
             Attribution = attribution;
             Affinity = LoadingThreadAffinity.WorkerSafe;
-            Current = current;
-            Total = total;
             ContinueOnFailure = continueOnFailure;
             Execute = null;
             Prepare = prepare ?? throw new ArgumentNullException(nameof(prepare));
@@ -163,8 +151,6 @@ namespace FixWorld.Loading
             string activity,
             string subject,
             LoadingModAttribution attribution,
-            int current,
-            int total,
             bool continueOnFailure,
             Func<TResult> prepare,
             Action<TResult> commit)
@@ -181,8 +167,6 @@ namespace FixWorld.Loading
                 activity,
                 subject,
                 attribution,
-                current,
-                total,
                 continueOnFailure,
                 () => new PreparedLoadingWork<TResult>(prepare(), commit));
         }
@@ -190,49 +174,40 @@ namespace FixWorld.Loading
 
     internal readonly struct LoadingPipelineStage
     {
-        private static readonly IReadOnlyList<int> NoDependencies = Array.Empty<int>();
         private readonly LoadingWorkItem singleTask;
         private readonly IReadOnlyList<LoadingWorkItem> tasks;
 
-        internal readonly int Id;
         internal readonly string Name;
         internal readonly LoadingStage Phase;
         internal readonly LoadingStep Operation;
         internal readonly LoadingExecutionMode ExecutionMode;
-        internal readonly IReadOnlyList<int> Dependencies;
         internal readonly int MaxParallelism;
 
         internal int TaskCount => tasks?.Count ?? 1;
 
         internal LoadingPipelineStage(
-            int id,
             string name,
             LoadingStage phase,
             LoadingStep operation,
             LoadingExecutionMode executionMode,
             LoadingWorkItem task,
-            IReadOnlyList<int> dependencies = null,
             int maxParallelism = 0)
         {
-            Id = id;
             Name = name;
             Phase = phase;
             Operation = operation;
             ExecutionMode = executionMode;
-            Dependencies = dependencies ?? NoDependencies;
             MaxParallelism = maxParallelism;
             singleTask = task;
             tasks = null;
         }
 
         internal LoadingPipelineStage(
-            int id,
             string name,
             LoadingStage phase,
             LoadingStep operation,
             LoadingExecutionMode executionMode,
             IReadOnlyList<LoadingWorkItem> tasks,
-            IReadOnlyList<int> dependencies = null,
             int maxParallelism = 0)
         {
             if (tasks == null || tasks.Count == 0)
@@ -242,12 +217,10 @@ namespace FixWorld.Loading
                     nameof(tasks));
             }
 
-            Id = id;
             Name = name;
             Phase = phase;
             Operation = operation;
             ExecutionMode = executionMode;
-            Dependencies = dependencies ?? NoDependencies;
             MaxParallelism = maxParallelism;
             singleTask = default;
             this.tasks = tasks;
@@ -334,16 +307,13 @@ namespace FixWorld.Loading
                 null,
                 label,
                 attribution,
-                1,
-                1,
                 continueOnFailure: true,
                 execute: action);
             LoadingPipelineStage stage = new LoadingPipelineStage(
-                0,
                 item.DisplayName,
                 item.Stage,
                 item.Operation,
-                LoadingExecutionMode.Ordered,
+                LoadingExecutionMode.MainThread,
                 item);
             return new LoadingActionPlan(label, attribution, stage);
         }

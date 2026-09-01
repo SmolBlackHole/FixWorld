@@ -35,6 +35,7 @@ namespace FixWorld.Scheduling
         private int activeJobs;
         private int activeIoJobs;
         private bool disposed;
+        private bool shutdownDisposed;
 
         internal int WorkerCount => workers.Length;
 
@@ -42,12 +43,15 @@ namespace FixWorld.Scheduling
             int workerCount,
             int ioLimit,
             int queueCapacity,
-            long byteCapacity)
+            long byteCapacity,
+            Action<string, Exception> mainThreadErrorHandler)
         {
             this.ioLimit = ioLimit;
             this.queueCapacity = queueCapacity;
             this.byteCapacity = byteCapacity;
-            dispatcher = new MainThreadDispatcher(queueCapacity);
+            dispatcher = new MainThreadDispatcher(
+                queueCapacity,
+                mainThreadErrorHandler ?? ReportMainThreadError);
             workers = new Thread[workerCount];
             for (int index = 0; index < workers.Length; index++)
             {
@@ -63,7 +67,8 @@ namespace FixWorld.Scheduling
             AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
         }
 
-        internal static SchedulerRuntime CreateDefault()
+        internal static SchedulerRuntime CreateDefault(
+            Action<string, Exception> mainThreadErrorHandler = null)
         {
             int defaultWorkers = Math.Max(1, Environment.ProcessorCount / 2);
             int workerCount = ReadBoundedInt(
@@ -90,7 +95,8 @@ namespace FixWorld.Scheduling
                 workerCount,
                 ioLimit,
                 queueCapacity,
-                byteCapacity);
+                byteCapacity,
+                mainThreadErrorHandler);
         }
 
         internal ScheduledJobHandle<TResult> Schedule<TResult>(
@@ -137,8 +143,7 @@ namespace FixWorld.Scheduling
             }
         }
 
-        internal MainThreadActionHandle Dispatch(
-            string key,
+        internal void Post(
             string name,
             Action action)
         {
@@ -147,7 +152,7 @@ namespace FixWorld.Scheduling
                 ThrowIfDisposed();
             }
 
-            return dispatcher.Enqueue(key, name, action);
+            dispatcher.Post(name, action);
         }
 
         internal int PumpMainThread(int maximumActions, int maximumMilliseconds)
@@ -177,27 +182,33 @@ namespace FixWorld.Scheduling
 
         public void Dispose()
         {
+            Shutdown(2000);
+        }
+
+        internal bool Shutdown(int maximumMilliseconds)
+        {
             lock (sync)
             {
-                if (disposed)
+                if (!disposed)
                 {
-                    return;
-                }
+                    disposed = true;
+                    shutdown.Cancel();
+                    foreach (ScheduledJobHandle handle in jobsByKey.Values)
+                    {
+                        handle.Cancel();
+                    }
 
-                disposed = true;
-                shutdown.Cancel();
-                foreach (ScheduledJobHandle handle in jobsByKey.Values)
-                {
-                    handle.Cancel();
+                    pending.Clear();
+                    jobsByKey.Clear();
+                    Monitor.PulseAll(sync);
+                    dispatcher.CancelAll();
+                    AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
                 }
-
-                pending.Clear();
-                jobsByKey.Clear();
-                Monitor.PulseAll(sync);
             }
 
-            dispatcher.CancelAll();
-            long deadline = Stopwatch.GetTimestamp() + 2L * Stopwatch.Frequency;
+            long timeout = Math.Max(0, maximumMilliseconds);
+            long deadline = Stopwatch.GetTimestamp() +
+                            timeout * Stopwatch.Frequency / 1000L;
             bool workersStopped = true;
             foreach (Thread worker in workers)
             {
@@ -219,11 +230,19 @@ namespace FixWorld.Scheduling
                 }
             }
 
-            AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
             if (workersStopped)
             {
-                shutdown.Dispose();
+                lock (sync)
+                {
+                    if (!shutdownDisposed)
+                    {
+                        shutdownDisposed = true;
+                        shutdown.Dispose();
+                    }
+                }
             }
+
+            return workersStopped;
         }
 
         private void WorkerLoop()
@@ -463,7 +482,16 @@ namespace FixWorld.Scheduling
 
         private void OnProcessExit(object sender, EventArgs eventArgs)
         {
-            Dispose();
+            Shutdown(2000);
+        }
+
+        private static void ReportMainThreadError(
+            string name,
+            Exception exception)
+        {
+            Console.Error.WriteLine(
+                "FixWorld main-thread action failed (" + name + "): " +
+                exception);
         }
 
         private static int ReadBoundedInt(

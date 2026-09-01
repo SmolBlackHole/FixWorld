@@ -1,39 +1,22 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using FixWorld.Textures;
 using Verse;
 
 namespace FixWorld.Loading
 {
     internal static class ModFileLoader
     {
-        internal static Dictionary<string, FileInfo> Load(
+        internal static Dictionary<string, FileInfo> Discover(
             ModContentPack mod,
             string contentPath,
             Func<string, bool> validateExtension,
-            List<string> foldersToLoadDebug,
-            Action<Dictionary<string, FileInfo>> onDiscovered)
+            List<string> foldersToLoadDebug)
         {
-            if (foldersToLoadDebug == null &&
-                TextureDdsCache.TryGetPreparedFiles(
-                    mod,
-                    contentPath,
-                    validateExtension,
-                    out Dictionary<string, FileInfo> prepared))
-            {
-                onDiscovered?.Invoke(prepared);
-                TextureDdsCache.Apply(mod, contentPath, foldersToLoadDebug, prepared);
-                return prepared;
-            }
-
-            Dictionary<string, FileInfo> files = Discover(
+            return DiscoverFiles(
                 foldersToLoadDebug ?? mod.foldersToLoadDescendingOrder,
                 contentPath,
                 validateExtension);
-            onDiscovered?.Invoke(files);
-            TextureDdsCache.Apply(mod, contentPath, foldersToLoadDebug, files);
-            return files;
         }
 
         internal static FileInfo[] DiscoverXml(IReadOnlyList<string> folders)
@@ -73,10 +56,10 @@ namespace FixWorld.Loading
             IReadOnlyList<string> folders,
             string contentPath)
         {
-            return Discover(folders, contentPath, IsTextureExtension);
+            return DiscoverFiles(folders, contentPath, IsTextureExtension);
         }
 
-        private static Dictionary<string, FileInfo> Discover(
+        private static Dictionary<string, FileInfo> DiscoverFiles(
             IReadOnlyList<string> folders,
             string contentPath,
             Func<string, bool> validateExtension)

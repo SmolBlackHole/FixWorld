@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using FixWorld.Runtime;
 using Verse;
 
 namespace FixWorld.Loading
@@ -51,36 +52,18 @@ namespace FixWorld.Loading
                 return;
             }
 
-            string temporaryPath = null;
             try
             {
                 string path = GetPath();
-                Directory.CreateDirectory(Path.GetDirectoryName(path));
-                temporaryPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
-                File.WriteAllText(
-                    temporaryPath,
+                AtomicFile.WriteText(
+                    path,
                     GetModListSignature() + Environment.NewLine +
                     milliseconds.ToString("R", CultureInfo.InvariantCulture),
                     new UTF8Encoding(false));
-                if (File.Exists(path))
-                {
-                    File.Replace(temporaryPath, path, null);
-                }
-                else
-                {
-                    File.Move(temporaryPath, path);
-                }
             }
             catch (Exception exception)
             {
                 Log.Warning("[FixWorld] Could not save the loading estimate: " + exception.Message);
-            }
-            finally
-            {
-                if (temporaryPath != null && File.Exists(temporaryPath))
-                {
-                    File.Delete(temporaryPath);
-                }
             }
         }
 

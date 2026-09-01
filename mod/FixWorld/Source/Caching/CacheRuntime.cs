@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Threading;
 
@@ -9,52 +8,23 @@ namespace FixWorld.Caching
         private readonly Dictionary<TKey, CacheEntry<TValue, TStamp>> entries;
 
         internal CacheSnapshot(
-            long generation,
             IDictionary<TKey, CacheEntry<TValue, TStamp>> entries,
-            IEqualityComparer<TKey> keyComparer,
-            bool takeOwnership = false)
+            IEqualityComparer<TKey> keyComparer)
         {
-            if (generation < 0L)
-            {
-                throw new ArgumentOutOfRangeException(nameof(generation));
-            }
-
-            Generation = generation;
-            this.entries = takeOwnership &&
-                           entries is Dictionary<
-                               TKey,
-                               CacheEntry<TValue, TStamp>> owned
-                ? owned
-                : entries == null
-                    ? new Dictionary<TKey, CacheEntry<TValue, TStamp>>(keyComparer)
-                    : new Dictionary<TKey, CacheEntry<TValue, TStamp>>(
-                        entries,
-                        keyComparer);
+            this.entries = entries == null
+                ? new Dictionary<TKey, CacheEntry<TValue, TStamp>>(keyComparer)
+                : new Dictionary<TKey, CacheEntry<TValue, TStamp>>(
+                    entries,
+                    keyComparer);
         }
-
-        internal long Generation { get; }
 
         internal int Count => entries.Count;
 
-        internal CacheLookup<TValue, TStamp> Lookup(
+        internal bool TryGet(
             TKey key,
-            Func<TStamp, bool> isFresh = null)
+            out CacheEntry<TValue, TStamp> entry)
         {
-            try
-            {
-                if (!entries.TryGetValue(key, out CacheEntry<TValue, TStamp> entry))
-                {
-                    return CacheLookup<TValue, TStamp>.Miss();
-                }
-
-                return isFresh == null || isFresh(entry.Stamp)
-                    ? CacheLookup<TValue, TStamp>.Hit(entry)
-                    : CacheLookup<TValue, TStamp>.Stale(entry);
-            }
-            catch (Exception exception)
-            {
-                return CacheLookup<TValue, TStamp>.Failed(exception);
-            }
+            return entries.TryGetValue(key, out entry);
         }
 
         internal IEnumerable<KeyValuePair<TKey, CacheEntry<TValue, TStamp>>>
@@ -66,36 +36,73 @@ namespace FixWorld.Caching
             }
         }
 
-        internal Dictionary<TKey, CacheEntry<TValue, TStamp>> CopyEntries(
-            IEqualityComparer<TKey> keyComparer)
-        {
-            return new Dictionary<TKey, CacheEntry<TValue, TStamp>>(
-                entries,
-                keyComparer);
-        }
     }
 
-    internal sealed class CacheDelta<TKey, TValue, TStamp>
+    internal sealed class CacheWriter<TKey, TValue, TStamp>
     {
-        private readonly IReadOnlyList<CacheMutation<TKey, TValue, TStamp>>
-            mutations;
+        private readonly CacheRuntime<TKey, TValue, TStamp> runtime;
+        private readonly Dictionary<TKey, CacheEntry<TValue, TStamp>> entries;
+        private bool changed;
 
-        internal CacheDelta(
-            IReadOnlyList<CacheMutation<TKey, TValue, TStamp>> mutations)
+        internal CacheWriter(
+            CacheRuntime<TKey, TValue, TStamp> runtime,
+            IDictionary<TKey, CacheEntry<TValue, TStamp>> initialEntries,
+            IEqualityComparer<TKey> keyComparer)
         {
-            this.mutations = mutations ??
-                throw new ArgumentNullException(nameof(mutations));
+            this.runtime = runtime;
+            entries = initialEntries == null
+                ? new Dictionary<TKey, CacheEntry<TValue, TStamp>>(keyComparer)
+                : new Dictionary<TKey, CacheEntry<TValue, TStamp>>(
+                    initialEntries,
+                    keyComparer);
         }
 
-        internal int Count => mutations.Count;
+        internal int Count => entries.Count;
 
-        internal IReadOnlyList<CacheMutation<TKey, TValue, TStamp>> Mutations =>
-            mutations;
+        internal bool TryGet(TKey key, out CacheEntry<TValue, TStamp> entry)
+        {
+            return entries.TryGetValue(key, out entry);
+        }
+
+        internal void Upsert(TKey key, TValue value, TStamp stamp)
+        {
+            entries[key] = new CacheEntry<TValue, TStamp>(value, stamp);
+            changed = true;
+        }
+
+        internal bool Remove(TKey key)
+        {
+            if (!entries.Remove(key))
+            {
+                return false;
+            }
+
+            changed = true;
+            return true;
+        }
+
+        internal IEnumerable<KeyValuePair<TKey, CacheEntry<TValue, TStamp>>>
+            Enumerate()
+        {
+            return entries;
+        }
+
+        internal CacheSnapshot<TKey, TValue, TStamp> Publish()
+        {
+            if (!changed)
+            {
+                return runtime.Snapshot;
+            }
+
+            CacheSnapshot<TKey, TValue, TStamp> snapshot =
+                runtime.Publish(entries);
+            changed = false;
+            return snapshot;
+        }
     }
 
     internal sealed class CacheRuntime<TKey, TValue, TStamp>
     {
-        private readonly object writerSync = new object();
         private readonly IEqualityComparer<TKey> keyComparer;
         private CacheSnapshot<TKey, TValue, TStamp> snapshot;
 
@@ -105,7 +112,10 @@ namespace FixWorld.Caching
         {
             this.keyComparer = keyComparer ?? EqualityComparer<TKey>.Default;
             snapshot = new CacheSnapshot<TKey, TValue, TStamp>(
-                0L,
+                initialEntries,
+                this.keyComparer);
+            Writer = new CacheWriter<TKey, TValue, TStamp>(
+                this,
                 initialEntries,
                 this.keyComparer);
         }
@@ -113,47 +123,15 @@ namespace FixWorld.Caching
         internal CacheSnapshot<TKey, TValue, TStamp> Snapshot =>
             Volatile.Read(ref snapshot);
 
+        internal CacheWriter<TKey, TValue, TStamp> Writer { get; }
+
         internal CacheSnapshot<TKey, TValue, TStamp> Publish(
-            CacheDelta<TKey, TValue, TStamp> delta)
+            IDictionary<TKey, CacheEntry<TValue, TStamp>> entries)
         {
-            if (delta == null)
-            {
-                throw new ArgumentNullException(nameof(delta));
-            }
-
-            lock (writerSync)
-            {
-                CacheSnapshot<TKey, TValue, TStamp> current = snapshot;
-                Dictionary<TKey, CacheEntry<TValue, TStamp>> nextEntries =
-                    current.CopyEntries(keyComparer);
-                foreach (CacheMutation<TKey, TValue, TStamp> mutation in
-                         delta.Mutations)
-                {
-                    switch (mutation.Kind)
-                    {
-                        case CacheMutationKind.Upsert:
-                            nextEntries[mutation.Key] = mutation.Entry;
-                            break;
-                        case CacheMutationKind.Remove:
-                            nextEntries.Remove(mutation.Key);
-                            break;
-                        default:
-                            throw new ArgumentOutOfRangeException(
-                                nameof(mutation.Kind),
-                                mutation.Kind,
-                                "Unknown cache mutation kind.");
-                    }
-                }
-
-                CacheSnapshot<TKey, TValue, TStamp> next =
-                    new CacheSnapshot<TKey, TValue, TStamp>(
-                        current.Generation + 1L,
-                        nextEntries,
-                        keyComparer,
-                        takeOwnership: true);
-                Volatile.Write(ref snapshot, next);
-                return next;
-            }
+            CacheSnapshot<TKey, TValue, TStamp> next =
+                new CacheSnapshot<TKey, TValue, TStamp>(entries, keyComparer);
+            Volatile.Write(ref snapshot, next);
+            return next;
         }
     }
 }

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using FixWorld.Caching;
+using FixWorld.Runtime;
 
 namespace FixWorld.Textures
 {
@@ -14,17 +15,10 @@ namespace FixWorld.Textures
         private readonly string indexPath;
         private readonly string backupPath;
         private readonly string cacheIdentity;
-        private readonly CacheRuntime<
+        private readonly CacheWriter<
             string,
             TextureCacheArtifact,
-            TextureCacheFingerprint> cache;
-        private readonly Dictionary<
-            string,
-            CacheMutation<string, TextureCacheArtifact, TextureCacheFingerprint>>
-            pendingChanges = new Dictionary<
-                string,
-                CacheMutation<string, TextureCacheArtifact, TextureCacheFingerprint>>(
-                StringComparer.Ordinal);
+            TextureCacheFingerprint> writer;
         private readonly FileStream writerLock;
 
         private bool dirty;
@@ -44,10 +38,14 @@ namespace FixWorld.Textures
         {
             this.cacheRoot = cacheRoot;
             this.cacheIdentity = cacheIdentity;
-            cache = new CacheRuntime<
+            CacheRuntime<
                 string,
                 TextureCacheArtifact,
-                TextureCacheFingerprint>(entries, StringComparer.Ordinal);
+                TextureCacheFingerprint> cache = new CacheRuntime<
+                    string,
+                    TextureCacheArtifact,
+                    TextureCacheFingerprint>(entries, StringComparer.Ordinal);
+            writer = cache.Writer;
             this.currentBytes = currentBytes;
             this.recoveryRequired = recoveryRequired;
             this.writerLock = writerLock;
@@ -58,7 +56,7 @@ namespace FixWorld.Textures
 
         internal long CurrentBytes => currentBytes;
 
-        internal int EntryCount => cache.Snapshot.Count;
+        internal int EntryCount => writer.Count;
 
         internal string LoadStatus { get; }
 
@@ -133,24 +131,23 @@ namespace FixWorld.Textures
 
         internal TextureCacheSnapshot CreateValidationSnapshot()
         {
-            FlushPending();
-            return new TextureCacheSnapshot(cacheRoot, cache.Snapshot);
+            return new TextureCacheSnapshot(cacheRoot, writer.Publish());
         }
 
         internal void TouchPrepared(string packageId, string sourcePath)
         {
             string key = GetKey(packageId, sourcePath);
-            CacheLookup<TextureCacheArtifact, TextureCacheFingerprint> lookup =
-                Lookup(key);
-            if (!lookup.HasValue)
+            if (!writer.TryGet(
+                    key,
+                    out CacheEntry<TextureCacheArtifact, TextureCacheFingerprint> entry))
             {
                 throw new InvalidOperationException(
                     "Prepared DDS cache entry disappeared before commit: " + sourcePath);
             }
 
-            TextureCacheArtifact artifact = lookup.Entry.Value.WithLastUsed(
+            TextureCacheArtifact artifact = entry.Value.WithLastUsed(
                 DateTime.UtcNow.Ticks);
-            PublishUpsert(key, artifact, lookup.Entry.Stamp);
+            writer.Upsert(key, artifact, entry.Stamp);
             dirty = true;
         }
 
@@ -167,14 +164,15 @@ namespace FixWorld.Textures
             string relativeCachePath = GetRelativeCachePath(cachePath);
             FileInfo cacheFile = new FileInfo(cachePath);
             string key = GetKey(packageId, sourcePath);
-            CacheLookup<TextureCacheArtifact, TextureCacheFingerprint> previous =
-                Lookup(key);
-            bool sameFile = previous.HasValue &&
+            bool hadPrevious = writer.TryGet(
+                key,
+                out CacheEntry<TextureCacheArtifact, TextureCacheFingerprint> previous);
+            bool sameFile = hadPrevious &&
                             string.Equals(
-                                previous.Entry.Value.CachePath,
+                                previous.Value.CachePath,
                                 relativeCachePath,
                                 StringComparison.OrdinalIgnoreCase);
-            if (!sameFile && previous.HasValue)
+            if (!sameFile && hadPrevious)
             {
                 RemoveEntry(key);
             }
@@ -184,7 +182,7 @@ namespace FixWorld.Textures
                 currentBytes += cacheFile.Length;
             }
 
-            PublishUpsert(
+            writer.Upsert(
                 key,
                 new TextureCacheArtifact(
                     Normalize(packageId),
@@ -204,9 +202,8 @@ namespace FixWorld.Textures
             string packageId,
             ISet<string> retainedSourcePaths)
         {
-            FlushPending();
             string normalizedPackageId = Normalize(packageId);
-            string[] keys = cache.Snapshot.Enumerate()
+            string[] keys = writer.Enumerate()
                 .Where(pair =>
                     string.Equals(
                         pair.Value.Value.PackageId,
@@ -225,8 +222,7 @@ namespace FixWorld.Textures
 
         internal int RemoveInactivePackages(ISet<string> activePackageIds)
         {
-            FlushPending();
-            string[] keys = cache.Snapshot.Enumerate()
+            string[] keys = writer.Enumerate()
                 .Where(pair =>
                     !activePackageIds.Contains(pair.Value.Value.PackageId))
                 .Select(pair => pair.Key)
@@ -241,9 +237,8 @@ namespace FixWorld.Textures
 
         internal int SweepOrphans()
         {
-            FlushPending();
             HashSet<string> retainedFiles = new HashSet<string>(
-                cache.Snapshot.Enumerate()
+                writer.Enumerate()
                     .Select(pair => pair.Value.Value.CachePath)
                     .Select(path => TryResolveCachePath(cacheRoot, path, out string resolved)
                         ? resolved
@@ -291,7 +286,6 @@ namespace FixWorld.Textures
 
         internal int EnforceBudget(long maximumBytes)
         {
-            FlushPending();
             if (maximumBytes <= 0L || currentBytes <= maximumBytes)
             {
                 return 0;
@@ -301,7 +295,7 @@ namespace FixWorld.Textures
             foreach (KeyValuePair<
                          string,
                          CacheEntry<TextureCacheArtifact, TextureCacheFingerprint>> pair in
-                     cache.Snapshot.Enumerate()
+                     writer.Enumerate()
                          .OrderBy(item => item.Value.Value.LastUsedUtcTicks)
                          .ToArray())
             {
@@ -318,7 +312,7 @@ namespace FixWorld.Textures
 
         internal void Save()
         {
-            FlushPending();
+            writer.Publish();
             if (recoveryRequired)
             {
                 currentBytes = GetDdsSize(cacheRoot);
@@ -337,7 +331,7 @@ namespace FixWorld.Textures
                 CacheIdentity = cacheIdentity,
                 WrittenUtcTicks = DateTime.UtcNow.Ticks,
                 TotalBytes = currentBytes,
-                Entries = cache.Snapshot.Enumerate()
+                Entries = writer.Enumerate()
                     .Select(ToDocumentEntry)
                     .OrderBy(entry => entry.PackageId, StringComparer.Ordinal)
                     .ThenBy(entry => entry.SourcePath, StringComparer.Ordinal)
@@ -403,18 +397,15 @@ namespace FixWorld.Textures
 
         private void RemoveEntry(string key)
         {
-            CacheLookup<TextureCacheArtifact, TextureCacheFingerprint> lookup =
-                Lookup(key);
-            if (!lookup.HasValue)
+            if (!writer.TryGet(
+                    key,
+                    out CacheEntry<TextureCacheArtifact, TextureCacheFingerprint> entry))
             {
                 return;
             }
 
-            TextureCacheArtifact artifact = lookup.Entry.Value;
-            pendingChanges[key] = CacheMutation<
-                string,
-                TextureCacheArtifact,
-                TextureCacheFingerprint>.Remove(key);
+            TextureCacheArtifact artifact = entry.Value;
+            writer.Remove(key);
             currentBytes = Math.Max(
                 0L,
                 currentBytes - Math.Max(0L, artifact.CacheBytes));
@@ -423,37 +414,12 @@ namespace FixWorld.Textures
 
         private void WriteAtomic(TextureCacheManifest document)
         {
-            string temporaryPath = indexPath + ".tmp-" + Guid.NewGuid().ToString("N");
-            try
-            {
-                DataContractJsonSerializer serializer =
-                    new DataContractJsonSerializer(typeof(TextureCacheManifest));
-                using (FileStream stream = new FileStream(
-                           temporaryPath,
-                           FileMode.CreateNew,
-                           FileAccess.Write,
-                           FileShare.None))
-                {
-                    serializer.WriteObject(stream, document);
-                    stream.Flush(true);
-                }
-
-                if (File.Exists(indexPath))
-                {
-                    File.Replace(temporaryPath, indexPath, backupPath);
-                }
-                else
-                {
-                    File.Move(temporaryPath, indexPath);
-                }
-            }
-            finally
-            {
-                if (File.Exists(temporaryPath))
-                {
-                    File.Delete(temporaryPath);
-                }
-            }
+            DataContractJsonSerializer serializer =
+                new DataContractJsonSerializer(typeof(TextureCacheManifest));
+            AtomicFile.Write(
+                indexPath,
+                stream => serializer.WriteObject(stream, document),
+                backupPath);
         }
 
         private static TextureCacheManifest TryRead(string path)
@@ -515,50 +481,6 @@ namespace FixWorld.Textures
                        indexed,
                        converterIdentity,
                        StringComparison.Ordinal);
-        }
-
-        private void PublishUpsert(
-            string key,
-            TextureCacheArtifact artifact,
-            TextureCacheFingerprint fingerprint)
-        {
-            pendingChanges[key] = CacheMutation<
-                string,
-                TextureCacheArtifact,
-                TextureCacheFingerprint>.Upsert(key, artifact, fingerprint);
-        }
-
-        private CacheLookup<TextureCacheArtifact, TextureCacheFingerprint> Lookup(
-            string key)
-        {
-            if (!pendingChanges.TryGetValue(
-                    key,
-                    out CacheMutation<
-                        string,
-                        TextureCacheArtifact,
-                        TextureCacheFingerprint> pending))
-            {
-                return cache.Snapshot.Lookup(key);
-            }
-
-            return pending.Kind == CacheMutationKind.Remove
-                ? CacheLookup<TextureCacheArtifact, TextureCacheFingerprint>.Miss()
-                : CacheLookup<TextureCacheArtifact, TextureCacheFingerprint>.Hit(
-                    pending.Entry);
-        }
-
-        private void FlushPending()
-        {
-            if (pendingChanges.Count == 0)
-            {
-                return;
-            }
-
-            cache.Publish(new CacheDelta<
-                string,
-                TextureCacheArtifact,
-                TextureCacheFingerprint>(pendingChanges.Values.ToArray()));
-            pendingChanges.Clear();
         }
 
         private static TextureCacheManifestEntry ToDocumentEntry(
@@ -739,16 +661,16 @@ namespace FixWorld.Textures
             out string cachePath)
         {
             cachePath = null;
-            CacheLookup<TextureCacheArtifact, TextureCacheFingerprint> lookup =
-                snapshot.Lookup(TextureCacheStore.GetKey(packageId, sourcePath));
-            if (!lookup.HasValue ||
-                lookup.Entry.Stamp.SourceLength != source.Length ||
-                lookup.Entry.Stamp.SourceWriteTimeUtcTicks !=
+            if (!snapshot.TryGet(
+                    TextureCacheStore.GetKey(packageId, sourcePath),
+                    out CacheEntry<TextureCacheArtifact, TextureCacheFingerprint> entry) ||
+                entry.Stamp.SourceLength != source.Length ||
+                entry.Stamp.SourceWriteTimeUtcTicks !=
                 source.LastWriteTimeUtc.Ticks ||
                 !TextureCacheStore.ConverterMatches(
-                    lookup.Entry.Stamp.ConverterIdentity,
+                    entry.Stamp.ConverterIdentity,
                     converterIdentity) ||
-                !TryResolveArtifact(lookup.Entry.Value, out cachePath))
+                !TryResolveArtifact(entry.Value, out cachePath))
             {
                 cachePath = null;
                 return false;
@@ -764,18 +686,18 @@ namespace FixWorld.Textures
             out string cachePath)
         {
             cachePath = null;
-            CacheLookup<TextureCacheArtifact, TextureCacheFingerprint> lookup =
-                snapshot.Lookup(TextureCacheStore.GetKey(packageId, sourcePath));
-            if (!lookup.HasValue ||
-                string.IsNullOrEmpty(lookup.Entry.Stamp.SourceHash) ||
+            if (!snapshot.TryGet(
+                    TextureCacheStore.GetKey(packageId, sourcePath),
+                    out CacheEntry<TextureCacheArtifact, TextureCacheFingerprint> entry) ||
+                string.IsNullOrEmpty(entry.Stamp.SourceHash) ||
                 !string.Equals(
-                    lookup.Entry.Stamp.SourceHash,
+                    entry.Stamp.SourceHash,
                     sourceHash,
                     StringComparison.Ordinal) ||
                 !TextureCacheStore.ConverterMatches(
-                    lookup.Entry.Stamp.ConverterIdentity,
+                    entry.Stamp.ConverterIdentity,
                     converterIdentity) ||
-                !TryResolveArtifact(lookup.Entry.Value, out cachePath))
+                !TryResolveArtifact(entry.Value, out cachePath))
             {
                 cachePath = null;
                 return false;

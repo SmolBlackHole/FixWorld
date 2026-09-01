@@ -29,11 +29,6 @@ namespace FixWorld.Integration
             typeof(LoadingOverlayPatch)
         };
 
-        private static bool IsFixWorldOwner(string owner)
-        {
-            return RimWorldHooks.IsFixWorldOwner(owner);
-        }
-
         [HarmonyPatch(typeof(ModContentPack), nameof(ModContentPack.GetAllFilesForMod))]
         private static class ModFileLoaderPatch
         {
@@ -62,16 +57,34 @@ namespace FixWorld.Integration
                 try
                 {
                     long discoveryStartedAt = __state.DiscoveryStartedAt;
-                    __result = ModFileLoader.Load(
-                        mod,
-                        contentPath,
-                        validateExtension,
-                        foldersToLoadDebug,
-                        files => BenchmarkRecorder.ObserveFiles(
-                            discoveryStartedAt,
+                    if (foldersToLoadDebug == null &&
+                        TextureDdsCache.TryGetPreparedFiles(
                             mod,
                             contentPath,
-                            files));
+                            validateExtension,
+                            out Dictionary<string, FileInfo> prepared))
+                    {
+                        __result = prepared;
+                    }
+                    else
+                    {
+                        __result = ModFileLoader.Discover(
+                            mod,
+                            contentPath,
+                            validateExtension,
+                            foldersToLoadDebug);
+                    }
+
+                    BenchmarkRecorder.ObserveFiles(
+                        discoveryStartedAt,
+                        mod,
+                        contentPath,
+                        __result);
+                    TextureDdsCache.Apply(
+                        mod,
+                        contentPath,
+                        foldersToLoadDebug,
+                        __result);
                     __state.OwnedByFixWorld = true;
                     return false;
                 }
@@ -105,13 +118,10 @@ namespace FixWorld.Integration
 
             private static bool HasForeignPatches()
             {
-                Patches patches = Harmony.GetPatchInfo(PatchedMethod);
-                return patches != null &&
-                       patches.Prefixes
-                           .Concat(patches.Postfixes)
-                           .Concat(patches.Transpilers)
-                           .Concat(patches.Finalizers)
-                           .Any(patch => !IsFixWorldOwner(patch.owner));
+                return HarmonyPatchInspector.Any(
+                    PatchedMethod,
+                    predicate: patch =>
+                        !RimWorldHooks.IsFixWorldOwner(patch.owner));
             }
 
             private static void ReportForeignPatchFallback()
@@ -228,22 +238,11 @@ namespace FixWorld.Integration
                     return;
                 }
 
-                Patches patches = Harmony.GetPatchInfo(method);
-                if (patches == null)
-                {
-                    return;
-                }
-
-                foreach (Patch patch in patches.Prefixes
-                             .Concat(patches.Postfixes)
-                             .Concat(patches.Transpilers)
-                             .Concat(patches.Finalizers))
-                {
-                    if (!IsFixWorldOwner(patch.owner))
-                    {
-                        owners.Add(patch.owner);
-                    }
-                }
+                HarmonyPatchInspector.CollectOwners(
+                    method,
+                    owners,
+                    predicate: patch =>
+                        !RimWorldHooks.IsFixWorldOwner(patch.owner));
             }
         }
 
@@ -332,21 +331,13 @@ namespace FixWorld.Integration
                 MethodBase method,
                 out string owners)
             {
-                Patches patches = Harmony.GetPatchInfo(method);
-                string[] foreignOwners = patches == null
-                    ? Array.Empty<string>()
-                    : patches.Prefixes
-                        .Where(patch => !IsCompatiblePrefix(method, patch))
-                        .Concat(patches.Postfixes)
-                        .Concat(patches.Transpilers)
-                        .Concat(patches.Finalizers)
-                        .Where(patch => !IsFixWorldOwner(patch.owner))
-                        .Select(patch => patch.owner)
-                        .Distinct(StringComparer.Ordinal)
-                        .OrderBy(owner => owner)
-                        .ToArray();
-                owners = string.Join(", ", foreignOwners);
-                return foreignOwners.Length > 0;
+                string foreignOwners = HarmonyPatchInspector.GetOwners(
+                    method,
+                    predicate: patch =>
+                        !IsCompatiblePrefix(method, patch) &&
+                        !RimWorldHooks.IsFixWorldOwner(patch.owner));
+                owners = foreignOwners?.Replace(",", ", ") ?? string.Empty;
+                return foreignOwners != null;
             }
 
             private static bool IsCompatiblePrefix(MethodBase method, Patch patch)

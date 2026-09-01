@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Linq;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
+using FixWorld.Runtime;
 using FixWorld.Preloader;
 using FixWorld.Textures;
 using FixWorld.Loading;
@@ -102,46 +102,9 @@ namespace FixWorld.Diagnostics
 
         internal void Write(string path)
         {
-            string fullPath = Path.GetFullPath(path);
-            string directory = Path.GetDirectoryName(fullPath);
-            if (string.IsNullOrEmpty(directory))
-            {
-                throw new InvalidOperationException(
-                    "The benchmark output path has no parent directory: " + fullPath);
-            }
-
-            Directory.CreateDirectory(directory);
-            string temporaryPath = fullPath + ".tmp-" + Guid.NewGuid().ToString("N");
-            try
-            {
-                DataContractJsonSerializer serializer =
-                    new DataContractJsonSerializer(typeof(BenchmarkReport));
-                using (FileStream stream = new FileStream(
-                           temporaryPath,
-                           FileMode.CreateNew,
-                           FileAccess.Write,
-                           FileShare.None))
-                {
-                    serializer.WriteObject(stream, this);
-                    stream.Flush(true);
-                }
-
-                if (File.Exists(fullPath))
-                {
-                    File.Replace(temporaryPath, fullPath, null);
-                }
-                else
-                {
-                    File.Move(temporaryPath, fullPath);
-                }
-            }
-            finally
-            {
-                if (File.Exists(temporaryPath))
-                {
-                    File.Delete(temporaryPath);
-                }
-            }
+            DataContractJsonSerializer serializer =
+                new DataContractJsonSerializer(typeof(BenchmarkReport));
+            AtomicFile.Write(path, stream => serializer.WriteObject(stream, this));
         }
     }
 
