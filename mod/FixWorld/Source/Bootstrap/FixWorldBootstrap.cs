@@ -26,6 +26,8 @@ namespace FixWorld
                     return;
                 }
 
+                PreloaderTimelineSnapshot preloaderTimeline =
+                    PreloaderTimelineState.Capture();
                 FixWorldScheduler.Initialize();
                 LoadingSession.Start(true);
                 LoadingTelemetry.Start(BenchmarkRecorder.Enabled);
@@ -34,16 +36,15 @@ namespace FixWorld
                 PreloaderManager.Configure(content.RootDir);
                 PreloaderPrompt.Configure(owner, settings);
 
-                bool earlyLoader = string.Equals(
-                    Environment.GetEnvironmentVariable("FIXWORLD_PRELOADER_ACTIVE"),
-                    "1",
-                    StringComparison.Ordinal);
                 initialized = true;
                 Log.Message(
                     "[FixWorld] Initialized; hooks=" + hooksInstalled +
                     ", benchmark=" + BenchmarkRecorder.Enabled +
                     ", workers=" + FixWorldScheduler.WorkerCount +
-                    ", earlyLoader=" + earlyLoader + ".");
+                    ", earlyLoader=" + preloaderTimeline.Active + ".");
+                Log.Message(
+                    "[FixWorld] Early timeline; " +
+                    PreloaderTimelineState.Format(preloaderTimeline) + ".");
             }
         }
     }

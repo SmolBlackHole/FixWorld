@@ -15,7 +15,7 @@ from rimworld_process import is_rimworld_running, launch, select_monitor
 
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_GAME_ROOT = Path(r"G:\Steam\steamapps\common\RimWorld")
+DEFAULT_GAME_ROOT = Path(r"D:\SteamLibrary\steamapps\common\RimWorld")
 ERROR_PATTERNS = (
     r"Exception while patching",
     r"Could not load file or assembly",

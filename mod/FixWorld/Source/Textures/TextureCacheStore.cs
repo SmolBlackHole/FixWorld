@@ -10,11 +10,6 @@ namespace FixWorld.Textures
 {
     internal sealed class TextureCacheStore : IDisposable
     {
-        private const int CurrentSchemaVersion = 1;
-        private const string IndexFileName = "index.json";
-        private const string BackupFileName = "index.backup.json";
-        private const string LockFileName = "index.lock";
-
         private readonly string cacheRoot;
         private readonly string indexPath;
         private readonly string backupPath;
@@ -56,8 +51,8 @@ namespace FixWorld.Textures
             this.currentBytes = currentBytes;
             this.recoveryRequired = recoveryRequired;
             this.writerLock = writerLock;
-            indexPath = Path.Combine(cacheRoot, IndexFileName);
-            backupPath = Path.Combine(cacheRoot, BackupFileName);
+            indexPath = Path.Combine(cacheRoot, DdsCacheContract.IndexFileName);
+            backupPath = Path.Combine(cacheRoot, DdsCacheContract.BackupFileName);
             LoadStatus = loadStatus;
         }
 
@@ -71,7 +66,7 @@ namespace FixWorld.Textures
         {
             string resolvedRoot = Path.GetFullPath(cacheRoot);
             Directory.CreateDirectory(resolvedRoot);
-            string lockPath = Path.Combine(resolvedRoot, LockFileName);
+            string lockPath = Path.Combine(resolvedRoot, DdsCacheContract.LockFileName);
             FileStream writerLock = new FileStream(
                 lockPath,
                 FileMode.OpenOrCreate,
@@ -79,8 +74,12 @@ namespace FixWorld.Textures
                 FileShare.None);
             try
             {
-                string indexPath = Path.Combine(resolvedRoot, IndexFileName);
-                string backupPath = Path.Combine(resolvedRoot, BackupFileName);
+                string indexPath = Path.Combine(
+                    resolvedRoot,
+                    DdsCacheContract.IndexFileName);
+                string backupPath = Path.Combine(
+                    resolvedRoot,
+                    DdsCacheContract.BackupFileName);
                 TextureCacheManifest document = TryRead(indexPath);
                 if (!IsCompatible(document, cacheIdentity))
                 {
@@ -334,7 +333,7 @@ namespace FixWorld.Textures
 
             TextureCacheManifest document = new TextureCacheManifest
             {
-                SchemaVersion = CurrentSchemaVersion,
+                SchemaVersion = DdsCacheContract.ManifestSchemaVersion,
                 CacheIdentity = cacheIdentity,
                 WrittenUtcTicks = DateTime.UtcNow.Ticks,
                 TotalBytes = currentBytes,
@@ -468,6 +467,14 @@ namespace FixWorld.Textures
             {
                 DataContractJsonSerializer serializer =
                     new DataContractJsonSerializer(typeof(TextureCacheManifest));
+                if (DdsCacheContract.TryGetPublishedIndex(path, out byte[] bytes))
+                {
+                    using (MemoryStream stream = new MemoryStream(bytes, writable: false))
+                    {
+                        return serializer.ReadObject(stream) as TextureCacheManifest;
+                    }
+                }
+
                 using (FileStream stream = new FileStream(
                            path,
                            FileMode.Open,
@@ -492,7 +499,7 @@ namespace FixWorld.Textures
             string cacheIdentity)
         {
             return document != null &&
-                   document.SchemaVersion == CurrentSchemaVersion &&
+                   document.SchemaVersion == DdsCacheContract.ManifestSchemaVersion &&
                    string.Equals(
                        document.CacheIdentity,
                        cacheIdentity,
@@ -703,56 +710,6 @@ namespace FixWorld.Textures
                 CacheBytes,
                 lastUsedUtcTicks);
         }
-    }
-
-    [DataContract]
-    internal sealed class TextureCacheManifest
-    {
-        [DataMember(Name = "schemaVersion", Order = 1)]
-        public int SchemaVersion { get; set; }
-
-        [DataMember(Name = "cacheIdentity", Order = 2)]
-        public string CacheIdentity { get; set; }
-
-        [DataMember(Name = "writtenUtcTicks", Order = 3)]
-        public long WrittenUtcTicks { get; set; }
-
-        [DataMember(Name = "totalBytes", Order = 4)]
-        public long TotalBytes { get; set; }
-
-        [DataMember(Name = "entries", Order = 5)]
-        public List<TextureCacheManifestEntry> Entries { get; set; }
-    }
-
-    [DataContract]
-    internal sealed class TextureCacheManifestEntry
-    {
-        [DataMember(Name = "packageId", Order = 1)]
-        public string PackageId { get; set; }
-
-        [DataMember(Name = "sourcePath", Order = 2)]
-        public string SourcePath { get; set; }
-
-        [DataMember(Name = "sourceLength", Order = 3)]
-        public long SourceLength { get; set; }
-
-        [DataMember(Name = "sourceWriteTimeUtcTicks", Order = 4)]
-        public long SourceWriteTimeUtcTicks { get; set; }
-
-        [DataMember(Name = "sourceHash", Order = 5, EmitDefaultValue = false)]
-        public string SourceHash { get; set; }
-
-        [DataMember(Name = "converterIdentity", Order = 6, EmitDefaultValue = false)]
-        public string ConverterIdentity { get; set; }
-
-        [DataMember(Name = "cachePath", Order = 7)]
-        public string CachePath { get; set; }
-
-        [DataMember(Name = "cacheBytes", Order = 8)]
-        public long CacheBytes { get; set; }
-
-        [DataMember(Name = "lastUsedUtcTicks", Order = 9)]
-        public long LastUsedUtcTicks { get; set; }
     }
 
     internal sealed class TextureCacheSnapshot

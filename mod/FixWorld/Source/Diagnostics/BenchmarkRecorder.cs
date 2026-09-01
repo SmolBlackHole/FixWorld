@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using FixWorld.Textures;
 using FixWorld.Loading;
+using FixWorld.Preloader;
 using UnityEngine;
 using Verse;
 
@@ -91,6 +92,7 @@ namespace FixWorld.Diagnostics
             {
                 BenchmarkReport report = BenchmarkReport.Create(
                     source,
+                    PreloaderTimelineState.GetSnapshot(),
                     LoadingTelemetry.GetMeasurement(),
                     GetFileDiscoverySnapshot(),
                     XmlLoadingPipeline.GetSnapshot(),

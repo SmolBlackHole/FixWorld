@@ -14,9 +14,6 @@ namespace FixWorld.Textures
 {
     internal static partial class TextureDdsCache
     {
-        private const string CacheIdentityVersion = "bc3-unorm-mips-v3-content-index";
-        private const string EnabledEnvironmentVariable = "FIXWORLD_DDS_CACHE";
-        private const string CacheRootEnvironmentVariable = "FIXWORLD_DDS_CACHE_ROOT";
         private const string MaxCacheGiBEnvironmentVariable = "FIXWORLD_DDS_CACHE_MAX_GIB";
         private const string MinimumFreeGiBEnvironmentVariable = "FIXWORLD_DDS_CACHE_MIN_FREE_GIB";
         private const string WorkerCountEnvironmentVariable = "FIXWORLD_DDS_WORKERS";
@@ -55,7 +52,8 @@ namespace FixWorld.Textures
 
             initialized = true;
             enabled = !string.Equals(
-                Environment.GetEnvironmentVariable(EnabledEnvironmentVariable),
+                Environment.GetEnvironmentVariable(
+                    DdsCacheContract.EnabledEnvironmentVariable),
                 "0",
                 StringComparison.Ordinal);
             workerCount = ReadWorkerCount();
@@ -74,14 +72,15 @@ namespace FixWorld.Textures
                     affinity: LoadingThreadAffinity.WorkerSafe));
             try
             {
-                cacheRoot = Environment.GetEnvironmentVariable(CacheRootEnvironmentVariable);
+                cacheRoot = Environment.GetEnvironmentVariable(
+                    DdsCacheContract.CacheRootEnvironmentVariable);
                 if (string.IsNullOrWhiteSpace(cacheRoot))
                 {
                     cacheRoot = Path.Combine(
                         GenFilePaths.SaveDataFolderPath,
                         "FixWorld",
                         "TextureCache",
-                        "dds-v1");
+                        DdsCacheContract.CacheDirectoryName);
                 }
 
                 cacheRoot = Path.GetFullPath(cacheRoot);
@@ -94,7 +93,9 @@ namespace FixWorld.Textures
                     MinimumFreeGiBEnvironmentVariable,
                     DefaultMinimumFreeBytes);
                 builder = new TextureDdsCacheBuilder(cacheRoot, modRoot);
-                cacheStore = TextureCacheStore.Open(cacheRoot, CacheIdentityVersion);
+                cacheStore = TextureCacheStore.Open(
+                    cacheRoot,
+                    DdsCacheContract.CacheIdentityVersion);
                 currentCacheBytes = cacheStore.CurrentBytes;
                 LogConfiguration();
             }
@@ -308,7 +309,8 @@ namespace FixWorld.Textures
             string converterIdentity)
         {
             return GetTextHash(
-                CacheIdentityVersion + "\n" + sourcePath + "\n" + sourceHash + "\n" +
+                DdsCacheContract.CacheIdentityVersion + "\n" + sourcePath + "\n" +
+                sourceHash + "\n" +
                 (converterIdentity ?? "unavailable"));
         }
 

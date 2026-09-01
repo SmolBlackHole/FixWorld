@@ -21,4 +21,15 @@
       Version="1.0.3"
       PrivateAssets="all" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Runtime.Serialization" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\DdsCacheContract.cs"
+      Link="DdsCacheContract.cs" />
+    <Compile Include="..\Shared\PreloaderTimeline.cs"
+      Link="PreloaderTimeline.cs" />
+  </ItemGroup>
 </Project>

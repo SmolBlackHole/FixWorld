@@ -19,7 +19,7 @@ from rimworld_process import is_rimworld_running, launch, select_monitor
 
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_GAME_ROOT = Path(r"G:\Steam\steamapps\common\RimWorld")
+DEFAULT_GAME_ROOT = Path(r"D:\SteamLibrary\steamapps\common\RimWorld")
 FIXTURE_ID = "spoon-spring-v1-fixworld"
 FIXTURE_CONFIG = ROOT / "benchmarks" / "saves" / "spoon-spring-v1-ModsConfig.xml"
 RESULT_FIELDS: tuple[str, ...] = (
@@ -41,6 +41,33 @@ RESULT_FIELDS: tuple[str, ...] = (
 
 class CompletionData(TypedDict):
     source: str
+
+
+class PreloaderData(TypedDict):
+    active: bool
+    doorstopVersion: str | None
+    assemblyCSharpObserved: bool
+    assemblyCSharpAvailableAtEntry: bool
+    assembliesAtEntry: int
+    assembliesAtBootstrap: int
+    modAssembliesAtEntry: int
+    modAssembliesLoaded: int
+    firstModAssembly: str | None
+    lastModAssembly: str | None
+    entryToAssemblyCSharpMs: float | None
+    entryToFirstModAssemblyMs: float | None
+    entryToLastModAssemblyMs: float | None
+    entryToBootstrapMs: float | None
+    assemblyCSharpToFirstModAssemblyMs: float | None
+    modAssemblyLoadMs: float | None
+    lastModAssemblyToBootstrapMs: float | None
+    ddsReadAheadStatus: str
+    ddsReadAheadBudgetBytes: int
+    ddsReadAheadBytes: int
+    ddsReadAheadFiles: int
+    ddsReadAheadMs: float
+    ddsIndexPrefetched: bool
+    ddsReadAheadError: str | None
 
 
 class LoaderStageData(TypedDict):
@@ -167,6 +194,7 @@ class XmlLoadingData(TypedDict):
 
 class BenchmarkReport(TypedDict):
     schemaVersion: int
+    preloader: PreloaderData
     completion: CompletionData
     loader: LoaderData
     xml: XmlLoadingData
@@ -275,10 +303,13 @@ def wait_for_json_file(
 
 def validate_report(raw: object) -> BenchmarkReport:
     report = _string_dict(raw, "benchmark report")
-    if report.get("schemaVersion") != 5:
+    if report.get("schemaVersion") != 7:
         raise RuntimeError(
             f"Unsupported benchmark schema: {report.get('schemaVersion')!r}"
         )
+    preloader = _string_dict(report.get("preloader"), "preloader")
+    if not isinstance(preloader.get("active"), bool):
+        raise RuntimeError("Benchmark report contains invalid preloader measurements.")
     completion = _string_dict(report.get("completion"), "completion")
     loader = _string_dict(report.get("loader"), "loader")
     if completion.get("source") != "staged-runner+uiroot_entry":
@@ -311,6 +342,10 @@ def validate_report(raw: object) -> BenchmarkReport:
     for section in ("files", "texturePaths", "textures", "ddsCache"):
         _string_dict(report.get(section), section)
     return cast(BenchmarkReport, report)
+
+
+def _format_optional_ms(value: object) -> str:
+    return "n/a" if value is None else f"{float(value):.3f}"
 
 
 def _string_dict(value: object, name: str) -> dict[str, object]:
@@ -472,6 +507,10 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
         environment.pop("FIXWORLD_DDS_WORKERS", None)
     else:
         environment["FIXWORLD_DDS_WORKERS"] = str(args.dds_workers)
+    if args.dds_read_ahead_mib is None:
+        environment.pop("FIXWORLD_DDS_READ_AHEAD_MIB", None)
+    else:
+        environment["FIXWORLD_DDS_READ_AHEAD_MIB"] = str(args.dds_read_ahead_mib)
     arguments = [
         f"-savedatafolder={user_data}",
         "-logFile",
@@ -505,6 +544,7 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
         paths = report["texturePaths"]
         cache = report["ddsCache"]
         xml = report["xml"]
+        preloader = report["preloader"]
         top_steps = sorted(
             loader["steps"], key=lambda item: float(item["exclusiveMs"]), reverse=True
         )[:5]
@@ -529,6 +569,25 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                 f"textureCompression={not args.disable_texture_compression}",
                 f"monitor={monitor.friendly_name}/{rimworld.actual_monitor}",
                 f"relevantErrors={error_count}",
+                f"preloaderActive={preloader['active']}",
+                f"doorstopVersion={preloader['doorstopVersion'] or 'n/a'}",
+                "preloaderEntryToAssemblyCSharpMs="
+                + _format_optional_ms(preloader["entryToAssemblyCSharpMs"]),
+                "preloaderAssemblyCSharpToFirstModAssemblyMs="
+                + _format_optional_ms(preloader["assemblyCSharpToFirstModAssemblyMs"]),
+                "preloaderModAssemblyLoadMs="
+                + _format_optional_ms(preloader["modAssemblyLoadMs"]),
+                "preloaderLastModAssemblyToBootstrapMs="
+                + _format_optional_ms(preloader["lastModAssemblyToBootstrapMs"]),
+                "preloaderEntryToBootstrapMs="
+                + _format_optional_ms(preloader["entryToBootstrapMs"]),
+                f"preloaderModAssemblies={preloader['modAssembliesLoaded']}",
+                f"ddsReadAheadStatus={preloader['ddsReadAheadStatus']}",
+                f"ddsReadAheadBudgetBytes={preloader['ddsReadAheadBudgetBytes']}",
+                f"ddsReadAheadBytes={preloader['ddsReadAheadBytes']}",
+                f"ddsReadAheadFiles={preloader['ddsReadAheadFiles']}",
+                f"ddsReadAheadMs={float(preloader['ddsReadAheadMs']):.3f}",
+                f"ddsIndexPrefetched={preloader['ddsIndexPrefetched']}",
                 f"observedLoaderMs={float(loader['observedMs']):.3f}",
                 f"xmlOwned={xml['owned']}",
                 f"xmlWorkers={xml['workerCount']}",
@@ -624,6 +683,13 @@ def parse_args() -> argparse.Namespace:
         "--dds-workers",
         type=bounded_int(0, 32),
         help="Override DDS workers. By default FixWorld uses half the logical CPUs.",
+    )
+    parser.add_argument(
+        "--dds-read-ahead-mib",
+        type=bounded_int(0, 8192),
+        help=(
+            "Override the preloader DDS read-ahead budget in MiB. Use 0 to disable it."
+        ),
     )
     parser.add_argument("--no-dds-cache", action="store_false", dest="dds_cache")
     parser.add_argument("--disable-texture-compression", action="store_true")

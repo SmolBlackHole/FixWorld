@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
+using FixWorld.Preloader;
 using FixWorld.Textures;
 using FixWorld.Loading;
 
@@ -13,7 +14,7 @@ namespace FixWorld.Diagnostics
     [DataContract]
     internal sealed class BenchmarkReport
     {
-        private const int CurrentSchemaVersion = 5;
+        private const int CurrentSchemaVersion = 7;
 
         [DataMember(Name = "schemaVersion", Order = 1)]
         public int SchemaVersion { get; private set; }
@@ -21,25 +22,28 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "completedUtc", Order = 2)]
         public string CompletedUtc { get; private set; }
 
-        [DataMember(Name = "completion", Order = 3)]
+        [DataMember(Name = "preloader", Order = 3)]
+        public PreloaderReport Preloader { get; private set; }
+
+        [DataMember(Name = "completion", Order = 4)]
         public CompletionReport Completion { get; private set; }
 
-        [DataMember(Name = "loader", Order = 4)]
+        [DataMember(Name = "loader", Order = 5)]
         public LoaderReport Loader { get; private set; }
 
-        [DataMember(Name = "xml", Order = 5)]
+        [DataMember(Name = "xml", Order = 6)]
         public XmlLoadingReport Xml { get; private set; }
 
-        [DataMember(Name = "files", Order = 6)]
+        [DataMember(Name = "files", Order = 7)]
         public FileDiscoveryReport Files { get; private set; }
 
-        [DataMember(Name = "texturePaths", Order = 7)]
+        [DataMember(Name = "texturePaths", Order = 8)]
         public TexturePathReport TexturePaths { get; private set; }
 
-        [DataMember(Name = "textures", Order = 8)]
+        [DataMember(Name = "textures", Order = 9)]
         public TextureReport Textures { get; private set; }
 
-        [DataMember(Name = "ddsCache", Order = 9)]
+        [DataMember(Name = "ddsCache", Order = 10)]
         public DdsCacheReport DdsCache { get; private set; }
 
         private BenchmarkReport()
@@ -48,6 +52,7 @@ namespace FixWorld.Diagnostics
 
         internal static BenchmarkReport Create(
             string completionSource,
+            PreloaderTimelineSnapshot preloader,
             LoadingMeasurement loading,
             FileDiscoverySnapshot files,
             XmlLoadingSnapshot xml,
@@ -70,6 +75,7 @@ namespace FixWorld.Diagnostics
             {
                 SchemaVersion = CurrentSchemaVersion,
                 CompletedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+                Preloader = new PreloaderReport(preloader),
                 Completion = new CompletionReport(completionSource),
                 Loader = new LoaderReport(
                     loading.ObservedMilliseconds,
@@ -136,6 +142,113 @@ namespace FixWorld.Diagnostics
                     File.Delete(temporaryPath);
                 }
             }
+        }
+    }
+
+    [DataContract]
+    internal sealed class PreloaderReport
+    {
+        [DataMember(Name = "active", Order = 1)]
+        public bool Active { get; private set; }
+
+        [DataMember(Name = "doorstopVersion", Order = 2)]
+        public string DoorstopVersion { get; private set; }
+
+        [DataMember(Name = "assemblyCSharpObserved", Order = 3)]
+        public bool AssemblyCSharpObserved { get; private set; }
+
+        [DataMember(Name = "assemblyCSharpAvailableAtEntry", Order = 4)]
+        public bool AssemblyCSharpAvailableAtEntry { get; private set; }
+
+        [DataMember(Name = "assembliesAtEntry", Order = 5)]
+        public int AssembliesAtEntry { get; private set; }
+
+        [DataMember(Name = "assembliesAtBootstrap", Order = 6)]
+        public int AssembliesAtBootstrap { get; private set; }
+
+        [DataMember(Name = "modAssembliesAtEntry", Order = 7)]
+        public int ModAssembliesAtEntry { get; private set; }
+
+        [DataMember(Name = "modAssembliesLoaded", Order = 8)]
+        public int ModAssembliesLoaded { get; private set; }
+
+        [DataMember(Name = "firstModAssembly", Order = 9)]
+        public string FirstModAssembly { get; private set; }
+
+        [DataMember(Name = "lastModAssembly", Order = 10)]
+        public string LastModAssembly { get; private set; }
+
+        [DataMember(Name = "entryToAssemblyCSharpMs", Order = 11)]
+        public double? EntryToAssemblyCSharpMilliseconds { get; private set; }
+
+        [DataMember(Name = "entryToFirstModAssemblyMs", Order = 12)]
+        public double? EntryToFirstModAssemblyMilliseconds { get; private set; }
+
+        [DataMember(Name = "entryToLastModAssemblyMs", Order = 13)]
+        public double? EntryToLastModAssemblyMilliseconds { get; private set; }
+
+        [DataMember(Name = "entryToBootstrapMs", Order = 14)]
+        public double? EntryToBootstrapMilliseconds { get; private set; }
+
+        [DataMember(Name = "assemblyCSharpToFirstModAssemblyMs", Order = 15)]
+        public double? AssemblyCSharpToFirstModAssemblyMilliseconds { get; private set; }
+
+        [DataMember(Name = "modAssemblyLoadMs", Order = 16)]
+        public double? ModAssemblyLoadMilliseconds { get; private set; }
+
+        [DataMember(Name = "lastModAssemblyToBootstrapMs", Order = 17)]
+        public double? LastModAssemblyToBootstrapMilliseconds { get; private set; }
+
+        [DataMember(Name = "ddsReadAheadStatus", Order = 18)]
+        public string DdsReadAheadStatus { get; private set; }
+
+        [DataMember(Name = "ddsReadAheadBudgetBytes", Order = 19)]
+        public long DdsReadAheadBudgetBytes { get; private set; }
+
+        [DataMember(Name = "ddsReadAheadBytes", Order = 20)]
+        public long DdsReadAheadBytes { get; private set; }
+
+        [DataMember(Name = "ddsReadAheadFiles", Order = 21)]
+        public int DdsReadAheadFiles { get; private set; }
+
+        [DataMember(Name = "ddsReadAheadMs", Order = 22)]
+        public double DdsReadAheadMilliseconds { get; private set; }
+
+        [DataMember(Name = "ddsIndexPrefetched", Order = 23)]
+        public bool DdsIndexPrefetched { get; private set; }
+
+        [DataMember(Name = "ddsReadAheadError", Order = 24)]
+        public string DdsReadAheadError { get; private set; }
+
+        internal PreloaderReport(PreloaderTimelineSnapshot snapshot)
+        {
+            DdsReadAheadSnapshot readAhead = DdsCacheContract.CaptureReadAhead();
+            Active = snapshot.Active;
+            DoorstopVersion = snapshot.DoorstopVersion;
+            AssemblyCSharpObserved = snapshot.AssemblyCSharpObserved;
+            AssemblyCSharpAvailableAtEntry = snapshot.AssemblyCSharpAvailableAtEntry;
+            AssembliesAtEntry = snapshot.AssembliesAtEntry;
+            AssembliesAtBootstrap = snapshot.AssembliesAtBootstrap;
+            ModAssembliesAtEntry = snapshot.ModAssembliesAtEntry;
+            ModAssembliesLoaded = snapshot.ModAssembliesLoaded;
+            FirstModAssembly = snapshot.FirstModAssembly;
+            LastModAssembly = snapshot.LastModAssembly;
+            EntryToAssemblyCSharpMilliseconds = snapshot.EntryToAssemblyCSharpMilliseconds;
+            EntryToFirstModAssemblyMilliseconds = snapshot.EntryToFirstModAssemblyMilliseconds;
+            EntryToLastModAssemblyMilliseconds = snapshot.EntryToLastModAssemblyMilliseconds;
+            EntryToBootstrapMilliseconds = snapshot.EntryToBootstrapMilliseconds;
+            AssemblyCSharpToFirstModAssemblyMilliseconds =
+                snapshot.AssemblyCSharpToFirstModAssemblyMilliseconds;
+            ModAssemblyLoadMilliseconds = snapshot.ModAssemblyLoadMilliseconds;
+            LastModAssemblyToBootstrapMilliseconds =
+                snapshot.LastModAssemblyToBootstrapMilliseconds;
+            DdsReadAheadStatus = readAhead.Status;
+            DdsReadAheadBudgetBytes = readAhead.BudgetBytes;
+            DdsReadAheadBytes = readAhead.BytesRead;
+            DdsReadAheadFiles = readAhead.FilesRead;
+            DdsReadAheadMilliseconds = readAhead.ElapsedMilliseconds;
+            DdsIndexPrefetched = readAhead.IndexPrefetched;
+            DdsReadAheadError = readAhead.Error;
         }
     }
 

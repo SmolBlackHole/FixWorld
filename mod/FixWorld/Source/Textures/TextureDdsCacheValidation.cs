@@ -21,6 +21,7 @@ namespace FixWorld.Textures
             IReadOnlyList<ModContentPack> mods,
             out LoadingActionPlan plan)
         {
+            DdsCacheContract.RequestReadAheadStop();
             plan = default;
             if (!enabled ||
                 workerCount <= 0 ||

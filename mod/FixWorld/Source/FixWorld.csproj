@@ -23,8 +23,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\..\preloader\Shared\DdsCacheContract.cs"
+      Link="Textures\DdsCacheContract.cs" />
     <Compile Include="..\..\..\preloader\Shared\PreloaderInstallation.cs"
       Link="Preloader\PreloaderInstallation.cs" />
+    <Compile Include="..\..\..\preloader\Shared\PreloaderTimeline.cs"
+      Link="Preloader\PreloaderTimeline.cs" />
   </ItemGroup>
 
   <ItemGroup>

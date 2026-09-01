@@ -2,12 +2,35 @@
 
 Der normale FixWorld-Mod funktioniert ohne native Installation. Optional kann FixWorld
 [UnityDoorstop 4.4.0](https://github.com/NeighTools/UnityDoorstop/releases/tag/v4.4.0)
-als frühen Prozesseinstieg nutzen. Die kleine Preloader-DLL markiert dabei nur den
-Einstieg. Sie lädt weder FixWorlds Haupt-DLL noch RimWorld oder Harmony. Frühe Hooks
-kommen erst hinzu, wenn ihr RimWorld-Zeitpunkt einzeln untersucht und freigegeben wurde.
+als frühen Prozesseinstieg nutzen. Die kleine Preloader-DLL zeichnet die frühe
+Assembly-Zeitachse auf und kann den vorhandenen DDS-Cache in den Windows-Dateicache
+vorladen. Sie lädt weder FixWorlds Haupt-DLL noch Harmony und verändert keinen
+RimWorld-Zustand.
 
-FixWorlds Haupt-DLL registriert ihre normalen Harmony-Patches über einen
-Modulinitialisierer, sobald RimWorld sie im regulären Mod-Loader lädt.
+RimWorld lädt FixWorlds Haupt-DLL weiterhin über den regulären Mod-Loader. Beim Erzeugen
+der `FixWorldMod`-Instanz übernimmt `FixWorldBootstrap` die frühe Zeitachse und
+registriert die normalen Harmony-Patches.
+
+Der typisierte Benchmark berichtet Doorstop-Version, `Assembly-CSharp`, erste und
+letzte erkannte Mod-Assembly sowie den normalen FixWorld-Bootstrap. Ohne aktivierten
+Preloader bleibt dieser Abschnitt vorhanden, aber als inaktiv markiert.
+
+## DDS-Read-ahead
+
+Der Preloader liest `index.json` einmal und übergibt dieselben Bytes später an den
+normalen Mod. Anschließend liest er ausschließlich DDS-Dateien aktiver Mods in ihrer
+Ladereihenfolge mit `SequentialScan`. Die Daten werden nicht dauerhaft in FixWorlds Heap
+kopiert, sondern nach dem Lesen verworfen. Windows entscheidet, wie lange die Seiten im
+Dateicache bleiben.
+
+Das Standardbudget ist der kleinere Wert aus 256 MiB und einem Achtel des aktuell freien
+physischen RAM. `FIXWORLD_DDS_READ_AHEAD_MIB` überschreibt das Budget; `0` deaktiviert
+Read-ahead. Sobald die normale DDS-Validierung beginnt, fordert FixWorld den Abbruch an,
+damit Hintergrund- und Vordergrundzugriffe auf einer HDD nicht gegeneinander arbeiten.
+
+Der Benchmark berichtet Status, Budget, Dateien, Bytes, Dauer und Index-Übernahme. Ein
+einzelner NVMe-Lauf ist kein Leistungsnachweis. Maßgeblich sind wiederholte `0`/`on`-
+Vergleiche auf demselben Rechner und insbesondere der geplante HDD-Pilot.
 
 ## Aktivierung
 

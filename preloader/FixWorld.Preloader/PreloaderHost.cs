@@ -6,25 +6,24 @@ namespace FixWorld.Preloader
 {
     internal static class PreloaderHost
     {
-        internal static void Start()
+        internal static void Start(long entryTimestamp)
         {
             PreloaderLog log = null;
             try
             {
+                PreloaderTimelineCapture.Start(entryTimestamp);
                 string gameRoot = FindGameRoot();
                 log = new PreloaderLog(Path.Combine(gameRoot, "FixWorld.Preloader.log"));
-                Environment.SetEnvironmentVariable(
-                    "FIXWORLD_PRELOADER_ACTIVE",
-                    "1",
-                    EnvironmentVariableTarget.Process);
+                DdsReadAhead.Start();
                 log.Write(
-                    "Doorstop entered FixWorld preloader. The main FixWorld assembly " +
-                    "remains deferred to RimWorld's mod loader.");
+                    "Doorstop entered FixWorld preloader, started the early assembly " +
+                    "timeline, and queued bounded DDS read-ahead. Runtime hooks remain " +
+                    "deferred to RimWorld's mod loader.");
             }
             catch (Exception exception)
             {
                 Environment.SetEnvironmentVariable(
-                    "FIXWORLD_PRELOADER_ACTIVE",
+                    PreloaderTimelineContract.ActiveVariable,
                     null,
                     EnvironmentVariableTarget.Process);
                 string message = "Preloader disabled for this launch: " + exception;

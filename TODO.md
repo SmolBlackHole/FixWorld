@@ -1,6 +1,6 @@
 # TODO
 
-Aktuell: **RimWorlds Def-Aufbau und vorhandene Parallelisierung messen, bevor FixWorld dort weitere Arbeit übernimmt**
+Aktuell: **DDS-Warmstart auf HDD mit frühem, begrenztem Read-ahead verkürzen**
 
 Planstatus: **Scheduler, Cache-Grundlage, DDS-Background-Pipeline, paralleles `LoadModXML()` und geordnete Patch-Pipeline umgesetzt**
 
@@ -68,7 +68,7 @@ Planstatus: **Scheduler, Cache-Grundlage, DDS-Background-Pipeline, paralleles `L
 - [ ] Assembly- und Harmony-Reihenfolge erst nach belastbaren Messungen übernehmen, bis dahin unverändert delegieren
 - [ ] `GetAllFilesForModPreserveOrder()` und Assembly-Discovery beobachten oder indexieren, noch nicht ersetzen
 - [ ] LongEvent-Thread, synchrone Events, Szenenwechsel und Exception-Lebenszyklus vor einer möglichen Übernahme als eigenen Vertrag erfassen
-- [ ] veraltete Module-Initializer-Aussage in `docs/windows-preloader.md` korrigieren
+- [x] veraltete Module-Initializer-Aussage in `docs/windows-preloader.md` korrigieren
 
 ## Worker-Arbeit
 
@@ -86,13 +86,14 @@ Planstatus: **Scheduler, Cache-Grundlage, DDS-Background-Pipeline, paralleles `L
 - [ ] Parallelität je Stage bestimmen: Validierung war mit 4 Workern schneller als mit 8
 - [x] `texconv` und reine DDS-Erzeugung als Background-Job ausführen, Ergebnisse atomar und geordnet veröffentlichen
 - [ ] DDS-Build mit 2, 4 und 8 Workern vergleichen
-- [ ] Cache-Index früh auf einem Worker laden und vor der ersten DDS-Abfrage geordnet übernehmen
+- [x] DDS-Index bereits im Preloader laden und dieselben Index-Bytes im normalen Mod wiederverwenden
 - [ ] Texturvorbereitung von Unity-Erzeugung, `Apply`, Kompression und Upload trennen
 - [ ] Renderpausen und reine Wall-Time pro framefähiger Stage getrennt berichten
 - [x] `ThingDef.PostLoad`, Sound-Auflösung und Atlas-Build getrennt messen (Benchmark-Telemetrie)
 - [ ] XML-Patches, Def-Auflösung, Reflection und Harmony-Scanning einzeln bewerten
 - [ ] statische Konstruktoren weiterhin geordnet übernehmen und nur nach mod-spezifischem Nachweis optimieren
-- [ ] Discovery, Read-ahead, Cache-Validierung und reine Byte-Verarbeitung als erste Worker-Kandidaten messen
+- [x] DDS-Read-ahead als begrenzte, abbrechbare und reine Byte-Arbeit im Preloader ausführen
+- [ ] Discovery, Cache-Validierung und weitere reine Byte-Verarbeitung als Worker-Kandidaten messen
 - [x] begrenzten Worker-Pool mit Parallelitäts-, Byte- und Queue-Limit sowie Backpressure bauen
 - [x] Worker-Ergebnisse geordnet an den Hauptthread übergeben und Unity-Objekte nur dort erzeugen oder verändern
 - [ ] Workerfehler abbrechen oder kontrolliert auf den sequenziellen Originalpfad zurückführen
@@ -167,10 +168,10 @@ Der parallele, aber blockierende kalte Build brauchte mit 8 Workern 80,3 Sekunde
 
 - [x] normales Mod-Loading mit und ohne DDS reproduzierbar messen
 - [x] vollständige aktive Modliste über `--live-mods` testen
-- [ ] Preloader-Modus im Report als `on` oder `off` speichern
-- [ ] Doorstop-Version und Zeit vom frühen Einstieg bis zum normalen FixWorld-Entrypoint berichten
+- [x] Preloader-Modus im Report als `on` oder `off` speichern
+- [x] Doorstop-Version und Zeit vom frühen Einstieg bis zum normalen FixWorld-Entrypoint berichten
 - [ ] Preloader für Benchmarks explizit schaltbar machen, statt den Installationszustand zu erben
-- [ ] Preloader `off` und `on` erst vergleichen, sobald der frühe Einstieg echte Arbeit übernimmt
+- [x] ersten Preloader-`off`/`on`-Kontrolllauf mit 88 Mods durchführen, noch ohne Leistungsbehauptung
 - [ ] PNG/JPG sowie DDS jeweils mit kaltem und warmem OS-Dateicache messen
 - [ ] NVMe, SATA-SSD und HDD als getrennte Hardwareprofile behandeln
 - [ ] Pilotlauf auf der HDD und großen Modliste des Testnutzers durchführen
@@ -195,8 +196,15 @@ Der parallele, aber blockierende kalte Build brauchte mit 8 Workern 80,3 Sekunde
 - [x] fremde Proxy-DLLs und Konfigurationen niemals überschreiben
 - [x] Installation, Deaktivierung und Entfernung über das mitgelieferte Tool unterstützen
 - [x] Preloader und normalen FixWorld-Mod voneinander entkoppeln
-- [x] aktuellen frühen Hookpunkt belegen: Der Preloader setzt bislang nur den Aktivstatus und greift nicht in RimWorld ein
-- [ ] dort zunächst nur Version, Verträge, immutable Indizes und Telemetrie bereitstellen
+- [x] aktuellen frühen Hookpunkt belegen: Der Preloader erfasst nur die Assembly-Zeitachse und verändert keinen RimWorld-Zustand
+- [x] Doorstop-Einstieg mit vollständiger Modliste bis zum Hauptmenü prüfen: `earlyLoader=True`, Quarry aktiv und keine relevanten Fehler
+- [x] frühe Zeitachse messen: `Assembly-CSharp` nach 0,48 bis 0,51 s, erste Mod-Assembly nach 1,37 bis 1,50 s, FixWorld-Bootstrap nach 1,93 bis 2,09 s
+- [x] versionierten DDS-Manifestvertrag zwischen Preloader und Mod teilen
+- [x] aktive Mod-Reihenfolge lesen, DDS-Dateien mit `SequentialScan` vorladen und beim regulären DDS-Pfad abbrechen
+- [x] Read-ahead-Budget, gelesene Dateien und Bytes, Dauer, Status und Fehler im Benchmark berichten
+- [x] Read-ahead nach SATA-A/B-Test standardmäßig auf höchstens 256 MiB und ein Achtel des freien RAM begrenzen
+- [ ] je drei NVMe-Kontrollläufe mit 0 und 256 MiB Read-ahead vergleichen
+- [ ] HDD-Pilot mit großer Modliste bei 0, 256, 512 und 1.024 MiB durchführen
 - [ ] vollständiges Assembly- und Harmony-Laden erst danach messen
 
 Der Preloader ist für den aktuellen Staged Loader nicht erforderlich und bleibt vorerst optional.
@@ -232,7 +240,8 @@ RimThreaded dient nur als Musterkatalog. Die alten 1.3/1.4-Patches werden nicht 
 
 ## Später
 
-- [ ] parallele Discovery und Read-ahead auf HDD/SATA testen
+- [x] Read-ahead auf SATA mit 0, 256, 512 und 1.024 MiB testen: 256 MiB war der beste vorsichtige Standard
+- [ ] parallele Discovery und Read-ahead auf HDD testen, dabei Suchzeit und Durchsatz getrennt messen
 - [ ] DDS-Pack erst nach einer direkten Byte-/Stream-Ladegrenze erneut bewerten
 - [ ] OBST als mögliches Packformat mit Sidecar-Index prüfen
 - [ ] GPU-Dekodierung, Mipmaps und Uploads erst nach sauberer CPU-Aufteilung bewerten

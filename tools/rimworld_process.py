@@ -337,7 +337,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--game-root",
         type=Path,
-        default=Path(r"G:\Steam\steamapps\common\RimWorld"),
+        default=Path(r"D:\SteamLibrary\steamapps\common\RimWorld"),
     )
     parser.add_argument("--monitor-name", default="G276HL")
     parser.add_argument("--monitor", type=int, choices=range(1, 17), default=2)
