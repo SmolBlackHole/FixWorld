@@ -1,8 +1,8 @@
 <Solution>
-  <Project Path="mod/FixWorld/Source/FixWorld.Mod.csproj" />
-  <Project Path="preloader/FixWorld.Loader/FixWorld.Loader.csproj" />
-  <Project Path="preloader/FixWorld.Preloader/FixWorld.Preloader.csproj" />
-  <Project Path="preloader/FixWorld.Preloader.Tool/FixWorld.Preloader.Tool.csproj" />
-  <Project Path="runtime/FixWorld.Runtime/FixWorld.Runtime.csproj" />
-  <Project Path="tests/FixWorld.Scheduling.Contracts/FixWorld.Scheduling.Contracts.csproj" />
+  <Project Path="mod/FixWorld/Source/Mod/FixWorld.Mod.csproj" />
+  <Project Path="mod/FixWorld/Source/Loader/FixWorld.Loader.csproj" />
+  <Project Path="mod/FixWorld/Source/Preloader/FixWorld.Preloader.csproj" />
+  <Project Path="mod/FixWorld/Source/Preloader.Tool/FixWorld.Preloader.Tool.csproj" />
+  <Project Path="mod/FixWorld/Source/Runtime/FixWorld.Runtime.csproj" />
+  <Project Path="mod/FixWorld/Tests/Scheduling.Contracts/FixWorld.Scheduling.Contracts.csproj" />
 </Solution>

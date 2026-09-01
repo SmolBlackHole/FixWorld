@@ -6,24 +6,16 @@
 /tools/dubs-performance-analyzer/
 
 # Profiler captures and benchmark result data
-/profiling/captures/
-/profiling/cache/
-/profiling/fixworld-userdata/
+/data/profiling/
 /dist/
-/benchmarks/results/
-/benchmarks/saves/
+/data/benchmarks/results/
+/data/benchmarks/saves/
 
 # Local machine configuration and build output
-/mod/Local.Build.props
+/mod/FixWorld/Local.Build.props
 /mod/**/Assemblies/
 /mod/**/bin/
 /mod/**/obj/
-/preloader/**/bin/
-/preloader/**/obj/
-/runtime/**/bin/
-/runtime/**/obj/
-/tests/**/bin/
-/tests/**/obj/
 /mod/FixWorld/Tools/Windows-x64/FixWorld.Preloader.dll
 /mod/FixWorld/Tools/Windows-x64/FixWorld.Preloader.pdb
 /mod/FixWorld/Tools/Windows-x64/FixWorld.Loader.dll

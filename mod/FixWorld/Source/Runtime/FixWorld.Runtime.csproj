@@ -1,6 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <Import Project="..\..\mod\Directory.Build.props" />
-
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
     <LangVersion>latest</LangVersion>
@@ -13,7 +11,7 @@
     <DebugType>portable</DebugType>
     <DebugSymbols>true</DebugSymbols>
     <Optimize>true</Optimize>
-    <OutputPath>..\..\mod\FixWorld\Tools\Windows-x64\</OutputPath>
+    <OutputPath>..\..\Tools\Windows-x64\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
   </PropertyGroup>
@@ -25,9 +23,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\preloader\Shared\DdsCacheContract.cs"
+    <Compile Include="..\Shared\DdsCacheContract.cs"
       Link="Source\Textures\DdsCacheContract.cs" />
-    <Compile Include="..\..\preloader\Shared\PreloaderTimeline.cs"
+    <Compile Include="..\Shared\PreloaderTimeline.cs"
       Link="Source\Preloader\PreloaderTimeline.cs" />
   </ItemGroup>
 
@@ -65,18 +63,18 @@
 
   <Target Name="ValidateLocalReferences" BeforeTargets="ResolveReferences">
     <Error Condition="!Exists('$(RimWorldManagedDir)\Assembly-CSharp.dll')"
-      Text="Assembly-CSharp.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
+      Text="Assembly-CSharp.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
     <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.CoreModule.dll')"
-      Text="UnityEngine.CoreModule.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
+      Text="UnityEngine.CoreModule.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
     <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.AudioModule.dll')"
-      Text="UnityEngine.AudioModule.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
+      Text="UnityEngine.AudioModule.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
     <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.ImageConversionModule.dll')"
-      Text="UnityEngine.ImageConversionModule.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
+      Text="UnityEngine.ImageConversionModule.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
     <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.IMGUIModule.dll')"
-      Text="UnityEngine.IMGUIModule.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
+      Text="UnityEngine.IMGUIModule.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
     <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.TextRenderingModule.dll')"
-      Text="UnityEngine.TextRenderingModule.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
+      Text="UnityEngine.TextRenderingModule.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
     <Error Condition="!Exists('$(HarmonyAssemblyPath)')"
-      Text="0Harmony.dll is missing. Set HarmonyAssemblyPath in mod/Local.Build.props or RIMWORLD_HARMONY_ASSEMBLY." />
+      Text="0Harmony.dll is missing. Set HarmonyAssemblyPath in mod/FixWorld/Local.Build.props or RIMWORLD_HARMONY_ASSEMBLY." />
   </Target>
 </Project>

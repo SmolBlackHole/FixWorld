@@ -67,7 +67,7 @@ def run_build(project: Path, target: str | None = None) -> None:
 
 def build_mod() -> Path:
     build_runtime_components()
-    run_build(ROOT / "mod" / "FixWorld" / "Source" / "FixWorld.Mod.csproj")
+    run_build(ROOT / "mod" / "FixWorld" / "Source" / "Mod" / "FixWorld.Mod.csproj")
 
     assembly = ROOT / "mod" / "FixWorld" / "Assemblies" / "FixWorld.Mod.dll"
     if not assembly.is_file():
@@ -81,7 +81,7 @@ def build_mod() -> Path:
 def package_mod() -> Path:
     build_runtime_components()
     run_build(
-        ROOT / "mod" / "FixWorld" / "Source" / "FixWorld.Mod.csproj",
+        ROOT / "mod" / "FixWorld" / "Source" / "Mod" / "FixWorld.Mod.csproj",
         "Package",
     )
     package = ROOT / "dist" / "FixWorld-pilot-win-x64.zip"
@@ -94,13 +94,15 @@ def package_mod() -> Path:
 
 
 def build_runtime_components() -> None:
-    run_build(ROOT / "runtime" / "FixWorld.Runtime" / "FixWorld.Runtime.csproj")
-    run_build(ROOT / "preloader" / "FixWorld.Loader" / "FixWorld.Loader.csproj")
-    run_build(ROOT / "preloader" / "FixWorld.Preloader" / "FixWorld.Preloader.csproj")
+    run_build(ROOT / "mod" / "FixWorld" / "Source" / "Runtime" / "FixWorld.Runtime.csproj")
+    run_build(ROOT / "mod" / "FixWorld" / "Source" / "Loader" / "FixWorld.Loader.csproj")
+    run_build(ROOT / "mod" / "FixWorld" / "Source" / "Preloader" / "FixWorld.Preloader.csproj")
     run_build(
         ROOT
-        / "preloader"
-        / "FixWorld.Preloader.Tool"
+        / "mod"
+        / "FixWorld"
+        / "Source"
+        / "Preloader.Tool"
         / "FixWorld.Preloader.Tool.csproj"
     )
 

@@ -11,7 +11,7 @@
     <DebugType>portable</DebugType>
     <DebugSymbols>true</DebugSymbols>
     <Optimize>true</Optimize>
-    <OutputPath>..\Assemblies\</OutputPath>
+    <OutputPath>..\..\Assemblies\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
   </PropertyGroup>
@@ -23,11 +23,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\..\preloader\Shared\PreloaderInstallation.cs"
+    <Compile Include="..\Shared\PreloaderInstallation.cs"
       Link="Preloader\PreloaderInstallation.cs" />
-    <Compile Include="..\..\..\preloader\Shared\PreloaderTimeline.cs"
+    <Compile Include="..\Shared\PreloaderTimeline.cs"
       Link="Preloader\PreloaderTimeline.cs" />
-    <Compile Include="..\..\..\preloader\Shared\RuntimeContract.cs"
+    <Compile Include="..\Shared\RuntimeContract.cs"
       Link="Runtime\RuntimeContract.cs" />
   </ItemGroup>
 
@@ -44,76 +44,76 @@
 
   <Target Name="ValidateLocalRimWorldReferences" BeforeTargets="ResolveReferences">
     <Error Condition="!Exists('$(RimWorldManagedDir)\Assembly-CSharp.dll')"
-      Text="Assembly-CSharp.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
+      Text="Assembly-CSharp.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
     <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.CoreModule.dll')"
-      Text="UnityEngine.CoreModule.dll is missing. Set RimWorldRoot in mod/Local.Build.props or RIMWORLD_ROOT." />
+      Text="UnityEngine.CoreModule.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
   </Target>
 
   <Target Name="RemoveLegacyModAssembly" BeforeTargets="PrepareForBuild">
     <Delete
-      Files="$(MSBuildProjectDirectory)\..\Assemblies\FixWorld.dll;$(MSBuildProjectDirectory)\..\Assemblies\FixWorld.pdb" />
+      Files="$(MSBuildProjectDirectory)\..\..\Assemblies\FixWorld.dll;$(MSBuildProjectDirectory)\..\..\Assemblies\FixWorld.pdb" />
   </Target>
 
   <Target Name="Package" DependsOnTargets="Build">
     <PropertyGroup>
-      <FixWorldDistDir>$(MSBuildProjectDirectory)\..\..\..\dist</FixWorldDistDir>
+      <FixWorldDistDir>$(MSBuildProjectDirectory)\..\..\..\..\dist</FixWorldDistDir>
       <FixWorldPackageStage>$(FixWorldDistDir)\.package</FixWorldPackageStage>
       <FixWorldPackageZip>$(FixWorldDistDir)\FixWorld-pilot-win-x64.zip</FixWorldPackageZip>
     </PropertyGroup>
     <ItemGroup>
-      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\About\About.xml">
+      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\..\About\About.xml">
         <PackagePath>About\About.xml</PackagePath>
       </FixWorldPackageFile>
-      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\Assemblies\FixWorld.Mod.dll">
+      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\..\Assemblies\FixWorld.Mod.dll">
         <PackagePath>Assemblies\FixWorld.Mod.dll</PackagePath>
       </FixWorldPackageFile>
-      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\Tools\DirectXTex-LICENSE.txt">
+      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\..\Tools\DirectXTex-LICENSE.txt">
         <PackagePath>Tools\DirectXTex-LICENSE.txt</PackagePath>
       </FixWorldPackageFile>
-      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\Tools\Cleanup-DdsCache.ps1">
+      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\..\Tools\Cleanup-DdsCache.ps1">
         <PackagePath>Tools\Cleanup-DdsCache.ps1</PackagePath>
       </FixWorldPackageFile>
-      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\texconv.exe">
+      <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\texconv.exe">
         <PackagePath>Tools\Windows-x64\texconv.exe</PackagePath>
       </FixWorldPackageFile>
       <FixWorldPackageFile
-        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\FixWorld.Preloader.dll">
+        Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\FixWorld.Preloader.dll">
         <PackagePath>Tools\Windows-x64\FixWorld.Preloader.dll</PackagePath>
       </FixWorldPackageFile>
       <FixWorldPackageFile
-        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\FixWorld.Loader.dll">
+        Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\FixWorld.Loader.dll">
         <PackagePath>Tools\Windows-x64\FixWorld.Loader.dll</PackagePath>
       </FixWorldPackageFile>
       <FixWorldPackageFile
-        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\FixWorld.Runtime.dll">
+        Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\FixWorld.Runtime.dll">
         <PackagePath>Tools\Windows-x64\FixWorld.Runtime.dll</PackagePath>
       </FixWorldPackageFile>
       <FixWorldPackageFile
-        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\FixWorld.Preloader.Tool.exe">
+        Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\FixWorld.Preloader.Tool.exe">
         <PackagePath>Tools\Windows-x64\FixWorld.Preloader.Tool.exe</PackagePath>
       </FixWorldPackageFile>
       <FixWorldPackageFile
-        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\FixWorld.Preloader.Tool.exe.config">
+        Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\FixWorld.Preloader.Tool.exe.config">
         <PackagePath>Tools\Windows-x64\FixWorld.Preloader.Tool.exe.config</PackagePath>
       </FixWorldPackageFile>
       <FixWorldPackageFile
-        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\Doorstop-4.4.0\.doorstop_version">
+        Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\Doorstop-4.4.0\.doorstop_version">
         <PackagePath>Tools\Windows-x64\Doorstop-4.4.0\.doorstop_version</PackagePath>
       </FixWorldPackageFile>
       <FixWorldPackageFile
-        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\Doorstop-4.4.0\manifest.json">
+        Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\Doorstop-4.4.0\manifest.json">
         <PackagePath>Tools\Windows-x64\Doorstop-4.4.0\manifest.json</PackagePath>
       </FixWorldPackageFile>
       <FixWorldPackageFile
-        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\Doorstop-4.4.0\UnityDoorstop-LICENSE.txt">
+        Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\Doorstop-4.4.0\UnityDoorstop-LICENSE.txt">
         <PackagePath>Tools\Windows-x64\Doorstop-4.4.0\UnityDoorstop-LICENSE.txt</PackagePath>
       </FixWorldPackageFile>
       <FixWorldPackageFile
-        Include="$(MSBuildProjectDirectory)\..\Tools\Windows-x64\Doorstop-4.4.0\winhttp.dll">
+        Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\Doorstop-4.4.0\winhttp.dll">
         <PackagePath>Tools\Windows-x64\Doorstop-4.4.0\winhttp.dll</PackagePath>
       </FixWorldPackageFile>
     </ItemGroup>
-    <Error Condition="Exists('$(MSBuildProjectDirectory)\..\Assemblies\FixWorld.dll')"
+    <Error Condition="Exists('$(MSBuildProjectDirectory)\..\..\Assemblies\FixWorld.dll')"
       Text="The legacy FixWorld.dll must not be packaged beside FixWorld.Mod.dll." />
     <RemoveDir Directories="$(FixWorldPackageStage)" />
     <MakeDir Directories="$(FixWorldPackageStage)\FixWorld" />

@@ -67,7 +67,7 @@ def main() -> int:
 
     game_root = args.game_root.resolve()
     executable = game_root / "RimWorldWin64.exe"
-    config_template = ROOT / "mod" / "test-data" / "Config" / "ModsConfig.xml"
+    config_template = ROOT / "mod" / "FixWorld" / "TestData" / "Config" / "ModsConfig.xml"
     if args.live_mods:
         config_template = (
             Path.home()
@@ -107,7 +107,7 @@ def main() -> int:
         detail = installation.stderr.strip() or installation.stdout.strip()
         raise RuntimeError(f"Could not install the FixWorld preloader: {detail}")
 
-    user_data = ROOT / "profiling" / "fixworld-userdata"
+    user_data = ROOT / "data" / "profiling" / "fixworld-userdata"
     config = user_data / "Config"
     config.mkdir(parents=True, exist_ok=True)
     shutil.copy2(config_template, config / "ModsConfig.xml")

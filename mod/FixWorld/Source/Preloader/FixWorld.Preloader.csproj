@@ -1,18 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net472</TargetFramework>
     <LangVersion>latest</LangVersion>
     <PlatformTarget>x64</PlatformTarget>
-    <AssemblyName>FixWorld.Preloader.Tool</AssemblyName>
-    <RootNamespace>FixWorld.Preloader.Tool</RootNamespace>
+    <AssemblyName>FixWorld.Preloader</AssemblyName>
+    <RootNamespace>FixWorld.Preloader</RootNamespace>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <Deterministic>true</Deterministic>
     <DebugType>portable</DebugType>
     <DebugSymbols>true</DebugSymbols>
     <Optimize>true</Optimize>
-    <OutputPath>..\..\mod\FixWorld\Tools\Windows-x64\</OutputPath>
+    <OutputPath>..\..\Tools\Windows-x64\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
   </PropertyGroup>
@@ -24,7 +23,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\Shared\PreloaderInstallation.cs"
-      Link="PreloaderInstallation.cs" />
+    <Reference Include="System.Runtime.Serialization" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\DdsCacheContract.cs"
+      Link="DdsCacheContract.cs" />
+    <Compile Include="..\Shared\PreloaderTimeline.cs"
+      Link="PreloaderTimeline.cs" />
   </ItemGroup>
 </Project>

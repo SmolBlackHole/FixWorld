@@ -21,7 +21,7 @@ from rimworld_process import is_rimworld_running, launch, select_monitor
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_GAME_ROOT = Path(r"D:\SteamLibrary\steamapps\common\RimWorld")
 FIXTURE_ID = "spoon-spring-v1-fixworld"
-FIXTURE_CONFIG = ROOT / "benchmarks" / "saves" / "spoon-spring-v1-ModsConfig.xml"
+FIXTURE_CONFIG = ROOT / "data" / "benchmarks" / "saves" / "spoon-spring-v1-ModsConfig.xml"
 RESULT_FIELDS: tuple[str, ...] = (
     "id",
     "track",
@@ -459,7 +459,7 @@ def relevant_error_count(log_path: Path) -> int:
 
 
 def append_result(record: ResultRecord) -> None:
-    with (ROOT / "benchmarks" / "results.csv").open(
+    with (ROOT / "data" / "benchmarks" / "results.csv").open(
         "a", newline="", encoding="utf-8"
     ) as output:
         csv.DictWriter[str](output, fieldnames=RESULT_FIELDS).writerow(record)
@@ -475,7 +475,7 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
     run_id = f"L4-{args.variant}-{timestamp}-r{run_number}"
-    run_root = ROOT / "profiling" / "captures" / "loader" / run_id
+    run_root = ROOT / "data" / "profiling" / "captures" / "loader" / run_id
     user_data = run_root / "userdata"
     config = user_data / "Config"
     log_path = run_root / "Player.log"
@@ -487,7 +487,7 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
         config, not args.disable_texture_compression, args.live_mods
     )
     monitor = select_monitor(args.monitor_name, args.monitor)
-    cache_root = args.dds_cache_root or ROOT / "profiling" / "cache" / "dds-v1"
+    cache_root = args.dds_cache_root or ROOT / "data" / "profiling" / "cache" / "dds-v1"
     if args.dds_cache:
         cache_root.mkdir(parents=True, exist_ok=True)
 
