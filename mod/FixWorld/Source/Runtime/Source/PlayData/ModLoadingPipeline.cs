@@ -116,78 +116,82 @@ namespace FixWorld.PlayData
 
         private ModXmlState LoadCombinedXml()
         {
-            CombinedXmlProbe probe = null;
-            try
-            {
-                probe = Profile(
-                    PlayDataLoadStage.LoadAndPatchXml,
-                    "ProbeCombinedXmlCache()",
-                    combinedXml.Probe);
-            }
-            catch (Exception exception)
-            {
-                Log.Warning(
-                    "[FixWorld] Combined XML cache validation failed; using " +
-                    "RimWorld XML loading: " + exception);
-            }
+            TryCacheOperation(
+                "ProbeCombinedXmlCache()",
+                combinedXml.Probe,
+                out CombinedXmlProbe probe);
 
-            try
-            {
-                ModXmlState restored = null;
-                double preloadMilliseconds = 0.0;
-                bool hit = Profile(
-                    PlayDataLoadStage.LoadAndPatchXml,
+            ModXmlState restored = null;
+            double preloadMilliseconds = 0.0;
+            if (TryCacheOperation(
                     "AcceptPreloadedCombinedXML()",
                     () => combinedXml.TryRestore(
                         probe,
                         out restored,
-                        out preloadMilliseconds));
-                if (hit)
-                {
-                    Log.Message(
-                        "[FixWorld] Reused pre-parsed combined XML cache; " +
-                        "preloader parse=" +
-                        preloadMilliseconds.ToString("F1") + " ms.");
-                    return restored;
-                }
-            }
-            catch (Exception exception)
+                        out preloadMilliseconds),
+                    out bool hit) &&
+                hit)
             {
-                Log.Warning(
-                    "[FixWorld] Combined XML cache candidate was rejected; " +
-                    "using RimWorld XML loading: " + exception);
-            }
-            finally
-            {
-                combinedXml.DiscardPublished();
+                Log.Message(
+                    "[FixWorld] Reused pre-parsed combined XML cache; " +
+                    "preloader parse=" +
+                    preloadMilliseconds.ToString("F1") + " ms.");
+                return restored;
             }
 
             ModXmlState state = LoadCombinedXmlFromMods(out List<LoadableXmlAsset> assets);
-            try
-            {
-                CombinedXmlProbe completedProbe = Profile(
-                    PlayDataLoadStage.LoadAndPatchXml,
+            if (TryCacheOperation(
                     "VerifyCombinedXmlCacheInputs()",
-                    combinedXml.Probe);
-                if (probe != null && completedProbe != null && string.Equals(
-                        probe.Identity,
-                        completedProbe.Identity,
-                        StringComparison.Ordinal))
-                {
-                    Profile(
-                        PlayDataLoadStage.LoadAndPatchXml,
-                        "StoreCombinedXmlCache()",
-                        () => combinedXml.Store(completedProbe, assets, state));
-                }
-            }
-            catch (Exception exception)
+                    combinedXml.Probe,
+                    out CombinedXmlProbe completedProbe) &&
+                probe != null &&
+                completedProbe != null &&
+                string.Equals(
+                    probe.Identity,
+                    completedProbe.Identity,
+                    StringComparison.Ordinal))
             {
-                Log.Warning(
-                    "[FixWorld] Could not update the combined XML cache: " +
-                    exception);
+                TryCacheOperation(
+                    "StoreCombinedXmlCache()",
+                    () => combinedXml.Store(completedProbe, assets, state));
             }
 
             return state;
+        }
+
+        private bool TryCacheOperation<TResult>(
+            string label,
+            Func<TResult> operation,
+            out TResult result)
+        {
+            try
+            {
+                result = Profile(
+                    PlayDataLoadStage.LoadAndPatchXml,
+                    label,
+                    operation);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                result = default(TResult);
+                Log.Warning(
+                    "[FixWorld] Combined XML cache operation failed (" + label +
+                    "): " + exception);
+                return false;
+            }
+        }
+
+        private void TryCacheOperation(string label, Action operation)
+        {
+            TryCacheOperation(
+                label,
+                () =>
+                {
+                    operation();
+                    return true;
+                },
+                out _);
         }
 
         private ModXmlState LoadCombinedXmlFromMods(

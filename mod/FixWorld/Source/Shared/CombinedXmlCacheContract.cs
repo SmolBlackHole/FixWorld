@@ -13,8 +13,7 @@ namespace FixWorld.Content
             "FIXWORLD_COMBINED_XML_CACHE_ROOT";
 
         private const int Magic = 0x46575843;
-        private const int SchemaVersion = 1;
-        private const int MaximumSources = 1_000_000;
+        private const int SchemaVersion = 2;
         private const int MaximumNodes = 5_000_000;
         private const int MaximumStringBytes = 16 * 1024;
         private const int MaximumDocumentBytes = 512 * 1024 * 1024;
@@ -67,19 +66,7 @@ namespace FixWorld.Content
                     return null;
                 }
 
-                string rimWorldVersion = ReadString(reader);
                 string identity = ReadString(reader);
-                int sourceCount = ReadCount(reader, MaximumSources);
-                int[] sourceMods = new int[sourceCount];
-                string[] sourceNames = new string[sourceCount];
-                string[] sourceFolders = new string[sourceCount];
-                for (int index = 0; index < sourceCount; index++)
-                {
-                    sourceMods[index] = reader.ReadInt32();
-                    sourceNames[index] = ReadString(reader);
-                    sourceFolders[index] = ReadString(reader);
-                }
-
                 int nodeCount = ReadCount(reader, MaximumNodes);
                 int[] nodeSources = new int[nodeCount];
                 for (int index = 0; index < nodeCount; index++)
@@ -94,12 +81,8 @@ namespace FixWorld.Content
                 }
 
                 return new CombinedXmlArtifact(
-                    rimWorldVersion,
                     identity,
                     ReadDocument(stream),
-                    sourceMods,
-                    sourceNames,
-                    sourceFolders,
                     nodeSources,
                     0.0);
             }
@@ -107,11 +90,7 @@ namespace FixWorld.Content
 
         internal static void Write(
             Stream stream,
-            string rimWorldVersion,
             string identity,
-            int[] sourceMods,
-            string[] sourceNames,
-            string[] sourceFolders,
             int[] nodeSources,
             XmlDocument document)
         {
@@ -119,16 +98,7 @@ namespace FixWorld.Content
             {
                 writer.Write(Magic);
                 writer.Write(SchemaVersion);
-                WriteString(writer, rimWorldVersion);
                 WriteString(writer, identity);
-                writer.Write(sourceMods.Length);
-                for (int index = 0; index < sourceMods.Length; index++)
-                {
-                    writer.Write(sourceMods[index]);
-                    WriteString(writer, sourceNames[index]);
-                    WriteString(writer, sourceFolders[index]);
-                }
-
                 writer.Write(nodeSources.Length);
                 foreach (int sourceIndex in nodeSources)
                 {
@@ -190,12 +160,8 @@ namespace FixWorld.Content
                 CandidateKey,
                 new object[]
                 {
-                    artifact.RimWorldVersion,
                     artifact.Identity,
                     artifact.Document,
-                    artifact.SourceMods,
-                    artifact.SourceNames,
-                    artifact.SourceFolders,
                     artifact.NodeSources,
                     preloadMilliseconds
                 });
@@ -206,20 +172,16 @@ namespace FixWorld.Content
             AppDomain.CurrentDomain.SetData(StopKey, true);
             object[] values = AppDomain.CurrentDomain.GetData(CandidateKey) as object[];
             AppDomain.CurrentDomain.SetData(CandidateKey, null);
-            if (values == null || values.Length != 8)
+            if (values == null || values.Length != 4)
             {
                 return null;
             }
 
             return new CombinedXmlArtifact(
                 values[0] as string,
-                values[1] as string,
-                values[2] as XmlDocument,
-                values[3] as int[],
-                values[4] as string[],
-                values[5] as string[],
-                values[6] as int[],
-                values[7] is double elapsed ? elapsed : 0.0);
+                values[1] as XmlDocument,
+                values[2] as int[],
+                values[3] is double elapsed ? elapsed : 0.0);
         }
 
         internal static bool IsStopRequested()
@@ -286,31 +248,19 @@ namespace FixWorld.Content
     internal sealed class CombinedXmlArtifact
     {
         internal CombinedXmlArtifact(
-            string rimWorldVersion,
             string identity,
             XmlDocument document,
-            int[] sourceMods,
-            string[] sourceNames,
-            string[] sourceFolders,
             int[] nodeSources,
             double preloadMilliseconds)
         {
-            RimWorldVersion = rimWorldVersion;
             Identity = identity;
             Document = document;
-            SourceMods = sourceMods;
-            SourceNames = sourceNames;
-            SourceFolders = sourceFolders;
             NodeSources = nodeSources;
             PreloadMilliseconds = preloadMilliseconds;
         }
 
-        internal string RimWorldVersion { get; }
         internal string Identity { get; }
         internal XmlDocument Document { get; }
-        internal int[] SourceMods { get; }
-        internal string[] SourceNames { get; }
-        internal string[] SourceFolders { get; }
         internal int[] NodeSources { get; }
         internal double PreloadMilliseconds { get; }
     }

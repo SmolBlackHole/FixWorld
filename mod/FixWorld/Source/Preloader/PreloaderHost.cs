@@ -38,20 +38,36 @@ namespace FixWorld.Preloader
                 return;
             }
 
+            StartJob(
+                log,
+                "combined XML cache preload",
+                () => CombinedXmlPreload.Start(log));
+            StartJob(
+                log,
+                "bounded DDS read-ahead",
+                () =>
+                {
+                    DdsReadAhead.Start();
+                    return true;
+                });
+        }
+
+        private static void StartJob(
+            PreloaderLog log,
+            string name,
+            Func<bool> start)
+        {
             try
             {
-                if (CombinedXmlPreload.Start(log))
+                if (start())
                 {
-                    log.Write("Queued combined XML cache preload.");
+                    log.Write("Queued " + name + ".");
                 }
-
-                DdsReadAhead.Start();
-                log.Write("Queued bounded DDS read-ahead.");
             }
             catch (Exception exception)
             {
                 log.Write(
-                    "DDS read-ahead was not started, but the early loader remains " +
+                    name + " was not started, but the early loader remains " +
                     "active: " + exception);
             }
         }

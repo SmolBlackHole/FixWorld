@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
 using System.Security.Cryptography;
@@ -61,11 +60,6 @@ namespace FixWorld.Content
 
         internal bool Enabled => CombinedXmlCacheContract.Enabled;
 
-        internal void DiscardPublished()
-        {
-            CombinedXmlCacheContract.TakePublished();
-        }
-
         internal CombinedXmlProbe Probe()
         {
             if (!CanReplaceVanillaXmlPath(out MethodBase patchedMethod))
@@ -85,7 +79,8 @@ namespace FixWorld.Content
             IReadOnlyList<ModContentPack> mods =
                 LoadedModManager.RunningModsListForReading;
             StringBuilder identity = new StringBuilder();
-            Dictionary<string, int> sources = new Dictionary<string, int>(
+            List<CombinedXmlSource> sources = new List<CombinedXmlSource>();
+            Dictionary<string, int> sourceIndices = new Dictionary<string, int>(
                 StringComparer.OrdinalIgnoreCase);
 
             Append(identity, VersionControl.CurrentVersionStringWithRev);
@@ -112,8 +107,9 @@ namespace FixWorld.Content
                 Append(identity, files.Count.ToString(CultureInfo.InvariantCulture));
                 foreach (EffectiveXmlFile file in files)
                 {
+                    string fullPath = file.File.FullName;
                     Append(identity, file.RelativePath);
-                    Append(identity, NormalizePath(file.File.FullName));
+                    Append(identity, NormalizePath(fullPath));
                     Append(
                         identity,
                         file.File.Length.ToString(CultureInfo.InvariantCulture));
@@ -121,7 +117,13 @@ namespace FixWorld.Content
                         identity,
                         file.File.LastWriteTimeUtc.Ticks.ToString(
                             CultureInfo.InvariantCulture));
-                    sources.Add(SourceKey(modIndex, file.File.FullName), modIndex);
+                    sourceIndices.Add(
+                        SourceKey(modIndex, fullPath),
+                        sources.Count);
+                    sources.Add(new CombinedXmlSource(
+                        modIndex,
+                        file.File.Name,
+                        file.File.DirectoryName));
                 }
             }
 
@@ -134,7 +136,8 @@ namespace FixWorld.Content
 
             return new CombinedXmlProbe(
                 BitConverter.ToString(hash).Replace("-", string.Empty),
-                sources);
+                sources.ToArray(),
+                sourceIndices);
         }
 
         internal bool TryRestore(
@@ -148,10 +151,6 @@ namespace FixWorld.Content
                 CombinedXmlCacheContract.TakePublished();
             if (probe == null || artifact == null ||
                 !string.Equals(
-                    artifact.RimWorldVersion,
-                    VersionControl.CurrentVersionStringWithRev,
-                    StringComparison.Ordinal) ||
-                !string.Equals(
                     artifact.Identity,
                     probe.Identity,
                     StringComparison.Ordinal) ||
@@ -163,23 +162,19 @@ namespace FixWorld.Content
             IReadOnlyList<ModContentPack> mods =
                 LoadedModManager.RunningModsListForReading;
             LoadableXmlAsset[] sources =
-                new LoadableXmlAsset[artifact.SourceMods.Length];
+                new LoadableXmlAsset[probe.SourceCount];
             for (int index = 0; index < sources.Length; index++)
             {
-                int modIndex = artifact.SourceMods[index];
-                string fullPath = Path.Combine(
-                    artifact.SourceFolders[index],
-                    artifact.SourceNames[index]);
-                if (modIndex < 0 || modIndex >= mods.Count ||
-                    !probe.Sources.ContainsKey(SourceKey(modIndex, fullPath)))
+                CombinedXmlSource source = probe.Sources[index];
+                if (source.ModIndex < 0 || source.ModIndex >= mods.Count)
                 {
                     return false;
                 }
 
                 sources[index] = CreateAsset(
-                    artifact.SourceNames[index],
-                    artifact.SourceFolders[index],
-                    mods[modIndex]);
+                    source.Name,
+                    source.Folder,
+                    mods[source.ModIndex]);
             }
 
             Dictionary<XmlNode, LoadableXmlAsset> lookup =
@@ -208,7 +203,7 @@ namespace FixWorld.Content
             ModXmlState state)
         {
             if (probe == null || assets == null || state == null ||
-                assets.Count != probe.Sources.Count)
+                assets.Count != probe.SourceCount)
             {
                 return;
             }
@@ -222,26 +217,25 @@ namespace FixWorld.Content
                 modIndices.Add(mods[index], index);
             }
 
-            int[] sourceMods = new int[assets.Count];
-            string[] sourceNames = new string[assets.Count];
-            string[] sourceFolders = new string[assets.Count];
             Dictionary<LoadableXmlAsset, int> sourceIndices =
                 new Dictionary<LoadableXmlAsset, int>();
+            bool[] seenSources = new bool[probe.SourceCount];
             for (int index = 0; index < assets.Count; index++)
             {
                 LoadableXmlAsset asset = assets[index];
                 if (asset == null || asset.mod == null ||
                     !modIndices.TryGetValue(asset.mod, out int modIndex) ||
-                    !probe.Sources.ContainsKey(
-                        SourceKey(modIndex, asset.FullFilePath)))
+                    !probe.TryGetSourceIndex(
+                        modIndex,
+                        asset.FullFilePath,
+                        out int sourceIndex) ||
+                    seenSources[sourceIndex])
                 {
                     return;
                 }
 
-                sourceMods[index] = modIndex;
-                sourceNames[index] = asset.name;
-                sourceFolders[index] = asset.fullFolderPath;
-                sourceIndices.Add(asset, index);
+                seenSources[sourceIndex] = true;
+                sourceIndices.Add(asset, sourceIndex);
             }
 
             XmlNodeList nodes = state.Document.DocumentElement.ChildNodes;
@@ -268,11 +262,7 @@ namespace FixWorld.Content
                 path,
                 stream => CombinedXmlCacheContract.Write(
                     stream,
-                    VersionControl.CurrentVersionStringWithRev,
                     probe.Identity,
-                    sourceMods,
-                    sourceNames,
-                    sourceFolders,
                     nodeSources,
                     state.Document));
         }
@@ -286,13 +276,7 @@ namespace FixWorld.Content
                        artifact.Document.DocumentElement.Name,
                        "Defs",
                        StringComparison.Ordinal) &&
-                   artifact.SourceMods != null &&
-                   artifact.SourceNames != null &&
-                   artifact.SourceFolders != null &&
                    artifact.NodeSources != null &&
-                   artifact.SourceMods.Length == probe.Sources.Count &&
-                   artifact.SourceMods.Length == artifact.SourceNames.Length &&
-                   artifact.SourceMods.Length == artifact.SourceFolders.Length &&
                    artifact.NodeSources.Length ==
                    artifact.Document.DocumentElement.ChildNodes.Count;
         }
@@ -360,9 +344,14 @@ namespace FixWorld.Content
                 }
             }
 
-            return effective
-                .Select(pair => new EffectiveXmlFile(pair.Key, pair.Value))
-                .ToList();
+            List<EffectiveXmlFile> files = new List<EffectiveXmlFile>(
+                effective.Count);
+            foreach (KeyValuePair<string, FileInfo> pair in effective)
+            {
+                files.Add(new EffectiveXmlFile(pair.Key, pair.Value));
+            }
+
+            return files;
         }
 
         private static void Append(StringBuilder builder, string value)
@@ -373,7 +362,7 @@ namespace FixWorld.Content
             builder.Append('\n');
         }
 
-        private static string SourceKey(int modIndex, string path)
+        internal static string SourceKey(int modIndex, string path)
         {
             return modIndex.ToString(CultureInfo.InvariantCulture) + "\n" +
                    NormalizePath(path);
@@ -390,14 +379,43 @@ namespace FixWorld.Content
     {
         internal CombinedXmlProbe(
             string identity,
-            Dictionary<string, int> sources)
+            CombinedXmlSource[] sources,
+            Dictionary<string, int> sourceIndices)
         {
             Identity = identity;
             Sources = sources;
+            this.sourceIndices = sourceIndices;
         }
 
+        private readonly Dictionary<string, int> sourceIndices;
+
         internal string Identity { get; }
-        internal Dictionary<string, int> Sources { get; }
+        internal CombinedXmlSource[] Sources { get; }
+        internal int SourceCount => Sources.Length;
+
+        internal bool TryGetSourceIndex(
+            int modIndex,
+            string path,
+            out int sourceIndex)
+        {
+            return sourceIndices.TryGetValue(
+                CombinedXmlCache.SourceKey(modIndex, path),
+                out sourceIndex);
+        }
+    }
+
+    internal readonly struct CombinedXmlSource
+    {
+        internal CombinedXmlSource(int modIndex, string name, string folder)
+        {
+            ModIndex = modIndex;
+            Name = name;
+            Folder = folder;
+        }
+
+        internal int ModIndex { get; }
+        internal string Name { get; }
+        internal string Folder { get; }
     }
 
     internal readonly struct EffectiveXmlFile
