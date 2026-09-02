@@ -14,7 +14,7 @@ namespace FixWorld.Diagnostics
     [DataContract]
     internal sealed class BenchmarkReport
     {
-        private const int CurrentSchemaVersion = 9;
+        private const int CurrentSchemaVersion = 10;
 
         [DataMember(Name = "schemaVersion", Order = 1)]
         public int SchemaVersion { get; private set; }
@@ -31,19 +31,16 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "loader", Order = 5)]
         public LoaderReport Loader { get; private set; }
 
-        [DataMember(Name = "xml", Order = 6)]
-        public XmlLoadingReport Xml { get; private set; }
-
-        [DataMember(Name = "files", Order = 7)]
+        [DataMember(Name = "files", Order = 6)]
         public FileDiscoveryReport Files { get; private set; }
 
-        [DataMember(Name = "texturePaths", Order = 8)]
+        [DataMember(Name = "texturePaths", Order = 7)]
         public TexturePathReport TexturePaths { get; private set; }
 
-        [DataMember(Name = "textures", Order = 9)]
+        [DataMember(Name = "textures", Order = 8)]
         public TextureReport Textures { get; private set; }
 
-        [DataMember(Name = "ddsCache", Order = 10)]
+        [DataMember(Name = "ddsCache", Order = 9)]
         public DdsCacheReport DdsCache { get; private set; }
 
         private BenchmarkReport()
@@ -55,7 +52,6 @@ namespace FixWorld.Diagnostics
             PreloaderTimelineSnapshot preloader,
             LoadingMeasurement loading,
             FileDiscoverySnapshot files,
-            XmlLoadingSnapshot xml,
             TexturePathSnapshot texturePaths,
             TextureProbeSnapshot textures,
             TextureDdsCacheSnapshot ddsCache)
@@ -80,13 +76,7 @@ namespace FixWorld.Diagnostics
                 Loader = new LoaderReport(
                     loading.ObservedMilliseconds,
                     stages,
-                    steps,
-                    new List<DelayedActionReport>(),
-                    new List<StaticConstructorReport>(),
-                    0.0,
-                    new List<ModLoadingReport>(),
-                    new List<LoadingOverheadReport>()),
-                Xml = new XmlLoadingReport(xml),
+                    steps),
                 Files = new FileDiscoveryReport(files),
                 TexturePaths = new TexturePathReport(texturePaths),
                 Textures = new TextureReport(textures),
@@ -210,104 +200,6 @@ namespace FixWorld.Diagnostics
     }
 
     [DataContract]
-    internal sealed class XmlLoadingReport
-    {
-        [DataMember(Name = "owned", Order = 1)]
-        public bool Owned { get; private set; }
-
-        [DataMember(Name = "hotReload", Order = 2)]
-        public bool HotReload { get; private set; }
-
-        [DataMember(Name = "workerCount", Order = 3)]
-        public int WorkerCount { get; private set; }
-
-        [DataMember(Name = "mods", Order = 4)]
-        public int Mods { get; private set; }
-
-        [DataMember(Name = "files", Order = 5)]
-        public int Files { get; private set; }
-
-        [DataMember(Name = "bytes", Order = 6)]
-        public long Bytes { get; private set; }
-
-        [DataMember(Name = "fallbackMods", Order = 7)]
-        public int FallbackMods { get; private set; }
-
-        [DataMember(Name = "failedMods", Order = 8)]
-        public int FailedMods { get; private set; }
-
-        [DataMember(Name = "wallMs", Order = 9)]
-        public double WallMilliseconds { get; private set; }
-
-        [DataMember(Name = "fallbackReason", Order = 10)]
-        public string FallbackReason { get; private set; }
-
-        [DataMember(Name = "modDetails", Order = 11)]
-        public List<XmlModLoadingReport> ModDetails { get; private set; }
-
-        internal XmlLoadingReport(XmlLoadingSnapshot snapshot)
-        {
-            Owned = snapshot.Owned;
-            HotReload = snapshot.HotReload;
-            WorkerCount = snapshot.WorkerCount;
-            Mods = snapshot.Mods;
-            Files = snapshot.Files;
-            Bytes = snapshot.Bytes;
-            FallbackMods = snapshot.FallbackMods;
-            FailedMods = snapshot.FailedMods;
-            WallMilliseconds = snapshot.WallMilliseconds;
-            FallbackReason = snapshot.FallbackReason;
-            ModDetails = snapshot.ModDetails
-                .Select(item => new XmlModLoadingReport(item))
-                .ToList();
-        }
-    }
-
-    [DataContract]
-    internal sealed class XmlModLoadingReport
-    {
-        [DataMember(Name = "packageId", Order = 1)]
-        public string PackageId { get; private set; }
-
-        [DataMember(Name = "mod", Order = 2)]
-        public string ModName { get; private set; }
-
-        [DataMember(Name = "files", Order = 3)]
-        public int Files { get; private set; }
-
-        [DataMember(Name = "bytes", Order = 4)]
-        public long Bytes { get; private set; }
-
-        [DataMember(Name = "discoveryMs", Order = 5)]
-        public double DiscoveryMilliseconds { get; private set; }
-
-        [DataMember(Name = "parseMs", Order = 6)]
-        public double ParseMilliseconds { get; private set; }
-
-        [DataMember(Name = "waitMs", Order = 7)]
-        public double WaitMilliseconds { get; private set; }
-
-        [DataMember(Name = "fallback", Order = 8)]
-        public bool Fallback { get; private set; }
-
-        [DataMember(Name = "failed", Order = 9)]
-        public bool Failed { get; private set; }
-
-        internal XmlModLoadingReport(XmlModLoadingSnapshot snapshot)
-        {
-            PackageId = snapshot.PackageId;
-            ModName = snapshot.ModName;
-            Files = snapshot.Files;
-            Bytes = snapshot.Bytes;
-            DiscoveryMilliseconds = snapshot.DiscoveryMilliseconds;
-            ParseMilliseconds = snapshot.ParseMilliseconds;
-            WaitMilliseconds = snapshot.WaitMilliseconds;
-            Fallback = snapshot.Fallback;
-            Failed = snapshot.Failed;
-        }
-    }
-
-    [DataContract]
     internal sealed class CompletionReport
     {
         [DataMember(Name = "source", Order = 1)]
@@ -331,150 +223,15 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "steps", Order = 3)]
         public List<LoaderStepReport> Steps { get; private set; }
 
-        [DataMember(Name = "delayedActions", Order = 4)]
-        public List<DelayedActionReport> DelayedActions { get; private set; }
-
-        [DataMember(Name = "staticConstructors", Order = 5)]
-        public List<StaticConstructorReport> StaticConstructors { get; private set; }
-
-        [DataMember(Name = "staticConstructorTailMs", Order = 6)]
-        public double StaticConstructorTailMilliseconds { get; private set; }
-
-        [DataMember(Name = "mods", Order = 7)]
-        public List<ModLoadingReport> Mods { get; private set; }
-
-        [DataMember(Name = "overhead", Order = 8)]
-        public List<LoadingOverheadReport> Overhead { get; private set; }
-
         internal LoaderReport(
             double observedMilliseconds,
             List<LoaderStageReport> stages,
-            List<LoaderStepReport> steps,
-            List<DelayedActionReport> delayedActions,
-            List<StaticConstructorReport> staticConstructors,
-            double staticConstructorTailMilliseconds,
-            List<ModLoadingReport> mods,
-            List<LoadingOverheadReport> overhead)
+            List<LoaderStepReport> steps)
         {
             ObservedMilliseconds = observedMilliseconds;
             Stages = stages;
             Steps = steps;
-            DelayedActions = delayedActions;
-            StaticConstructors = staticConstructors;
-            StaticConstructorTailMilliseconds = staticConstructorTailMilliseconds;
-            Mods = mods;
-            Overhead = overhead;
         }
-    }
-
-    [DataContract]
-    internal sealed class DelayedActionReport
-    {
-        [DataMember(Name = "method", Order = 1)]
-        public string Method { get; private set; }
-
-        [DataMember(Name = "packageId", Order = 2)]
-        public string PackageId { get; private set; }
-
-        [DataMember(Name = "mod", Order = 3)]
-        public string ModName { get; private set; }
-
-        [DataMember(Name = "calls", Order = 4)]
-        public long Calls { get; private set; }
-
-        [DataMember(Name = "totalMs", Order = 5)]
-        public double TotalMilliseconds { get; private set; }
-
-        [DataMember(Name = "maxMs", Order = 6)]
-        public double MaxMilliseconds { get; private set; }
-
-    }
-
-    [DataContract]
-    internal sealed class StaticConstructorReport
-    {
-        [DataMember(Name = "type", Order = 1)]
-        public string TypeName { get; private set; }
-
-        [DataMember(Name = "packageId", Order = 2)]
-        public string PackageId { get; private set; }
-
-        [DataMember(Name = "mod", Order = 3)]
-        public string ModName { get; private set; }
-
-        [DataMember(Name = "calls", Order = 4)]
-        public long Calls { get; private set; }
-
-        [DataMember(Name = "totalMs", Order = 5)]
-        public double TotalMilliseconds { get; private set; }
-
-        [DataMember(Name = "maxMs", Order = 6)]
-        public double MaxMilliseconds { get; private set; }
-
-        [DataMember(Name = "failures", Order = 7)]
-        public long Failures { get; private set; }
-
-    }
-
-    [DataContract]
-    internal sealed class ModLoadingReport
-    {
-        [DataMember(Name = "packageId", Order = 1)]
-        public string PackageId { get; private set; }
-
-        [DataMember(Name = "mod", Order = 2)]
-        public string ModName { get; private set; }
-
-        [DataMember(Name = "attribution", Order = 3)]
-        public string Attribution { get; private set; }
-
-        [DataMember(Name = "stage", Order = 4)]
-        public string Stage { get; private set; }
-
-        [DataMember(Name = "operation", Order = 5)]
-        public string Operation { get; private set; }
-
-        [DataMember(Name = "calls", Order = 6)]
-        public long Calls { get; private set; }
-
-        [DataMember(Name = "failures", Order = 7)]
-        public long Failures { get; private set; }
-
-        [DataMember(Name = "executionMs", Order = 8)]
-        public double ExecutionMilliseconds { get; private set; }
-
-        [DataMember(Name = "mainThreadMs", Order = 9)]
-        public double MainThreadMilliseconds { get; private set; }
-
-        [DataMember(Name = "workerThreadMs", Order = 10)]
-        public double WorkerThreadMilliseconds { get; private set; }
-
-        [DataMember(Name = "waitMs", Order = 11)]
-        public double WaitMilliseconds { get; private set; }
-
-        [DataMember(Name = "wallMs", Order = 12)]
-        public double WallMilliseconds { get; private set; }
-
-    }
-
-    [DataContract]
-    internal sealed class LoadingOverheadReport
-    {
-        [DataMember(Name = "operation", Order = 1)]
-        public string Operation { get; private set; }
-
-        [DataMember(Name = "calls", Order = 2)]
-        public long Calls { get; private set; }
-
-        [DataMember(Name = "totalMs", Order = 3)]
-        public double TotalMilliseconds { get; private set; }
-
-        [DataMember(Name = "maxMs", Order = 4)]
-        public double MaxMilliseconds { get; private set; }
-
-        [DataMember(Name = "estimated", Order = 5)]
-        public bool Estimated { get; private set; }
-
     }
 
     [DataContract]

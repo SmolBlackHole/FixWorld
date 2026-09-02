@@ -131,13 +131,13 @@ namespace FixWorld.PlayData
                 case PlayDataLoadStage.EarlyBinding:
                     return "Bind";
                 case PlayDataLoadStage.PreResolveImpliedDefinitions:
-                    return "Implied 1";
+                    return "Pre-implied";
                 case PlayDataLoadStage.CrossReferenceResolution:
                     return "Cross refs";
                 case PlayDataLoadStage.ReferenceResolution:
                     return "Resolve";
                 case PlayDataLoadStage.PostResolveImpliedDefinitions:
-                    return "Implied 2";
+                    return "Post-implied";
                 case PlayDataLoadStage.DefinitionFinalization:
                     return "Defs done";
                 case PlayDataLoadStage.InitializeRuntime:

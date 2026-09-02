@@ -46,7 +46,7 @@ namespace FixWorld.Runtime
             Loading = new PlayDataLoadingState(events);
             telemetry = new PlayDataTelemetry(events);
             Lifecycle = new RimWorldLifecycle(events);
-            Textures = new TextureCacheAdapter(scheduler, mainThread);
+            Textures = new TextureDdsCache(scheduler, mainThread);
 
             PlayDataStageRunner stageRunner = new PlayDataStageRunner(events);
             DeferredWorkQueue deferredWork = new DeferredWorkQueue();
@@ -71,7 +71,7 @@ namespace FixWorld.Runtime
 
         internal DeferredWorkQueue DeferredWork { get; }
 
-        internal TextureCacheAdapter Textures { get; }
+        internal TextureDdsCache Textures { get; }
 
         internal int WorkerCount => scheduler.WorkerCount;
 
@@ -202,10 +202,9 @@ namespace FixWorld.Runtime
 
             telemetry.Complete();
             BenchmarkRecorder.Complete(
-                source,
-                telemetry.GetMeasurement(),
-                XmlLoadingSnapshot.Empty,
-                Textures.Snapshot());
+            source,
+            telemetry.GetMeasurement(),
+            Textures.GetSnapshot());
             return true;
         }
     }

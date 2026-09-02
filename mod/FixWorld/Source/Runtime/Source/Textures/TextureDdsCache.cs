@@ -9,28 +9,38 @@ using Verse;
 
 namespace FixWorld.Textures
 {
-    internal static class TextureDdsCache
+    internal sealed class TextureDdsCache
     {
-        private static readonly object Sync = new object();
+        private readonly object sync = new object();
+        private readonly JobScheduler scheduler;
+        private readonly MainThreadQueue mainThread;
 
-        private static bool initialized;
-        private static TextureDdsCacheRuntime runtime;
-        private static TextureDdsCacheSnapshot lastSnapshot;
+        private bool attached;
+        private TextureDdsCacheRuntime runtime;
+        private TextureDdsCacheSnapshot lastSnapshot;
 
-        internal static void Initialize(
-            string modRoot,
-            float ddsCacheMaxGiB,
+        internal TextureDdsCache(
             JobScheduler scheduler,
             MainThreadQueue mainThread)
         {
-            lock (Sync)
+            this.scheduler = scheduler ??
+                throw new ArgumentNullException(nameof(scheduler));
+            this.mainThread = mainThread ??
+                throw new ArgumentNullException(nameof(mainThread));
+        }
+
+        internal void Attach(
+            string modRoot,
+            float ddsCacheMaxGiB)
+        {
+            lock (sync)
             {
-                if (initialized)
+                if (attached)
                 {
                     return;
                 }
 
-                initialized = true;
+                attached = true;
                 int workerCount = TextureDdsCacheConfiguration.ReadWorkerCount();
                 lastSnapshot = TextureDdsCacheSnapshot.Disabled(workerCount);
                 if (!TextureDdsCacheConfiguration.IsEnabled())
@@ -60,7 +70,7 @@ namespace FixWorld.Textures
             }
         }
 
-        internal static void Apply(
+        internal void Apply(
             ModContentPack mod,
             string contentPath,
             List<string> foldersToLoadDebug,
@@ -73,20 +83,20 @@ namespace FixWorld.Textures
                 files);
         }
 
-        internal static void Complete()
+        internal void Complete()
         {
             Volatile.Read(ref runtime)?.Complete();
         }
 
-        internal static void StartDeferredBuild()
+        internal void StartDeferredBuild()
         {
             Volatile.Read(ref runtime)?.StartDeferredBuild();
         }
 
-        internal static void Shutdown()
+        internal void Shutdown()
         {
             TextureDdsCacheRuntime current;
-            lock (Sync)
+            lock (sync)
             {
                 current = runtime;
                 runtime = null;
@@ -99,7 +109,7 @@ namespace FixWorld.Textures
             current?.Shutdown();
         }
 
-        internal static TextureDdsCacheSnapshot GetSnapshot()
+        internal TextureDdsCacheSnapshot GetSnapshot()
         {
             TextureDdsCacheRuntime current = Volatile.Read(ref runtime);
             return current?.GetSnapshot() ?? lastSnapshot;

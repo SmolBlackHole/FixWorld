@@ -1,160 +1,167 @@
 # TODO
 
-Aktuell: **Feature Freeze. Nächster aktiver Schnitt ist Phase 1 der behavior-identischen `PlayDataLoadPipeline`.**
+Aktuell gilt **Feature Freeze**. FixWorld besitzt den frühen Runtime-Start und die
+Orchestrierung von `PlayDataLoader.DoPlayLoad()`. Neue Optimierungen beginnen erst,
+wenn der betroffene Bereich gemessen und sein bestehender Code auf eine eindeutige
+Ownership reduziert wurde.
 
-Der abgeschlossene Stand gehört in Git, Benchmarks und Logs. Diese Datei enthält nur noch bewusst verschobene Arbeit.
+Diese Datei enthält nur offene Arbeit. Erledigte Migrationen gehören in Git,
+Benchmarks und Logs.
 
-## Aktueller Infrastruktur-Refactor
+## Arbeitsregeln
 
-- [x] `texconv` ausschließlich über einen kleinen typisierten Wrapper aufrufen; Aufrufer übergeben nur Eingabepfade, Ausgabeverzeichnis und DDS-Anforderungen
-- [x] Eingabedaten an der Tool-Grenze nur als Pfade beziehungsweise `--file-list` übergeben; der Wrapper kopiert keine Assetdaten
-- [x] DDS-Cache-Cleanup in das C#-Tool übernehmen und das PowerShell-Skript entfernen
-- [x] generische Caching-, Scheduling-, Profiling- und Event-Primitiven in `FixWorld.Shared` isoliert bereitstellen und mit Contract-Tests absichern
-- [ ] die Hash-Staging-Kopien des DDS-Builders nur mit einer kollisionssicheren direkten Ausgabestrategie entfernen; der Tool-Wrapper selbst ist bereits kopierfrei
-- [ ] festlegen, welche Verträge wirklich assemblyübergreifend in `Shared` leben; zentrale Runtime-Dienste sind nicht automatisch Shared-Code
-- [ ] bestehende Runtime-Dienste erst beim jeweiligen Pipeline-Cutover durch Shared-Primitiven ersetzen; Altcode vorher nicht separat modernisieren
-- [ ] RimWorlds vorhandenes Unity Job System mit einem isolierten `IJob`-/`NativeArray`-Prototyp prüfen, bevor FixWorld einen eigenen Worker-Unterbau festlegt
-- [ ] erst nach dem Prototyp entscheiden, welche Arbeit Unity Jobs, FixWorld-Worker oder der Main Thread ausführen
+- immer genau einen aktiven Ladepfad behalten und den dadurch ersetzten Altcode im selben Schnitt entfernen
+- RimWorld-, Harmony-, Unity- und Tool-Aufrufe hinter einem eindeutigen Owner halten
+- Shared-Code nur für echte assemblyübergreifende Verträge verwenden
+- Worker bereiten reine Daten vor; Unity- und Verse-Zustand bleibt geordnet im Main Thread
+- jede Verhaltensänderung mit vollständiger Modliste und typisiertem Benchmark prüfen
 
-## Nächster Schnitt: eigener Mod-Boot
+## Verifizierter Stand
 
-- [x] `FixWorld.Runtime.dll` mit idempotentem Start-, Attach- und Shutdown-Vertrag früh laden
-- [x] fehlende oder inkompatible Runtime ohne FixWorld-Hooks auf Vanilla zurückfallen lassen
-- [x] EventBus, Scheduler, Dispatcher und Mod-Boot aus Loader und normaler Mod in die Runtime verschieben
-- [x] den normalen Mod auf einen einmaligen Doorstop-Installer mit automatischem Neustart reduzieren
-- [x] bei aktiviertem, aber inaktivem Doorstop ohne vererbte Prozessmarke sicher abbrechen und Neustart-Schleifen verhindern
-- [x] den normalen FixWorld-Runtime-Start nur nach nachgewiesener Übernahme von `LoadAllActiveMods()` erlauben
-- [x] `FixWorld.Loader.dll` nach dem Laden von `Assembly-CSharp` über Doorstop starten
-- [x] RimWorld-Version, Assembly-MVID und `LoadAllActiveMods(bool)`-Signatur vor der Übernahme prüfen
-- [x] `LoadedModManager.LoadAllActiveMods()` vollständig durch den FixWorld-Coordinator ersetzen
-- [x] Hauptassembly in `FixWorld.Mod.dll` umbenennen und alte `FixWorld.dll` aus Build und Paket entfernen
-- [x] sicherstellen, dass Runtime und Modassembly jeweils genau einmal geladen werden
-- [x] `ModContentPack` und Settings-Daten über den typisierten `AttachMod()`-Snapshot anbinden
-- [x] den Mod-Boot als lineare `ModBootPipeline` mit einem Run-Kontext und zentralem Stage-Runner abbilden
-- [x] `InitializeMods()` als eigene Stage für Metadaten und `ModContentPack` übernehmen
-- [x] noch nicht übernommene RimWorld-Schritte hinter ehrlichen Stage-Adaptern kapseln
-- [x] `PrepareModContent` als eigene Stage vor XML modellieren und von der später ausgeführten Asset-Content-Stage trennen
-- [x] alle übernommenen Stages über einen gemeinsamen typisierten Stage-Event-Vertrag an UI, Telemetrie und Benchmarks anbinden
-- [x] exakt zuordenbare untergeordnete Mod-Operationen erfassen und gleichartige DeepProfiler-Doppelzählung für typisierte Arbeit unterdrücken
-- [x] frühen Mod-Boot und spätere LongEvent-Arbeit auf denselben Event- und Telemetrievertrag führen, ohne sie in einen ungeeigneten gemeinsamen Executor zu zwingen
-- [ ] Assembly-Discovery und Assembly-Loading als eigene Stages übernehmen und typisiert messen
-- [ ] die heutige Mischstage `LoadModContent()` in Assembly-Load und nur eingereihte Asset-Arbeit zerlegen und pro Mod erfassen
-- [ ] `CreateModClasses()` vollständig übernehmen und Konstruktor- sowie Harmony-Zeiten erfassen
-- [ ] Ursache des langen frühen `...`-Abschnitts mit dieser Telemetrie belegen
-- [ ] `GetAllFilesForModPreserveOrder()` und Assembly-Discovery in die eigene Stage-Pipeline übernehmen
-- [ ] LongEvent-Thread, synchrone Events, Szenenwechsel und Exception-Lebenszyklus als FixWorld-Vertrag erfassen
-- [ ] `MainMenuReady` nach `Menü -> Spiel -> Menü` in einem realen Save-Lauf erneut auslösen und verifizieren
-- [ ] RimWorld- und Harmony-Operationen nur noch hinter expliziten FixWorld-Adaptern aufrufen
+- Doorstop, Loader, Runtime und Mod haben getrennte Boot- und Attachment-Verantwortung
+- FixWorld orchestriert alle 15 Play-Data-Stages und besitzt Lifecycle, Scheduling und Telemetrie
+- der Python-Benchmark startet RimWorld, wartet, validiert und aggregiert die von der Runtime geschriebene JSON
+- Shared stellt isolierte Caching-, Scheduling-, Profiling- und Event-Primitiven bereit; DDS läuft deferred und startet `texconv` nur über den Tool-Wrapper
 
-### Vollständige Play-Data-Pipeline
+## Aktive Reihenfolge
 
-Verbindliche Migrationsregeln:
+1. DDS-Subsystem verhaltensgleich verkleinern und seine Ownership schärfen
+2. DDS-Cache nach der sRGB-Identitätsänderung neu aufbauen und warmen 88-Mod-Baseline-Lauf erfassen
+3. einen Runtime-Diagnosesnapshot und ein kompaktes Startup-Summary bereitstellen
+4. dominantes Deferred Work analysieren und erst danach gezielt zerlegen
+5. ein kleines read-only Diagnosefenster auf denselben Snapshot setzen
+6. verbleibende RimWorld-Operationen Stage für Stage tiefer übernehmen
+7. erst danach neue Worker- oder Format-Experimente aktivieren
 
-- alten Loading-Code einfrieren; insbesondere `LoadingTelemetry` und den Delegate-Executor nicht mehr separat modernisieren
-- immer genau einen aktiven Ablauf behalten; jede Stage gehört entweder RimWorld oder FixWorld, niemals beiden gleichzeitig
-- Shared-Primitiven ausschließlich im neuen `PlayData`-Pfad verwenden
-- nach jedem Cutover vollständige Modliste testen und den dadurch ersetzten Altcode im selben Schnitt löschen
+## DDS und Texture Cache
 
-Phase 1, behavior-identischer Pipeline-Root:
+Ziel: Ein Runtime-Dienst steuert den Ablauf. Planner, Builder und Store besitzen
+jeweils genau eine fachliche Aufgabe. Der Schnitt soll Code entfernen und keine
+neue generische Cache-Plattform erfinden.
 
-- [x] unter `Runtime/Source/PlayData` nur `PlayDataLoadPipeline`, Run-Kontext, Stage-Vertrag und Observer anlegen
-- [x] `PlayDataLoader.DoPlayLoad()` über genau einen frühen Hook an `PlayDataLoadPipeline` übergeben
-- [x] zunächst dieselben RimWorld-Operationen in derselben Reihenfolge und ohne Optimierung ausführen
-- [x] Stage-Fortschritt, Fehler und Laufzeiten über typisierte Observer sowie den neuen Shared-Profiler veröffentlichen; Pipeline-Code schreibt weder UI noch Benchmark-Reports direkt
-- [x] vollständige Modliste bis zum eindeutig erkannten Hauptmenü laden und Stage-Reihenfolge sowie Benchmark-Ausgabe prüfen
+### Verhaltensgleicher Reduktionsschnitt
 
-Phase 2, bestehenden Mod-Boot eingliedern:
+- [ ] `TextureDdsCache` und `TextureDdsCacheRuntime` zu einem RuntimeContext-eigenen Dienst zusammenführen
+- [ ] Planner auf einen unveränderlichen `TextureCachePlan` reduzieren und doppelte Übergabemodelle entfernen
+- [ ] Builder nur konvertieren lassen; Store allein Index, Packs, atomare Veröffentlichung und Recovery besitzen lassen
+- [ ] `TextureDdsCacheBackground` auf Scheduler-Jobs, Abbruch und geordnete Veröffentlichung eines Plans begrenzen
+- [ ] verwaiste `.staging-*`-Verzeichnisse bereinigen und Hash-Staging-Kopien nur kollisionssicher entfernen
+- [ ] Konfiguration, Metriken und Report-Snapshot jeweils nur an einer Stelle modellieren
 
-- [x] die bestehende `ModBootPipeline` als Stage der neuen Root-Pipeline ausführen
-- [x] danach den separaten `LoadAllActiveMods()`-Hook entfernen
-- [x] verschachtelte Content-Profilerlabels während `PrepareModContent` nicht mehr als vorgezogene Root-Stage veröffentlichen; die sichtbare Stage-Reihenfolge darf nicht rückwärts springen
-- [x] vollständige Modliste erneut laden und identische aktive Mods sowie Mod-Reihenfolge prüfen
+Akzeptanz:
 
-Phase 3, Deferred Work übernehmen:
+- [ ] keine statische globale Cache-Instanz und keine reine Durchreiche-Ebene
+- [ ] Cache-Identität und Ergebnisse bleiben identisch; Neuaufbau, Warmstart, Abbruch und Neustart funktionieren bei benutzbarem Menü
 
-- [ ] `ExecuteWhenFinished()`-Arbeit beim Einreihen typisiert erfassen, statt Delegates und Closures später zu rekonstruieren
-- [ ] Deferred Work geordnet über eine explizite Main-Thread-Stage ausführen
-- [ ] Worker-Vorbereitung und geordneten Main-Thread-Commit über die Shared-Scheduling-Verträge abbilden
-- [ ] anschließend `VanillaDelayedActionBridge`, `VanillaLoadingActionAdapter`, `LoadingCoordinator`, `LoadingStageExecutor` und `LoadingWork` entfernen
+### Cache-Policy und Experimente
 
-Phase 4, Stage-Ownership einzeln übernehmen:
-
-- [ ] Initialize mods
-- [ ] Prepare mod content
-- [ ] Create mod classes
-- [ ] Load and patch XML
-- [ ] Parse definitions
-- [ ] Resolve definitions
-- [ ] Generate implied definitions
-- [ ] Execute deferred main-thread work
-- [ ] Finalize static initialization
-- [ ] Complete
-
-Phase 5, Altlasten entfernen und verifizieren:
-
-- [ ] nicht mehr verwendete Loading-Events, Models, Telemetrie, Adapter und Harmony-Hooks löschen
-- [ ] vollständige Modliste, Quarry-Save, Hauptmenüabschluss und Benchmark-Ausgabe verifizieren
-- [ ] erst nach stabiler Verhaltensgleichheit Optimierungen oder zusätzliche Worker aktivieren
-
-## Loader und Worker
-
-- [ ] vorhandene RimWorld-Parallelisierung im Def-Aufbau erfassen, bevor FixWorld zusätzliche Worker einsetzt
-- [ ] Parallelität je Stage bestimmen; DDS-Validierung war mit vier Workern schneller als mit acht
-- [ ] DDS-Build mit zwei, vier und acht Workern vergleichen
-- [ ] Texturvorbereitung von Unity-Erzeugung, `Apply`, Kompression und Upload trennen
-- [ ] Renderpausen und reine Wall-Time pro framefähiger Stage getrennt berichten
-- [ ] XML-Patches, Def-Auflösung, Reflection und Harmony-Scanning einzeln bewerten
-- [ ] statische Konstruktoren weiterhin geordnet übernehmen und nur nach mod-spezifischem Nachweis optimieren
-- [ ] Discovery, Cache-Validierung und weitere reine Byte-Verarbeitung als Worker-Kandidaten messen
-- [ ] Workerfehler abbrechen oder kontrolliert auf den sequenziellen Originalpfad zurückführen
-- [ ] deterministische Ergebnis- und Commit-Reihenfolge über wiederholte Läufe prüfen
-- [ ] Worker-Anzahl gegen CPU-Kerne, Speicherdruck sowie NVMe, SATA und HDD benchmarken
-- [ ] RAM-, VRAM-, Queue- und GC-Spitzen pro Stage erfassen
-- [ ] RimWorld- und Harmony-Hooks weiter auf dünne Übersetzer in FixWorld-Jobs reduzieren
-- [ ] Telemetrie-Hochrechnung gegen GC- und Scheduling-Ausreißer robust machen
-
-## Cache und DDS
-
-- [ ] den generischen Cache-Core erst erweitern, wenn ein zweiter echter Cache ein Backend oder eine Policy gemeinsam nutzen kann
-- [ ] Dimensionen, Hashes und vorbereitete Texturpläne nur bei nachgewiesenem Nutzen im Speicher cachen
 - [ ] Cache-Misses als deduplizierbare Producer-Jobs an den Scheduler übergeben
-- [ ] DDS-Background-Arbeit anhand von CPU-, I/O- und TPS-Budget drosseln oder pausieren
+- [ ] Background-Arbeit anhand von CPU-, I/O-, RAM- und TPS-Budget drosseln oder pausieren
 - [ ] Background-Fortschritt und verbleibende Assets für UI, Logs und Benchmarks bereitstellen
-- [ ] Plattform-Backend in die Cache-Identität aufnehmen, sobald ein zweites Backend existiert
-- [ ] BC3-DDS gegen unkomprimierte DDS vergleichen
-- [ ] PNG/JPG begrenzt parallel dekodieren und nur fertige Daten geordnet übernehmen
+- [ ] In-Memory- und generischen Cache-Core nur bei einem zweiten gemessenen Anwendungsfall erweitern
+- [ ] BC3, unkomprimierte DDS und BC7-GPU-Kompression getrennt nach Qualität, Größe, Erstellzeit und Unity-Kompatibilität vergleichen
+- [ ] DDS-Pack erst nach einer direkten Byte- oder Stream-Ladegrenze erneut bewerten
+- [ ] OBST als mögliches Packformat mit Sidecar-Index prüfen
+
+## Deferred Main-Thread Work
+
+Der aktuelle 88-Mod-Lauf verbringt rund 37,9 Sekunden in
+`DeferredMainThreadWork`. Die Queue wird bereits beim Einreihen erfasst. Als
+nächstes fehlt die fachliche Aufteilung, nicht noch eine zweite Queue.
+
+- [ ] pro Action Producer, Mod-/Assembly-Owner, Enqueue-, Warte- und Laufzeit erfassen
+- [ ] Abhängigkeiten und echte Main-Thread-Pflicht jeder teuren Action bestimmen
+- [ ] Top-Actions und nicht zuordenbare globale Arbeit im Benchmark-Report ausgeben
+- [ ] reine Datenarbeit vorbereiten lassen und Ergebnisse in Originalreihenfolge im Main Thread übernehmen
+- [ ] Fehler kontrolliert auf den originalen sequenziellen Pfad zurückführen oder den Load eindeutig abbrechen
+- [ ] deterministische Reihenfolge und identisches Ergebnis wiederholt prüfen
+
+## Verbleibende Play-Data-Ownership
+
+FixWorld besitzt bereits die Reihenfolge. In diesen Bereichen delegieren die
+Stage-Adapter die eigentliche Arbeit noch weitgehend an RimWorld.
+
+### Mod- und Assembly-Boot
+
+- [ ] `LoadModContent()` in Assembly-Discovery, Assembly-Load und nur eingereihte Asset-Arbeit zerlegen
+- [ ] `GetAllFilesForModPreserveOrder()` und Assembly-Discovery pro Mod erfassen
+- [ ] `CreateModClasses()` vollständig übernehmen und Konstruktor- sowie Harmony-Zeiten messen
+- [ ] Mod-Reihenfolge und Harmony-Erwartungen bei jedem Cutover unverändert erhalten
+
+### XML und Definitionen
+
+- [ ] XML-Lesen, Patch-Anwendung und Def-Import getrennt messen
+- [ ] Cross-References, Reference-Resolution und beide Implied-Phasen getrennt analysieren
+- [ ] vorhandene RimWorld-Parallelisierung im Def-Aufbau erfassen, bevor FixWorld Worker hinzufügt
+- [ ] Reflection, statische Resolver und globale Registry-Mutationen als Main-Thread-Grenzen dokumentieren
+
+### Finalisierung und Lifecycle
+
+- [ ] statische Konstruktoren, Atlas-Build, Asset-Unload und erzwungene GC getrennt messen
+- [ ] LongEvent-Thread, synchrone Events, Szenenwechsel und Exception-Lebenszyklus als Runtime-Vertrag erfassen
+- [ ] `MainMenuReady` nach `Menü -> Spiel -> Menü` in einem realen Save-Lauf erneut auslösen und verifizieren
+- [ ] RimWorld- und Harmony-Aufrufe weiter auf dünne Adapter in typisierte FixWorld-Arbeit reduzieren
+
+Akzeptanz für jeden Stage-Cutover:
+
+- [ ] Modliste und Reihenfolge bleiben identisch; Hauptmenü, Quarry-Save, UI, Telemetrie und Benchmark funktionieren ohne relevante Fehler
+
+## Scheduling und Worker
+
+- [ ] Parallelität, Ressourcenklasse und Worker-Anzahl pro Stage anhand von CPU, Speicher und Datenträger messen
+- [ ] RAM-, VRAM-, Queue-, GC-, Renderpausen- und Wall-Time pro Stage erfassen
+- [ ] RimWorlds Unity Job System mit einem isolierten `IJob`-/`NativeArray`-Prototyp prüfen
+- [ ] danach entscheiden, welche Arbeit Unity Jobs, FixWorld-Worker oder der Main Thread ausführen
 
 ## Benchmark und Pilotbetrieb
 
 - [ ] Preloader für Benchmarks explizit schaltbar machen, statt den Installationszustand zu erben
-- [ ] PNG/JPG und DDS jeweils mit kaltem und warmem OS-Dateicache messen
-- [ ] je drei NVMe-Kontrollläufe mit 0 und 256 MiB Read-ahead vergleichen
-- [ ] HDD-Pilot mit großer Modliste bei 0, 256, 512 und 1.024 MiB durchführen
-- [ ] parallele Discovery und Read-ahead auf HDD testen; Suchzeit und Durchsatz getrennt messen
-- [ ] vollständiges Assembly- und Harmony-Laden erst nach der frühen Instrumentierung bewerten
+- [ ] PNG/JPG, DDS und DDS-Build mit kaltem/warmem OS-Cache sowie zwei, vier und acht Workern vergleichen
+- [ ] Read-ahead auf NVMe und HDD mit abgestuften Budgets messen, Suchzeit und Durchsatz getrennt
+- [ ] Mod-Dateien und Assemblies budgetiert mit DDS vorladen und gegen keinen Read-ahead samt RAM-/I/O-Spitzen messen
 
-## Ingame
+## Diagnose, Logging und Ingame-UI
 
-- [ ] eingefrorenen komplexen Save zweimal messen
-- [ ] dominanten Tick-Pfad bestimmen und genau eine Optimierung per A/B-Test bewerten
-- [ ] `TickManager`, `MapPreTick`, `MapPostTick`, Unity-Jobs, FixWorld-Worker und Hauptthreadzeit getrennt messen
-- [ ] Background-Jobs anhand von TPS, Framezeit sowie CPU- und I/O-Druck drosseln
-- [ ] RimThreadeds Muster nur auf nachgewiesene RimWorld-1.6-Hotpaths übertragen, keine alten Patches portieren
+Ziel: Die Runtime besitzt genau eine günstige Diagnosequelle. Loader und Mod
+stellen diese Daten nur an ihren jeweiligen Grenzen bereit. Ein geöffnetes UI
+darf weder neue Patches installieren noch erst dann Profiling aktivieren.
 
-### Pathfinding-Slice
+- [ ] einen unveränderlichen, versionierten Runtime-Snapshot aus bestehender Early-Timeline, Stage-Telemetrie, Deferred-Arbeit, Scheduler-, DDS- und Speicherdaten zusammensetzen
+- [ ] Benchmark-JSON, kompaktes Log-Summary und UI aus diesem Snapshot speisen, statt drei Messpfade zu pflegen
+- [ ] immer aktive günstige Zähler von einer explizit aktivierbaren Detailaufzeichnung trennen
+- [ ] Detailereignisse in einem begrenzten Ringpuffer halten und wiederholte Probleme nach Owner, Pfad und Fingerprint aggregieren
+- [ ] im Loader nur Boot-Meilensteine, Contract-Fehler und Fallbacks loggen
+- [ ] Early-Timeline-Felder eindeutig benennen; früh beobachtete Mod-Assemblies sind keine aktive Modanzahl
+- [ ] bei `MainMenuReady` genau ein kompaktes Runtime-Summary mit Stage-Hotpaths, Deferred-Hotpaths, DDS-Zustand und Worker-Auslastung schreiben
+- [ ] fehlende Texturen und NPOT-Warnungen nach Mod und Pfad zusammenfassen; ohne belastbare Zuordnung keinen FixWorld-Fehler behaupten
+- [ ] über die normale Mod einen `MainButtonDef` und ein skalierbares Diagnosefenster anbieten; Runtime und Shared bleiben frei von Verse-UI
+- [ ] Ansichten für Startup/Stages, Deferred/Mods, DDS/Worker und aggregierte Probleme bereitstellen
+- [ ] das Fenster höchstens alle 250 bis 500 ms und nur bei neuer Snapshot-Version aktualisieren
+- [ ] einen typisierten Diagnose-Export aus RimWorld anbieten, der denselben Vertrag wie der Benchmark verwendet
 
-- [ ] vorhandene RimWorld-1.6-Path-Jobs instrumentieren, nicht in den FixWorld-Worker-Pool verschieben
+Akzeptanz:
+
+- [ ] letzter abgeschlossener Start bleibt bis zum nächsten Start im UI sichtbar
+- [ ] geschlossenes UI und Standard-Logging erzeugen keinen Log-Spam und keinen messbaren Hotpath
+- [ ] Diagnosefenster funktioniert im Hauptmenü und im Spiel, ohne den Loader- oder Profiling-Zustand zu verändern
+
+## Ingame, später
+
+- [ ] eingefrorenen komplexen Save zweimal messen und den dominanten Tick-Pfad bestimmen
+- [ ] `TickManager`, `MapPreTick`, `MapPostTick`, Unity-Jobs, FixWorld-Worker und Main-Thread-Zeit trennen
+- [ ] Background-Jobs anhand von TPS, Framezeit, CPU- und I/O-Druck drosseln
+- [ ] RimThreadeds Muster nur auf nachgewiesene RimWorld-1.6-Hotpaths übertragen
+
+### Pathfinding
+
+- [ ] vorhandene RimWorld-1.6-Path-Jobs instrumentieren, nicht vorschnell ersetzen
 - [ ] `PushRequest`, `FindPathNow`, Queue-Latenz, Requests pro Tick, Batchgröße und `MapGridRequest`-Wiederverwendung erfassen
-- [ ] vollständige und inkrementelle `PathFinderMapData`-Updates getrennt messen
-- [ ] Path-Requests nach Pawn, Ziel, Traversal-Modus und Kostenprofil erfassen
-- [ ] Türen, Gefahren, Feuer, Reservierungen, Terrain, Gebäude, Hindernisse, Regionen und Zonen als Abhängigkeiten untersuchen
-- [ ] Reachability und `ReachabilityCache` getrennt vom eigentlichen PathFinder profilieren
+- [ ] `PathFinderMapData`, Request-Kontext, Traversal-Kosten und Invalidierungen getrennt erfassen
+- [ ] Reachability und `ReachabilityCache` getrennt vom PathFinder profilieren
 - [ ] erst danach Path-Reuse und gestufte Path-Caches mit präziser Invalidierung testen
-- [ ] Zeit pro Request, expandierte Nodes, Pfadlänge, Worst-Case-Nodes, Hit-Rate und Invalidierungen berichten
+- [ ] Zeit, expandierte Nodes, Pfadlänge, Worst Case, Hit-Rate und Invalidierungen berichten
 
-## Später
+## Plattform, später
 
-- [ ] DDS-Pack erst nach einer direkten Byte- oder Stream-Ladegrenze erneut bewerten
-- [ ] OBST als mögliches Packformat mit Sidecar-Index prüfen
 - [ ] GPU-Dekodierung, Mipmaps und Uploads erst nach sauberer CPU-Aufteilung bewerten
 - [ ] Linux-Konverter und Plattform-Fallback bauen

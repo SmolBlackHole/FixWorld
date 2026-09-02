@@ -74,7 +74,6 @@ namespace FixWorld.Diagnostics
         internal static void Complete(
             string source,
             LoadingMeasurement loading,
-            XmlLoadingSnapshot xml,
             TextureDdsCacheSnapshot ddsCache)
         {
             if (!Enabled)
@@ -99,7 +98,6 @@ namespace FixWorld.Diagnostics
                     PreloaderTimelineState.GetSnapshot(),
                     loading,
                     GetFileDiscoverySnapshot(),
-                    xml,
                     GetTexturePathSnapshot(),
                     TextureProbe.GetSnapshot(),
                     ddsCache);

@@ -93,57 +93,10 @@ class LoaderStepData(TypedDict):
     workerThreadMs: float
 
 
-class DelayedActionData(TypedDict):
-    method: str
-    packageId: str
-    mod: str
-    calls: int
-    totalMs: float
-    maxMs: float
-
-
-class StaticConstructorData(TypedDict):
-    type: str
-    packageId: str
-    mod: str
-    calls: int
-    totalMs: float
-    maxMs: float
-    failures: int
-
-
-class ModLoadingData(TypedDict):
-    packageId: str
-    mod: str
-    attribution: str
-    stage: str
-    operation: str
-    calls: int
-    failures: int
-    executionMs: float
-    mainThreadMs: float
-    workerThreadMs: float
-    waitMs: float
-    wallMs: float
-
-
-class LoadingOverheadData(TypedDict):
-    operation: str
-    calls: int
-    totalMs: float
-    maxMs: float
-    estimated: bool
-
-
 class LoaderData(TypedDict):
     observedMs: float
     stages: list[LoaderStageData]
     steps: list[LoaderStepData]
-    delayedActions: list[DelayedActionData]
-    staticConstructors: list[StaticConstructorData]
-    staticConstructorTailMs: float
-    mods: list[ModLoadingData]
-    overhead: list[LoadingOverheadData]
 
 
 class FileData(TypedDict):
@@ -168,38 +121,11 @@ class DdsCacheData(TypedDict):
     workerFallbackMods: int
 
 
-class XmlModData(TypedDict):
-    packageId: str
-    mod: str
-    files: int
-    bytes: int
-    discoveryMs: float
-    parseMs: float
-    waitMs: float
-    fallback: bool
-    failed: bool
-
-
-class XmlLoadingData(TypedDict):
-    owned: bool
-    hotReload: bool
-    workerCount: int
-    mods: int
-    files: int
-    bytes: int
-    fallbackMods: int
-    failedMods: int
-    wallMs: float
-    fallbackReason: str | None
-    modDetails: list[XmlModData]
-
-
 class BenchmarkReport(TypedDict):
     schemaVersion: int
     preloader: PreloaderData
     completion: CompletionData
     loader: LoaderData
-    xml: XmlLoadingData
     files: FileData
     texturePaths: TexturePathData
     textures: TextureData
@@ -305,7 +231,7 @@ def wait_for_json_file(
 
 def validate_report(raw: object) -> BenchmarkReport:
     report = _string_dict(raw, "benchmark report")
-    if report.get("schemaVersion") != 9:
+    if report.get("schemaVersion") != 10:
         raise RuntimeError(
             f"Unsupported benchmark schema: {report.get('schemaVersion')!r}"
         )
@@ -318,27 +244,8 @@ def validate_report(raw: object) -> BenchmarkReport:
         raise RuntimeError(f"Unexpected completion data: {completion!r}")
     stages = _object_list(loader.get("stages"))
     steps = _object_list(loader.get("steps"))
-    delayed_actions = _object_list(loader.get("delayedActions"))
-    static_constructors = _object_list(loader.get("staticConstructors"))
-    static_constructor_tail = loader.get("staticConstructorTailMs")
-    mods = _object_list(loader.get("mods"))
-    overhead = _object_list(loader.get("overhead"))
-    if (
-        stages is None
-        or len(stages) != 6
-        or steps is None
-        or len(steps) != 15
-        or delayed_actions is None
-        or static_constructors is None
-        or not isinstance(static_constructor_tail, (int, float))
-        or mods is None
-        or overhead is None
-    ):
+    if stages is None or len(stages) != 6 or steps is None or len(steps) != 15:
         raise RuntimeError("Benchmark report contains incomplete loader measurements.")
-    xml = _string_dict(report.get("xml"), "xml")
-    xml_mods = _object_list(xml.get("modDetails"))
-    if xml_mods is None:
-        raise RuntimeError("Benchmark report contains incomplete XML measurements.")
     for section in ("files", "texturePaths", "textures", "ddsCache"):
         _string_dict(report.get(section), section)
     return cast(BenchmarkReport, report)
@@ -385,61 +292,18 @@ def write_loader_csvs(run_root: Path, report: BenchmarkReport) -> None:
         ),
         loader["steps"],
     )
-    _write_csv(
-        run_root / "delayed-actions.csv",
-        ("method", "packageId", "mod", "calls", "totalMs", "maxMs"),
-        loader["delayedActions"],
-    )
-    _write_csv(
-        run_root / "static-constructors.csv",
-        ("type", "packageId", "mod", "calls", "totalMs", "maxMs", "failures"),
-        loader["staticConstructors"],
-    )
-    _write_csv(
-        run_root / "loader-mods.csv",
-        (
-            "packageId",
-            "mod",
-            "attribution",
-            "stage",
-            "operation",
-            "calls",
-            "failures",
-            "executionMs",
-            "mainThreadMs",
-            "workerThreadMs",
-            "waitMs",
-            "wallMs",
-        ),
-        loader["mods"],
-    )
-    _write_csv(
-        run_root / "fixworld-overhead.csv",
-        ("operation", "calls", "totalMs", "maxMs", "estimated"),
-        loader["overhead"],
-    )
-    _write_csv(
-        run_root / "xml-mods.csv",
-        (
-            "packageId",
-            "mod",
-            "files",
-            "bytes",
-            "discoveryMs",
-            "parseMs",
-            "waitMs",
-            "fallback",
-            "failed",
-        ),
-        report["xml"]["modDetails"],
-    )
 
 
 def _write_csv(
     path: Path, fields: tuple[str, ...], rows: Sequence[Mapping[str, object]]
 ) -> None:
     with path.open("w", newline="", encoding="utf-8") as output:
-        writer = csv.DictWriter[str](output, fieldnames=fields, extrasaction="ignore")
+        writer = csv.DictWriter[str](
+            output,
+            fieldnames=fields,
+            extrasaction="ignore",
+            lineterminator="\n",
+        )
         writer.writeheader()
         writer.writerows(rows)
 
@@ -462,7 +326,11 @@ def append_result(record: ResultRecord) -> None:
     with (ROOT / "data" / "benchmarks" / "results.csv").open(
         "a", newline="", encoding="utf-8"
     ) as output:
-        csv.DictWriter[str](output, fieldnames=RESULT_FIELDS).writerow(record)
+        csv.DictWriter[str](
+            output,
+            fieldnames=RESULT_FIELDS,
+            lineterminator="\n",
+        ).writerow(record)
 
 
 def run_once(args: argparse.Namespace, run_number: int) -> None:
@@ -543,23 +411,9 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
         files = report["files"]
         paths = report["texturePaths"]
         cache = report["ddsCache"]
-        xml = report["xml"]
         preloader = report["preloader"]
         top_steps = sorted(
             loader["steps"], key=lambda item: float(item["exclusiveMs"]), reverse=True
-        )[:5]
-        top_delayed_actions = sorted(
-            loader["delayedActions"],
-            key=lambda item: float(item["totalMs"]),
-            reverse=True,
-        )[:5]
-        top_static_constructors = sorted(
-            loader["staticConstructors"],
-            key=lambda item: float(item["totalMs"]),
-            reverse=True,
-        )[:5]
-        top_mod_work = sorted(
-            loader["mods"], key=lambda item: float(item["executionMs"]), reverse=True
         )[:5]
         notes = "; ".join(
             (
@@ -589,14 +443,6 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                 f"ddsReadAheadMs={float(preloader['ddsReadAheadMs']):.3f}",
                 f"ddsIndexPrefetched={preloader['ddsIndexPrefetched']}",
                 f"observedLoaderMs={float(loader['observedMs']):.3f}",
-                f"xmlOwned={xml['owned']}",
-                f"xmlWorkers={xml['workerCount']}",
-                f"xmlMods={xml['mods']}",
-                f"xmlFiles={xml['files']}",
-                f"xmlBytes={xml['bytes']}",
-                f"xmlWallMs={float(xml['wallMs']):.3f}",
-                f"xmlFallbackMods={xml['fallbackMods']}",
-                f"xmlFailedMods={xml['failedMods']}",
                 f"discoveryMs={float(files['totalMs']):.3f}",
                 f"textureLoadMs={float(textures['totalMs']):.3f}",
                 f"ddsLoadMs={float(textures['ddsMs']):.3f}",
@@ -615,35 +461,10 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                     f"{background_report.get('failed', 0)} failed, "
                     f"{background_report.get('removedOrphans', 0)} orphans removed"
                 ),
-                "staticConstructorTailMs="
-                f"{float(loader['staticConstructorTailMs']):.3f}",
                 "topLoaderSteps="
                 + "|".join(
                     f"{step['id']}={float(step['exclusiveMs']):.3f}ms"
                     for step in top_steps
-                ),
-                "topDelayedActions="
-                + "|".join(
-                    f"{action['packageId']}:{action['method']}="
-                    f"{float(action['totalMs']):.3f}ms"
-                    for action in top_delayed_actions
-                ),
-                "topStaticConstructors="
-                + "|".join(
-                    f"{constructor['packageId']}:{constructor['type']}="
-                    f"{float(constructor['totalMs']):.3f}ms"
-                    for constructor in top_static_constructors
-                ),
-                "topModWork="
-                + "|".join(
-                    f"{work['packageId']}:{work['operation']}="
-                    f"{float(work['executionMs']):.3f}ms/{work['attribution']}"
-                    for work in top_mod_work
-                ),
-                "fixWorldOverhead="
-                + "|".join(
-                    f"{item['operation']}={float(item['totalMs']):.3f}ms"
-                    for item in loader["overhead"]
                 ),
             )
         )

@@ -66,19 +66,42 @@ namespace FixWorld.Loader
                     "; expected " + SupportedAssemblyMvid + ".");
             }
 
-            MethodInfo target = typeof(LoadedModManager).GetMethod(
-                nameof(LoadedModManager.LoadAllActiveMods),
-                BindingFlags.Public | BindingFlags.Static,
+            RequireStaticVoid(
+                typeof(PlayDataLoader),
+                nameof(PlayDataLoader.LoadAllPlayData),
+                BindingFlags.Public,
+                typeof(bool));
+            RequireStaticVoid(
+                typeof(PlayDataLoader),
+                "DoPlayLoad",
+                BindingFlags.NonPublic);
+            RequireStaticVoid(
+                typeof(LongEventHandler),
+                nameof(LongEventHandler.ExecuteWhenFinished),
+                BindingFlags.Public,
+                typeof(Action));
+        }
+
+        private static void RequireStaticVoid(
+            Type declaringType,
+            string name,
+            BindingFlags visibility,
+            params Type[] parameters)
+        {
+            MethodInfo target = declaringType.GetMethod(
+                name,
+                visibility | BindingFlags.Static,
                 binder: null,
-                types: new[] { typeof(bool) },
+                types: parameters,
                 modifiers: null);
             if (target == null || target.ReturnType != typeof(void))
             {
                 throw new MissingMethodException(
-                    typeof(LoadedModManager).FullName,
-                    "LoadAllActiveMods(bool)");
+                    declaringType.FullName,
+                    name + "(" + string.Join(",", Array.ConvertAll(
+                        parameters,
+                        parameter => parameter.Name)) + ")");
             }
-
         }
     }
 }
