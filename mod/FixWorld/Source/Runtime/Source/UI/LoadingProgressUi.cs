@@ -1,6 +1,6 @@
 using System;
 using System.Globalization;
-using FixWorld.Loading;
+using FixWorld.PlayData;
 using UnityEngine;
 using UnityEngine.Profiling;
 using Verse;
@@ -22,7 +22,7 @@ namespace FixWorld.UI
         private static long unityBytes;
         private static SystemMemorySnapshot systemMemory;
 
-        internal static void Draw(LoadingSnapshot snapshot)
+        internal static void Draw(PlayDataLoadingSnapshot snapshot)
         {
             RefreshMemoryMetrics();
 
@@ -55,7 +55,9 @@ namespace FixWorld.UI
             }
         }
 
-        private static void DrawHeader(Rect content, LoadingSnapshot snapshot)
+        private static void DrawHeader(
+            Rect content,
+            PlayDataLoadingSnapshot snapshot)
         {
             Text.Font = GameFont.Medium;
             Text.Anchor = TextAnchor.UpperLeft;
@@ -76,39 +78,44 @@ namespace FixWorld.UI
                 timing);
         }
 
-        private static void DrawCurrentStep(Rect content, LoadingSnapshot snapshot)
+        private static void DrawCurrentStep(
+            Rect content,
+            PlayDataLoadingSnapshot snapshot)
         {
             Text.Font = GameFont.Small;
             Text.Anchor = TextAnchor.UpperLeft;
             Widgets.Label(
                 new Rect(content.x, content.y + 38f, 300f, 24f),
-                (int)snapshot.Stage + " / " + LoadingStageNames.Count +
+                (int)snapshot.Stage + " / " + PlayDataLoadStageCatalog.Count +
                 "   " + snapshot.StageName);
             Text.Font = GameFont.Tiny;
             Text.Anchor = TextAnchor.UpperRight;
             Widgets.Label(
                 new Rect(content.x + 300f, content.y + 40f, content.width - 300f, 20f),
-                snapshot.Source == LoadingStageEventSource.FixWorld
-                    ? "FixWorld pipeline"
-                    : "RimWorld runtime");
+                "FixWorld-owned play-data pipeline");
 
             Text.Font = GameFont.Small;
             Text.Anchor = TextAnchor.UpperLeft;
             Widgets.LabelEllipses(
                 new Rect(content.x, content.y + 62f, content.width, 24f),
-                snapshot.StepName);
+                snapshot.Activity ?? snapshot.StageName);
 
             if (!string.IsNullOrEmpty(snapshot.Activity) &&
-                !string.Equals(snapshot.Activity, snapshot.StepName, StringComparison.Ordinal))
+                !string.Equals(
+                    snapshot.Activity,
+                    snapshot.StageName,
+                    StringComparison.Ordinal))
             {
                 Text.Font = GameFont.Tiny;
                 Widgets.LabelEllipses(
                     new Rect(content.x, content.y + 86f, content.width, 20f),
-                    snapshot.Activity);
+                    snapshot.StageName);
             }
         }
 
-        private static void DrawProgressBars(Rect content, LoadingSnapshot snapshot)
+        private static void DrawProgressBars(
+            Rect content,
+            PlayDataLoadingSnapshot snapshot)
         {
             Rect currentBar = new Rect(content.x, content.y + 110f, content.width, 14f);
             Widgets.DrawBoxSolid(currentBar, Track);
@@ -134,14 +141,18 @@ namespace FixWorld.UI
             GUI.color = previousColor;
         }
 
-        private static void DrawStages(Rect content, LoadingStage stage)
+        private static void DrawStages(
+            Rect content,
+            PlayDataLoadStage stage)
         {
             const float gap = 5f;
             Rect rail = new Rect(content.x, content.y + 159f, content.width, 7f);
             float segmentWidth =
-                (rail.width - gap * (LoadingStageNames.Count - 1)) /
-                LoadingStageNames.Count;
-            for (int number = 1; number <= LoadingStageNames.Count; number++)
+                (rail.width - gap * (PlayDataLoadStageCatalog.Count - 1)) /
+                PlayDataLoadStageCatalog.Count;
+            for (int number = 1;
+                 number <= PlayDataLoadStageCatalog.Count;
+                 number++)
             {
                 Color color = number < (int)stage
                     ? Completed
@@ -157,7 +168,8 @@ namespace FixWorld.UI
                 Text.Anchor = TextAnchor.UpperCenter;
                 Widgets.Label(
                     new Rect(x, rail.yMax + 4f, segmentWidth, 19f),
-                    LoadingStageNames.GetShortName((LoadingStage)number));
+                    PlayDataLoadStageCatalog.GetShortName(
+                        (PlayDataLoadStage)number));
             }
         }
 

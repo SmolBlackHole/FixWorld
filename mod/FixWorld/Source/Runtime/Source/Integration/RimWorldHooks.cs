@@ -8,14 +8,22 @@ namespace FixWorld.Integration
     {
         private const string OwnerPrefix = "smolblackhole.fixworld";
         private static readonly object Sync = new object();
+        private static readonly HookGroup BootstrapHookGroup = new HookGroup(
+            "bootstrap",
+            OwnerPrefix + ".bootstrap",
+            BootstrapHooks.PatchTypes);
         private static readonly HookGroup PlayDataHookGroup = new HookGroup(
             "play-data",
             OwnerPrefix + ".playdata",
             PlayDataHooks.PatchTypes);
-        private static readonly HookGroup LoadingHookGroup = new HookGroup(
-            "loading",
-            OwnerPrefix + ".loading",
-            LoadingHooks.PatchTypes);
+        private static readonly HookGroup TextureHookGroup = new HookGroup(
+            "textures",
+            OwnerPrefix + ".textures",
+            TextureHooks.PatchTypes);
+        private static readonly HookGroup LoadingUiHookGroup = new HookGroup(
+            "loading-ui",
+            OwnerPrefix + ".loading-ui",
+            LoadingUiHooks.PatchTypes);
         private static readonly HookGroup LifecycleHookGroup = new HookGroup(
             "lifecycle",
             OwnerPrefix + ".lifecycle",
@@ -24,33 +32,54 @@ namespace FixWorld.Integration
             "diagnostics",
             OwnerPrefix + ".diagnostics",
             DiagnosticHooks.PatchTypes);
+        private static bool diagnosticsEnabled;
 
-        internal static bool InstallPlayData()
+        internal static bool InstallBootstrap(bool enableDiagnostics)
         {
             lock (Sync)
             {
-                return PlayDataHookGroup.Install();
+                diagnosticsEnabled = enableDiagnostics;
+                return BootstrapHookGroup.Install();
             }
         }
 
-        internal static bool InstallRuntime(bool diagnosticsEnabled)
+        internal static bool InstallRuntime()
         {
             lock (Sync)
             {
-                if (!LoadingHookGroup.Install())
+                if (!PlayDataHookGroup.Install())
                 {
+                    return false;
+                }
+
+                if (!TextureHookGroup.Install())
+                {
+                    PlayDataHookGroup.Uninstall();
+                    return false;
+                }
+
+                if (!LoadingUiHookGroup.Install())
+                {
+                    TextureHookGroup.Uninstall();
+                    PlayDataHookGroup.Uninstall();
                     return false;
                 }
 
                 if (!LifecycleHookGroup.Install())
                 {
-                    LoadingHookGroup.Uninstall();
+                    LoadingUiHookGroup.Uninstall();
+                    TextureHookGroup.Uninstall();
+                    PlayDataHookGroup.Uninstall();
                     return false;
                 }
 
-                if (diagnosticsEnabled)
+                if (diagnosticsEnabled && !DiagnosticHookGroup.Install())
                 {
-                    DiagnosticHookGroup.Install();
+                    LifecycleHookGroup.Uninstall();
+                    LoadingUiHookGroup.Uninstall();
+                    TextureHookGroup.Uninstall();
+                    PlayDataHookGroup.Uninstall();
+                    return false;
                 }
 
                 return true;
@@ -71,8 +100,10 @@ namespace FixWorld.Integration
             {
                 DiagnosticHookGroup.Uninstall();
                 LifecycleHookGroup.Uninstall();
-                LoadingHookGroup.Uninstall();
+                LoadingUiHookGroup.Uninstall();
+                TextureHookGroup.Uninstall();
                 PlayDataHookGroup.Uninstall();
+                BootstrapHookGroup.Uninstall();
             }
         }
 

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Threading;
-using FixWorld.Loading;
+using FixWorld.Scheduling;
 using UnityEngine;
 using Verse;
 
@@ -19,7 +19,9 @@ namespace FixWorld.Textures
 
         internal static void Initialize(
             string modRoot,
-            float ddsCacheMaxGiB)
+            float ddsCacheMaxGiB,
+            JobScheduler scheduler,
+            MainThreadQueue mainThread)
         {
             lock (Sync)
             {
@@ -37,69 +39,25 @@ namespace FixWorld.Textures
                     return;
                 }
 
-                LoadingOperation operation = LoadingEvents.Begin(
-                    new LoadingStageEventDescriptor(
-                        LoadingStage.Bootstrap,
-                        LoadingStep.LoadTextureCache,
-                        "Load texture cache index",
-                        "Opening the DDS cache index",
-                        LoadingModAttribution.Global));
                 try
                 {
                     runtime = TextureDdsCacheRuntime.Open(
                         modRoot,
                         ddsCacheMaxGiB,
-                        workerCount);
+                        workerCount,
+                        scheduler,
+                        mainThread);
                     lastSnapshot = runtime.GetSnapshot();
                 }
                 catch (Exception exception)
                 {
-                    operation.Fail();
                     runtime?.Shutdown();
                     runtime = null;
                     Log.Warning(
                         "[FixWorld] DDS cache disabled after initialization failure: " +
                         exception);
                 }
-                finally
-                {
-                    operation.Dispose();
-                }
             }
-        }
-
-        internal static bool TryCreateValidationPlan(
-            IReadOnlyList<ModContentPack> mods,
-            out LoadingActionPlan plan)
-        {
-            TextureDdsCacheRuntime current = Volatile.Read(ref runtime);
-            if (current == null)
-            {
-                plan = default;
-                return false;
-            }
-
-            return current.TryCreateValidationPlan(mods, out plan);
-        }
-
-        internal static bool TryGetPreparedFiles(
-            ModContentPack mod,
-            string contentPath,
-            Func<string, bool> validateExtension,
-            out Dictionary<string, FileInfo> files)
-        {
-            TextureDdsCacheRuntime current = Volatile.Read(ref runtime);
-            if (current == null)
-            {
-                files = null;
-                return false;
-            }
-
-            return current.TryGetPreparedFiles(
-                mod,
-                contentPath,
-                validateExtension,
-                out files);
         }
 
         internal static void Apply(
@@ -169,7 +127,9 @@ namespace FixWorld.Textures
             TextureCacheStore store,
             long maxCacheBytes,
             long minimumFreeBytes,
-            int workerCount)
+            int workerCount,
+            JobScheduler scheduler,
+            MainThreadQueue mainThread)
         {
             this.cacheRoot = cacheRoot;
             this.builder = builder;
@@ -185,19 +145,22 @@ namespace FixWorld.Textures
                 builder,
                 metrics,
                 maxCacheBytes,
-                minimumFreeBytes,
-                workerCount);
+                minimumFreeBytes);
             background = new TextureDdsCacheBackground(
                 store,
                 builder,
                 metrics,
-                workerCount);
+                workerCount,
+                scheduler,
+                mainThread);
         }
 
         internal static TextureDdsCacheRuntime Open(
             string modRoot,
             float ddsCacheMaxGiB,
-            int workerCount)
+            int workerCount,
+            JobScheduler scheduler,
+            MainThreadQueue mainThread)
         {
             string cacheRoot = TextureDdsCacheConfiguration.ResolveCacheRoot();
             long maxCacheBytes = TextureDdsCacheConfiguration.ReadMaximumCacheBytes(
@@ -219,7 +182,9 @@ namespace FixWorld.Textures
                     store,
                     maxCacheBytes,
                     minimumFreeBytes,
-                    workerCount);
+                    workerCount,
+                    scheduler,
+                    mainThread);
                 result.LogConfiguration();
                 return result;
             }
@@ -228,44 +193,6 @@ namespace FixWorld.Textures
                 store?.Dispose();
                 throw;
             }
-        }
-
-        internal bool TryCreateValidationPlan(
-            IReadOnlyList<ModContentPack> mods,
-            out LoadingActionPlan plan)
-        {
-            lock (sync)
-            {
-                if (stopped)
-                {
-                    plan = default;
-                    return false;
-                }
-            }
-
-            return planner.TryCreateValidationPlan(mods, out plan);
-        }
-
-        internal bool TryGetPreparedFiles(
-            ModContentPack mod,
-            string contentPath,
-            Func<string, bool> validateExtension,
-            out Dictionary<string, FileInfo> files)
-        {
-            lock (sync)
-            {
-                if (stopped)
-                {
-                    files = null;
-                    return false;
-                }
-            }
-
-            return planner.TryGetPreparedFiles(
-                mod,
-                contentPath,
-                validateExtension,
-                out files);
         }
 
         internal void Apply(

@@ -35,10 +35,5 @@ namespace FixWorld.Runtime
         {
             Lifecycle.Shutdown(RuntimeHost.Shutdown);
         }
-
-        internal static void Fail(Exception exception)
-        {
-            Lifecycle.MarkFailed(exception);
-        }
     }
 }

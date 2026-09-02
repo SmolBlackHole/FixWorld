@@ -71,7 +71,11 @@ namespace FixWorld.Diagnostics
             ObserveTexturePaths(mod, contentPath, files);
         }
 
-        internal static void Complete(string source)
+        internal static void Complete(
+            string source,
+            LoadingMeasurement loading,
+            XmlLoadingSnapshot xml,
+            TextureDdsCacheSnapshot ddsCache)
         {
             if (!Enabled)
             {
@@ -93,12 +97,12 @@ namespace FixWorld.Diagnostics
                 BenchmarkReport report = BenchmarkReport.Create(
                     source,
                     PreloaderTimelineState.GetSnapshot(),
-                    LoadingTelemetry.GetMeasurement(),
+                    loading,
                     GetFileDiscoverySnapshot(),
-                    XmlLoadingPipeline.GetSnapshot(),
+                    xml,
                     GetTexturePathSnapshot(),
                     TextureProbe.GetSnapshot(),
-                    TextureDdsCache.GetSnapshot());
+                    ddsCache);
                 report.Write(OutputPath);
                 Log.Message("[FixWorld] Benchmark report written: " + OutputPath);
             }

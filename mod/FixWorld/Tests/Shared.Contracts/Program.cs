@@ -56,6 +56,16 @@ internal static class Program
         CacheSnapshot<string, string, int> original = cache.Snapshot;
 
         cache.Writer.Upsert("b", "two", 2);
+        KeyValuePair<string, CacheEntry<string, int>>[] pending =
+            cache.Writer.SnapshotEntries();
+        Assert(
+            pending.Length == 2,
+            "The writer snapshot omitted an unpublished entry.");
+        pending[0] = default;
+        Assert(
+            cache.Writer.TryGet("a", out CacheEntry<string, int> retained) &&
+            retained.Value == "one",
+            "Changing a writer snapshot changed the cache writer.");
         Assert(original.Count == 1, "A pending write changed a snapshot.");
         Assert(
             ReferenceEquals(cache.Snapshot, original),

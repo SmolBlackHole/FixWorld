@@ -101,6 +101,26 @@ namespace FixWorld.Caching
             }
         }
 
+        public KeyValuePair<TKey, CacheEntry<TValue, TStamp>>[]
+            SnapshotEntries()
+        {
+            lock (sync)
+            {
+                KeyValuePair<TKey, CacheEntry<TValue, TStamp>>[] snapshot =
+                    new KeyValuePair<TKey, CacheEntry<TValue, TStamp>>[
+                        entries.Count];
+                int index = 0;
+                foreach (KeyValuePair<
+                             TKey,
+                             CacheEntry<TValue, TStamp>> entry in entries)
+                {
+                    snapshot[index++] = entry;
+                }
+
+                return snapshot;
+            }
+        }
+
         public CacheSnapshot<TKey, TValue, TStamp> Publish()
         {
             lock (sync)

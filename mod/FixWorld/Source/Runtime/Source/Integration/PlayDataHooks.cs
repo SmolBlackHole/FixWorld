@@ -1,6 +1,6 @@
 using System;
 using System.Reflection;
-using FixWorld.PlayData;
+using FixWorld.Runtime;
 using HarmonyLib;
 using Verse;
 
@@ -10,7 +10,8 @@ namespace FixWorld.Integration
     {
         internal static readonly Type[] PatchTypes =
         {
-            typeof(DoPlayLoadPatch)
+            typeof(DoPlayLoadPatch),
+            typeof(CaptureDeferredWorkPatch)
         };
 
         [HarmonyPatch]
@@ -28,8 +29,21 @@ namespace FixWorld.Integration
             [HarmonyPriority(Priority.First)]
             private static bool Prefix()
             {
-                PlayDataLoadPipeline.Run();
+                RuntimeHost.RunPlayData();
                 return false;
+            }
+        }
+
+        [HarmonyPatch(
+            typeof(LongEventHandler),
+            nameof(LongEventHandler.ExecuteWhenFinished))]
+        private static class CaptureDeferredWorkPatch
+        {
+            [HarmonyPrefix]
+            [HarmonyPriority(Priority.First)]
+            private static bool Prefix(Action action)
+            {
+                return !RuntimeHost.TryCaptureDeferred(action);
             }
         }
     }

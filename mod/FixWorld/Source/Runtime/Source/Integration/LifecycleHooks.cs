@@ -1,11 +1,7 @@
 using System;
-using FixWorld.Lifecycle;
-using FixWorld.Loading;
 using FixWorld.Runtime;
-using FixWorld.Scheduling;
 using HarmonyLib;
 using RimWorld;
-using RimWorld.IO;
 using Verse;
 
 namespace FixWorld.Integration
@@ -16,7 +12,6 @@ namespace FixWorld.Integration
         {
             typeof(RuntimePumpPatch),
             typeof(RuntimeShutdownPatch),
-            typeof(PlayDataReadyPatch),
             typeof(MainMenuReadyPatch),
             typeof(GameEndedPatch)
         };
@@ -27,10 +22,7 @@ namespace FixWorld.Integration
             [HarmonyPrefix]
             private static void Prefix()
             {
-                FixWorldScheduler.BindMainThread();
-                FixWorldScheduler.PumpMainThread();
-                RimWorldLifecycle.ObserveFrame();
-                FixWorldEvents.Pump();
+                RuntimeHost.Pump();
             }
         }
 
@@ -44,27 +36,13 @@ namespace FixWorld.Integration
             }
         }
 
-        [HarmonyPatch(typeof(AbstractFilesystem), nameof(AbstractFilesystem.ClearAllCache))]
-        private static class PlayDataReadyPatch
-        {
-            [HarmonyPostfix]
-            private static void Postfix()
-            {
-                if (!VanillaDelayedActionBridge.IsRunning)
-                {
-                    RimWorldLifecycle.NotifyPlayDataReady(
-                        "play-data-clear-cache");
-                }
-            }
-        }
-
         [HarmonyPatch(typeof(MainMenuDrawer), nameof(MainMenuDrawer.MainMenuOnGUI))]
         private static class MainMenuReadyPatch
         {
             [HarmonyPrefix]
             private static void Prefix()
             {
-                RimWorldLifecycle.NotifyMainMenuReady();
+                RuntimeHost.NotifyMainMenuReady();
             }
         }
 
@@ -74,7 +52,7 @@ namespace FixWorld.Integration
             [HarmonyPostfix]
             private static void Postfix(Game __instance)
             {
-                RimWorldLifecycle.NotifyGameEnded(__instance);
+                RuntimeHost.NotifyGameEnded(__instance);
             }
         }
     }

@@ -211,31 +211,6 @@ namespace FixWorld.Runtime
             }
         }
 
-        internal void MarkFailed(Exception exception)
-        {
-            if (exception == null)
-            {
-                throw new ArgumentNullException(nameof(exception));
-            }
-
-            lock (sync)
-            {
-                if (state == FixWorldRuntimeState.Failed)
-                {
-                    return;
-                }
-
-                if (state != FixWorldRuntimeState.EarlyReady)
-                {
-                    throw InvalidState("fail");
-                }
-
-                failureMessage = FormatFailure(exception);
-                state = FixWorldRuntimeState.Failed;
-                Monitor.PulseAll(sync);
-            }
-        }
-
         private FixWorldRuntimeSnapshot CreateSnapshot()
         {
             return new FixWorldRuntimeSnapshot(

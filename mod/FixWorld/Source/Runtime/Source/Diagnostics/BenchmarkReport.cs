@@ -14,7 +14,7 @@ namespace FixWorld.Diagnostics
     [DataContract]
     internal sealed class BenchmarkReport
     {
-        private const int CurrentSchemaVersion = 8;
+        private const int CurrentSchemaVersion = 9;
 
         [DataMember(Name = "schemaVersion", Order = 1)]
         public int SchemaVersion { get; private set; }
@@ -81,17 +81,11 @@ namespace FixWorld.Diagnostics
                     loading.ObservedMilliseconds,
                     stages,
                     steps,
-                    loading.DelayedActions
-                        .Select(item => new DelayedActionReport(item))
-                        .ToList(),
-                    loading.StaticConstructors
-                        .Select(item => new StaticConstructorReport(item))
-                        .ToList(),
-                    loading.StaticConstructorTailMilliseconds,
-                    loading.Mods.Select(item => new ModLoadingReport(item)).ToList(),
-                    loading.Overhead
-                        .Select(item => new LoadingOverheadReport(item))
-                        .ToList()),
+                    new List<DelayedActionReport>(),
+                    new List<StaticConstructorReport>(),
+                    0.0,
+                    new List<ModLoadingReport>(),
+                    new List<LoadingOverheadReport>()),
                 Xml = new XmlLoadingReport(xml),
                 Files = new FileDiscoveryReport(files),
                 TexturePaths = new TexturePathReport(texturePaths),
@@ -394,15 +388,6 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "maxMs", Order = 6)]
         public double MaxMilliseconds { get; private set; }
 
-        internal DelayedActionReport(DelayedActionSnapshot action)
-        {
-            Method = action.Method;
-            PackageId = action.PackageId;
-            ModName = action.ModName;
-            Calls = action.Calls;
-            TotalMilliseconds = action.TotalMilliseconds;
-            MaxMilliseconds = action.MaxMilliseconds;
-        }
     }
 
     [DataContract]
@@ -429,16 +414,6 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "failures", Order = 7)]
         public long Failures { get; private set; }
 
-        internal StaticConstructorReport(StaticConstructorSnapshot constructor)
-        {
-            TypeName = constructor.TypeName;
-            PackageId = constructor.PackageId;
-            ModName = constructor.ModName;
-            Calls = constructor.Calls;
-            TotalMilliseconds = constructor.TotalMilliseconds;
-            MaxMilliseconds = constructor.MaxMilliseconds;
-            Failures = constructor.Failures;
-        }
     }
 
     [DataContract]
@@ -480,21 +455,6 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "wallMs", Order = 12)]
         public double WallMilliseconds { get; private set; }
 
-        internal ModLoadingReport(ModLoadingMeasurement measurement)
-        {
-            PackageId = measurement.PackageId;
-            ModName = measurement.ModName;
-            Attribution = measurement.Attribution.ToString();
-            Stage = LoadingStageNames.GetName(measurement.Stage);
-            Operation = measurement.Operation.ToString();
-            Calls = measurement.Calls;
-            Failures = measurement.Failures;
-            ExecutionMilliseconds = measurement.ExecutionMilliseconds;
-            MainThreadMilliseconds = measurement.MainThreadMilliseconds;
-            WorkerThreadMilliseconds = measurement.WorkerThreadMilliseconds;
-            WaitMilliseconds = measurement.WaitMilliseconds;
-            WallMilliseconds = measurement.WallMilliseconds;
-        }
     }
 
     [DataContract]
@@ -515,14 +475,6 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "estimated", Order = 5)]
         public bool Estimated { get; private set; }
 
-        internal LoadingOverheadReport(LoadingOverheadMeasurement measurement)
-        {
-            Operation = measurement.Kind.ToString();
-            Calls = measurement.Calls;
-            TotalMilliseconds = measurement.TotalMilliseconds;
-            MaxMilliseconds = measurement.MaxMilliseconds;
-            Estimated = measurement.Estimated;
-        }
     }
 
     [DataContract]

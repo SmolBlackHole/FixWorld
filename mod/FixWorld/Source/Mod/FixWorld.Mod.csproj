@@ -86,6 +86,10 @@
         <PackagePath>Tools\Windows-x64\FixWorld.Runtime.dll</PackagePath>
       </FixWorldPackageFile>
       <FixWorldPackageFile
+        Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\FixWorld.Shared.dll">
+        <PackagePath>Tools\Windows-x64\FixWorld.Shared.dll</PackagePath>
+      </FixWorldPackageFile>
+      <FixWorldPackageFile
         Include="$(MSBuildProjectDirectory)\..\..\Tools\Windows-x64\FixWorld.Tool.exe">
         <PackagePath>Tools\Windows-x64\FixWorld.Tool.exe</PackagePath>
       </FixWorldPackageFile>

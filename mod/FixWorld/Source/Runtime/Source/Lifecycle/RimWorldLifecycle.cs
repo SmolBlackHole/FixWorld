@@ -1,5 +1,5 @@
 using System;
-using FixWorld.Runtime;
+using FixWorld.Events;
 using Verse;
 
 namespace FixWorld.Lifecycle
@@ -33,21 +33,27 @@ namespace FixWorld.Lifecycle
         }
     }
 
-    internal static class RimWorldLifecycle
+    internal sealed class RimWorldLifecycle
     {
-        private static readonly object Sync = new object();
+        private readonly object sync = new object();
+        private readonly EventBus events;
 
-        private static bool playDataReady;
-        private static bool mainMenuPublished;
-        private static bool shuttingDown;
-        private static int gameGeneration;
-        private static Game readyGame;
-        private static string playDataSource;
+        private bool playDataReady;
+        private bool mainMenuPublished;
+        private bool shuttingDown;
+        private int gameGeneration;
+        private Game readyGame;
+        private string playDataSource;
 
-        internal static void NotifyPlayDataReady(string source)
+        internal RimWorldLifecycle(EventBus events)
+        {
+            this.events = events ?? throw new ArgumentNullException(nameof(events));
+        }
+
+        internal void NotifyPlayDataReady(string source)
         {
             RimWorldLifecycleEvent lifecycleEvent;
-            lock (Sync)
+            lock (sync)
             {
                 if (playDataReady || shuttingDown)
                 {
@@ -64,13 +70,13 @@ namespace FixWorld.Lifecycle
                     playDataSource);
             }
 
-            FixWorldEvents.Publish(lifecycleEvent);
+            events.Publish(lifecycleEvent);
         }
 
-        internal static void NotifyMainMenuReady()
+        internal void NotifyMainMenuReady()
         {
             RimWorldLifecycleEvent? lifecycleEvent = null;
-            lock (Sync)
+            lock (sync)
             {
                 if (shuttingDown || !playDataReady || mainMenuPublished)
                 {
@@ -86,14 +92,14 @@ namespace FixWorld.Lifecycle
 
             if (lifecycleEvent.HasValue)
             {
-                FixWorldEvents.Publish(lifecycleEvent.Value);
+                events.Publish(lifecycleEvent.Value);
             }
         }
 
-        internal static void ObserveFrame()
+        internal void ObserveFrame()
         {
             RimWorldLifecycleEvent? lifecycleEvent = null;
-            lock (Sync)
+            lock (sync)
             {
                 if (shuttingDown)
                 {
@@ -114,14 +120,14 @@ namespace FixWorld.Lifecycle
 
             if (lifecycleEvent.HasValue)
             {
-                FixWorldEvents.Publish(lifecycleEvent.Value);
+                events.Publish(lifecycleEvent.Value);
             }
         }
 
-        internal static void NotifyGameEnded(Game game)
+        internal void NotifyGameEnded(Game game)
         {
             RimWorldLifecycleEvent? lifecycleEvent = null;
-            lock (Sync)
+            lock (sync)
             {
                 if (!shuttingDown && ReferenceEquals(readyGame, game))
                 {
@@ -135,14 +141,14 @@ namespace FixWorld.Lifecycle
 
             if (lifecycleEvent.HasValue)
             {
-                FixWorldEvents.Publish(lifecycleEvent.Value);
+                events.Publish(lifecycleEvent.Value);
             }
         }
 
-        internal static void NotifyShuttingDown()
+        internal void NotifyShuttingDown()
         {
             RimWorldLifecycleEvent lifecycleEvent;
-            lock (Sync)
+            lock (sync)
             {
                 if (shuttingDown)
                 {
@@ -156,10 +162,10 @@ namespace FixWorld.Lifecycle
                     "root-shutdown");
             }
 
-            FixWorldEvents.Publish(lifecycleEvent);
+            events.Publish(lifecycleEvent);
         }
 
-        private static bool CanPublishGameReady()
+        private bool CanPublishGameReady()
         {
             Game game = Current.Game;
             return playDataReady &&
@@ -170,7 +176,7 @@ namespace FixWorld.Lifecycle
                    !LongEventHandler.AnyEventNowOrWaiting;
         }
 
-        private static RimWorldLifecycleEvent CreateEvent(
+        private RimWorldLifecycleEvent CreateEvent(
             RimWorldLifecycleEventKind kind,
             Game game,
             string source)

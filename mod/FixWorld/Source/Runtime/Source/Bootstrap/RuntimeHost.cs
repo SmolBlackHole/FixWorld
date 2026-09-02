@@ -1,12 +1,10 @@
 using System;
 using System.IO;
+using System.Threading;
 using FixWorld.Diagnostics;
 using FixWorld.Integration;
-using FixWorld.Lifecycle;
-using FixWorld.Loading;
+using FixWorld.PlayData;
 using FixWorld.Preloader;
-using FixWorld.Scheduling;
-using FixWorld.Textures;
 using Verse;
 
 namespace FixWorld.Runtime
@@ -14,16 +12,18 @@ namespace FixWorld.Runtime
     internal static class RuntimeHost
     {
         private static readonly object Sync = new object();
+        private static RuntimeContext current;
 
-        private static IDisposable lifecycleSubscription;
-        private static bool earlyReady;
-        private static bool modBootReady;
+        internal static RuntimeContext Current =>
+            Volatile.Read(ref current) ??
+            throw new InvalidOperationException(
+                "FixWorld.Runtime has not been started.");
 
         internal static void StartEarly()
         {
             lock (Sync)
             {
-                if (earlyReady)
+                if (current != null)
                 {
                     return;
                 }
@@ -31,198 +31,99 @@ namespace FixWorld.Runtime
                 RemoveLegacyModAssembly();
                 PreloaderTimelineSnapshot timeline =
                     PreloaderTimelineState.Capture();
-                FixWorldScheduler.Initialize(ReportMainThreadError);
-                FixWorldEvents.Initialize();
+                RuntimeContext created = new RuntimeContext();
                 try
                 {
-                    if (!RimWorldHooks.InstallPlayData())
+                    Volatile.Write(ref current, created);
+                    if (!RimWorldHooks.InstallBootstrap(
+                            BenchmarkRecorder.Enabled))
                     {
                         throw new InvalidOperationException(
-                            "FixWorld.Runtime could not install its play-data hook.");
+                            "FixWorld.Runtime could not install its hooks.");
                     }
                 }
                 catch
                 {
+                    Volatile.Write(ref current, null);
                     RimWorldHooks.Uninstall();
-                    FixWorldScheduler.Shutdown();
-                    FixWorldEvents.Shutdown();
+                    created.Dispose();
                     throw;
                 }
 
-                earlyReady = true;
                 Log.Message(
-                    "[FixWorld.Runtime] Early infrastructure ready; workers=" +
-                    FixWorldScheduler.WorkerCount + ".");
+                    "[FixWorld.Runtime] Runtime context ready; workers=" +
+                    created.WorkerCount + ".");
                 Log.Message(
                     "[FixWorld.Runtime] Early timeline; " +
                     PreloaderTimelineState.Format(timeline) + ".");
             }
         }
 
-        internal static bool BeginModBoot()
-        {
-            lock (Sync)
-            {
-                if (modBootReady)
-                {
-                    return true;
-                }
-
-                if (!earlyReady)
-                {
-                    throw new InvalidOperationException(
-                        "FixWorld.Runtime is not early-ready.");
-                }
-
-                try
-                {
-                    LoadingSession.Start();
-                    LoadingTelemetry.Start(BenchmarkRecorder.Enabled);
-                    lifecycleSubscription =
-                        FixWorldEvents.Subscribe<RimWorldLifecycleEvent>(
-                            ConsumeLifecycleEvent);
-                    if (!RimWorldHooks.InstallRuntime(
-                            BenchmarkRecorder.Enabled))
-                    {
-                        throw new InvalidOperationException(
-                            "FixWorld.Runtime could not install its runtime hooks.");
-                    }
-                }
-                catch (Exception exception)
-                {
-                    lifecycleSubscription?.Dispose();
-                    lifecycleSubscription = null;
-                    RimWorldHooks.Uninstall();
-                    FixWorldScheduler.Shutdown();
-                    FixWorldEvents.Shutdown();
-                    FixWorldRuntime.Fail(exception);
-                    Log.Error(
-                        "[FixWorld.Runtime] Mod-boot initialization failed; " +
-                        "RimWorld will use its original loader: " + exception);
-                    return false;
-                }
-
-                modBootReady = true;
-                Log.Message(
-                    "[FixWorld.Runtime] Runtime hooks installed before mod boot; " +
-                    "benchmark=" + BenchmarkRecorder.Enabled + ".");
-                return true;
-            }
-        }
-
         internal static void AttachMod(
             RuntimeModAttachmentSnapshot attachment)
         {
-            if (attachment == null)
-            {
-                throw new ArgumentNullException(nameof(attachment));
-            }
-
-            TextureDdsCache.Initialize(
-                attachment.Content.RootDir,
-                attachment.Settings.DdsCacheMaxGiB);
+            Current.AttachMod(attachment);
             Log.Message(
                 "[FixWorld.Runtime] Normal mod attached; assembly=FixWorld.Mod, " +
-                "hooks=True, workers=" +
-                FixWorldScheduler.WorkerCount + ".");
+                "workers=" + Current.WorkerCount + ".");
+        }
+
+        internal static void RunPlayData()
+        {
+            Current.PlayData.Load();
+        }
+
+        internal static bool ActivateRuntimeHooks()
+        {
+            return Volatile.Read(ref current) != null &&
+                   RimWorldHooks.InstallRuntime();
+        }
+
+        internal static bool TryCaptureDeferred(Action action)
+        {
+            RuntimeContext context = Volatile.Read(ref current);
+            return context != null && context.DeferredWork.TryCapture(action);
+        }
+
+        internal static bool TryGetLoadingSnapshot(
+            out PlayDataLoadingSnapshot snapshot)
+        {
+            RuntimeContext context = Volatile.Read(ref current);
+            if (context == null)
+            {
+                snapshot = default;
+                return false;
+            }
+
+            return context.Loading.TryGetSnapshot(out snapshot);
+        }
+
+        internal static void Pump()
+        {
+            Volatile.Read(ref current)?.Pump();
+        }
+
+        internal static void NotifyMainMenuReady()
+        {
+            Volatile.Read(ref current)?.Lifecycle.NotifyMainMenuReady();
+        }
+
+        internal static void NotifyGameEnded(Game game)
+        {
+            Volatile.Read(ref current)?.Lifecycle.NotifyGameEnded(game);
         }
 
         internal static void Shutdown()
         {
-            try
+            RuntimeContext stopped;
+            lock (Sync)
             {
-                RimWorldLifecycle.NotifyShuttingDown();
-                FixWorldEvents.Pump();
-            }
-            catch (Exception exception)
-            {
-                Log.Error(
-                    "[FixWorld.Runtime] Could not publish shutdown lifecycle: " +
-                    exception);
-            }
-
-            lifecycleSubscription?.Dispose();
-            lifecycleSubscription = null;
-
-            bool workersStopped;
-            try
-            {
-                workersStopped = FixWorldScheduler.Shutdown();
-            }
-            catch (Exception exception)
-            {
-                workersStopped = false;
-                Log.Error(
-                    "[FixWorld.Runtime] Scheduler shutdown failed: " + exception);
-            }
-
-            if (workersStopped)
-            {
-                try
-                {
-                    TextureDdsCache.Shutdown();
-                }
-                catch (Exception exception)
-                {
-                    Log.Error(
-                        "[FixWorld.Runtime] DDS shutdown failed: " + exception);
-                }
-            }
-            else
-            {
-                Log.Warning(
-                    "[FixWorld.Runtime] Scheduler workers did not stop within " +
-                    "two seconds; DDS resources remain open until process exit.");
-            }
-
-            try
-            {
-                FixWorldEvents.Shutdown();
-            }
-            catch (Exception exception)
-            {
-                Log.Error(
-                    "[FixWorld.Runtime] Event bus shutdown failed: " + exception);
+                stopped = current;
+                current = null;
             }
 
             RimWorldHooks.Uninstall();
-        }
-
-        private static void ConsumeLifecycleEvent(
-            RimWorldLifecycleEvent lifecycleEvent)
-        {
-            switch (lifecycleEvent.Kind)
-            {
-                case RimWorldLifecycleEventKind.PlayDataReady:
-                    TextureDdsCache.Complete();
-                    break;
-                case RimWorldLifecycleEventKind.MainMenuReady:
-                    if (CompleteStartup(lifecycleEvent.Source))
-                    {
-                        Log.Message("[FixWorld] Main menu ready.");
-                    }
-
-                    TextureDdsCache.StartDeferredBuild();
-                    break;
-                case RimWorldLifecycleEventKind.GameReady:
-                    CompleteStartup(lifecycleEvent.Source);
-                    TextureDdsCache.StartDeferredBuild();
-                    Log.Message(
-                        "[FixWorld] Game ready; generation=" +
-                        lifecycleEvent.GameGeneration + ".");
-                    break;
-                case RimWorldLifecycleEventKind.ShuttingDown:
-                    break;
-            }
-        }
-
-        private static void ReportMainThreadError(
-            string name,
-            Exception exception)
-        {
-            Log.Error(
-                "[FixWorld.Runtime] Main-thread action failed (" + name +
-                "): " + exception);
+            stopped?.Dispose();
         }
 
         private static void RemoveLegacyModAssembly()
@@ -270,18 +171,6 @@ namespace FixWorld.Runtime
                 Log.Message(
                     "[FixWorld.Runtime] Removed the superseded FixWorld.dll.");
             }
-        }
-
-        private static bool CompleteStartup(string source)
-        {
-            if (!LoadingSession.TryComplete())
-            {
-                return false;
-            }
-
-            LoadingTelemetry.Complete();
-            BenchmarkRecorder.Complete(source);
-            return true;
         }
     }
 }

@@ -21,7 +21,9 @@ from rimworld_process import is_rimworld_running, launch, select_monitor
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_GAME_ROOT = Path(r"D:\SteamLibrary\steamapps\common\RimWorld")
 FIXTURE_ID = "spoon-spring-v1-fixworld"
-FIXTURE_CONFIG = ROOT / "data" / "benchmarks" / "saves" / "spoon-spring-v1-ModsConfig.xml"
+FIXTURE_CONFIG = (
+    ROOT / "data" / "benchmarks" / "saves" / "spoon-spring-v1-ModsConfig.xml"
+)
 RESULT_FIELDS: tuple[str, ...] = (
     "id",
     "track",
@@ -303,7 +305,7 @@ def wait_for_json_file(
 
 def validate_report(raw: object) -> BenchmarkReport:
     report = _string_dict(raw, "benchmark report")
-    if report.get("schemaVersion") != 8:
+    if report.get("schemaVersion") != 9:
         raise RuntimeError(
             f"Unsupported benchmark schema: {report.get('schemaVersion')!r}"
         )
@@ -312,7 +314,7 @@ def validate_report(raw: object) -> BenchmarkReport:
         raise RuntimeError("Benchmark report contains invalid preloader measurements.")
     completion = _string_dict(report.get("completion"), "completion")
     loader = _string_dict(report.get("loader"), "loader")
-    if completion.get("source") != "staged-runner+main-menu-draw":
+    if completion.get("source") != "fixworld-play-data-pipeline+main-menu-draw":
         raise RuntimeError(f"Unexpected completion data: {completion!r}")
     stages = _object_list(loader.get("stages"))
     steps = _object_list(loader.get("steps"))
@@ -325,11 +327,9 @@ def validate_report(raw: object) -> BenchmarkReport:
         stages is None
         or len(stages) != 6
         or steps is None
-        or not steps
+        or len(steps) != 15
         or delayed_actions is None
-        or not delayed_actions
         or static_constructors is None
-        or not static_constructors
         or not isinstance(static_constructor_tail, (int, float))
         or mods is None
         or overhead is None

@@ -38,10 +38,10 @@ namespace FixWorld.Textures
         {
             this.cacheRoot = cacheRoot;
             this.cacheIdentity = cacheIdentity;
-            CacheRuntime<
+            SnapshotCache<
                 string,
                 TextureCacheArtifact,
-                TextureCacheFingerprint> cache = new CacheRuntime<
+                TextureCacheFingerprint> cache = new SnapshotCache<
                     string,
                     TextureCacheArtifact,
                     TextureCacheFingerprint>(entries, StringComparer.Ordinal);
@@ -203,7 +203,7 @@ namespace FixWorld.Textures
             ISet<string> retainedSourcePaths)
         {
             string normalizedPackageId = TextureCacheIdentity.Normalize(packageId);
-            string[] keys = writer.Enumerate()
+            string[] keys = writer.SnapshotEntries()
                 .Where(pair =>
                     string.Equals(
                         pair.Value.Value.PackageId,
@@ -222,7 +222,7 @@ namespace FixWorld.Textures
 
         internal int RemoveInactivePackages(ISet<string> activePackageIds)
         {
-            string[] keys = writer.Enumerate()
+            string[] keys = writer.SnapshotEntries()
                 .Where(pair =>
                     !activePackageIds.Contains(pair.Value.Value.PackageId))
                 .Select(pair => pair.Key)
@@ -238,7 +238,7 @@ namespace FixWorld.Textures
         internal int SweepOrphans()
         {
             HashSet<string> retainedFiles = new HashSet<string>(
-                writer.Enumerate()
+                writer.SnapshotEntries()
                     .Select(pair => pair.Value.Value.CachePath)
                     .Select(path => TryResolveCachePath(cacheRoot, path, out string resolved)
                         ? resolved
@@ -295,7 +295,7 @@ namespace FixWorld.Textures
             foreach (KeyValuePair<
                          string,
                          CacheEntry<TextureCacheArtifact, TextureCacheFingerprint>> pair in
-                     writer.Enumerate()
+                     writer.SnapshotEntries()
                          .OrderBy(item => item.Value.Value.LastUsedUtcTicks)
                          .ToArray())
             {
@@ -331,7 +331,7 @@ namespace FixWorld.Textures
                 CacheIdentity = cacheIdentity,
                 WrittenUtcTicks = DateTime.UtcNow.Ticks,
                 TotalBytes = currentBytes,
-                Entries = writer.Enumerate()
+                Entries = writer.SnapshotEntries()
                     .Select(ToDocumentEntry)
                     .OrderBy(entry => entry.PackageId, StringComparer.Ordinal)
                     .ThenBy(entry => entry.SourcePath, StringComparer.Ordinal)

@@ -23,8 +23,9 @@ namespace FixWorld.Textures
         private readonly TextureDdsCacheBuilder builder;
         private readonly TextureDdsCacheMetrics metrics;
         private readonly int workerCount;
-        private readonly List<ScheduledJobHandle> jobs =
-            new List<ScheduledJobHandle>();
+        private readonly JobScheduler scheduler;
+        private readonly MainThreadQueue mainThread;
+        private readonly List<JobHandle> jobs = new List<JobHandle>();
 
         private IReadOnlyList<TextureCacheEntry> pendingDeferredBuild =
             Array.Empty<TextureCacheEntry>();
@@ -35,12 +36,18 @@ namespace FixWorld.Textures
             TextureCacheStore store,
             TextureDdsCacheBuilder builder,
             TextureDdsCacheMetrics metrics,
-            int workerCount)
+            int workerCount,
+            JobScheduler scheduler,
+            MainThreadQueue mainThread)
         {
             this.store = store;
             this.builder = builder;
             this.metrics = metrics;
             this.workerCount = workerCount;
+            this.scheduler = scheduler ??
+                throw new ArgumentNullException(nameof(scheduler));
+            this.mainThread = mainThread ??
+                throw new ArgumentNullException(nameof(mainThread));
         }
 
         internal void Queue(IReadOnlyList<TextureCacheEntry> entries)
@@ -80,54 +87,50 @@ namespace FixWorld.Textures
                 entries);
             int parallelism = Math.Max(
                 1,
-                Math.Min(workerCount, FixWorldScheduler.WorkerCount));
+                Math.Min(workerCount, scheduler.WorkerCount));
 
             if (entries.Count == 0)
             {
-                Track(FixWorldScheduler.Schedule(
-                    new SchedulerJob<DeferredTextureCacheReport>(
+                Track(scheduler.Schedule(
+                    new Job<DeferredTextureCacheReport>(
                         "dds/maintenance/" + buildIdentity,
-                        "Clean deferred DDS cache",
-                        SchedulerJobLifetime.Background,
-                        SchedulerJobPriority.Low,
-                        SchedulerResourceClass.Io,
                         cancellationToken => RunDeferredMaintenance(
                             buildIdentity,
                             backgroundStartedAt,
                             cancellationToken),
+                        name: "Clean deferred DDS cache",
+                        lifetime: JobLifetime.Background,
+                        priority: JobPriority.Low,
+                        resourceClass: JobResourceClass.Io,
                         concurrencyKey: "dds-cache-writer",
                         maxConcurrency: 1)));
                 return;
             }
 
-            ScheduledJobHandle<CacheBuildPreparation>[] preparations =
-                new ScheduledJobHandle<CacheBuildPreparation>[batches.Length];
+            JobHandle<CacheBuildPreparation>[] preparations =
+                new JobHandle<CacheBuildPreparation>[batches.Length];
             for (int batchIndex = 0; batchIndex < batches.Length; batchIndex++)
             {
                 TextureCacheEntry[] batch = batches[batchIndex];
                 long estimatedBytes = batch.Sum(entry =>
                     Math.Max(0L, entry.EstimatedCacheBytes));
-                preparations[batchIndex] = Track(FixWorldScheduler.Schedule(
-                    new SchedulerJob<CacheBuildPreparation>(
+                preparations[batchIndex] = Track(scheduler.Schedule(
+                    new Job<CacheBuildPreparation>(
                         "dds/prepare/" + buildIdentity + "/" + batchIndex,
-                        "Build DDS for " + batch[0].PackageId,
-                        SchedulerJobLifetime.Background,
-                        SchedulerJobPriority.Low,
-                        SchedulerResourceClass.Mixed,
                         cancellationToken =>
                             builder.Prepare(batch, cancellationToken),
+                        name: "Build DDS for " + batch[0].PackageId,
+                        lifetime: JobLifetime.Background,
+                        priority: JobPriority.Low,
+                        resourceClass: JobResourceClass.Mixed,
                         estimatedBytes: estimatedBytes,
                         concurrencyKey: "dds-build",
                         maxConcurrency: parallelism)));
             }
 
-            Track(FixWorldScheduler.Schedule(
-                new SchedulerJob<DeferredTextureCacheReport>(
+            Track(scheduler.Schedule(
+                new Job<DeferredTextureCacheReport>(
                     "dds/publish/" + buildIdentity,
-                    "Publish deferred DDS cache",
-                    SchedulerJobLifetime.Background,
-                    SchedulerJobPriority.Low,
-                    SchedulerResourceClass.Io,
                     cancellationToken => RunDeferredBuild(
                         entries,
                         batches,
@@ -135,14 +138,18 @@ namespace FixWorld.Textures
                         buildIdentity,
                         backgroundStartedAt,
                         cancellationToken),
-                    dependencies: preparations,
+                    name: "Publish deferred DDS cache",
+                    lifetime: JobLifetime.Background,
+                    priority: JobPriority.Low,
+                    resourceClass: JobResourceClass.Io,
+                    dependencies: preparations.Cast<JobHandle>().ToArray(),
                     concurrencyKey: "dds-cache-writer",
                     maxConcurrency: 1)));
         }
 
         internal bool Shutdown()
         {
-            ScheduledJobHandle[] scheduled;
+            JobHandle[] scheduled;
             lock (sync)
             {
                 stopped = true;
@@ -150,9 +157,9 @@ namespace FixWorld.Textures
                 scheduled = jobs.ToArray();
             }
 
-            foreach (ScheduledJobHandle handle in scheduled)
+            foreach (JobHandle handle in scheduled)
             {
-                FixWorldScheduler.Cancel(handle);
+                scheduler.Cancel(handle);
             }
 
             using (CancellationTokenSource timeout =
@@ -160,7 +167,7 @@ namespace FixWorld.Textures
             {
                 try
                 {
-                    foreach (ScheduledJobHandle handle in scheduled)
+                    foreach (JobHandle handle in scheduled)
                     {
                         if (!handle.IsTerminal)
                         {
@@ -178,13 +185,13 @@ namespace FixWorld.Textures
         }
 
         private THandle Track<THandle>(THandle handle)
-            where THandle : ScheduledJobHandle
+            where THandle : JobHandle
         {
             lock (sync)
             {
                 if (stopped)
                 {
-                    FixWorldScheduler.Cancel(handle);
+                    scheduler.Cancel(handle);
                 }
                 else
                 {
@@ -247,7 +254,7 @@ namespace FixWorld.Textures
         private DeferredTextureCacheReport RunDeferredBuild(
             IReadOnlyList<TextureCacheEntry> entries,
             IReadOnlyList<TextureCacheEntry[]> batches,
-            IReadOnlyList<ScheduledJobHandle<CacheBuildPreparation>> preparations,
+            IReadOnlyList<JobHandle<CacheBuildPreparation>> preparations,
             string buildIdentity,
             long backgroundStartedAt,
             CancellationToken cancellationToken)
@@ -318,7 +325,7 @@ namespace FixWorld.Textures
                         backgroundMilliseconds,
                         Math.Max(1, Math.Min(
                             workerCount,
-                            FixWorldScheduler.WorkerCount)),
+                            scheduler.WorkerCount)),
                         removedOrphans);
                 string reportError = WriteDeferredReport(report);
                 QueueDeferredCompletionLog(
@@ -356,7 +363,7 @@ namespace FixWorld.Textures
                 GetElapsedMilliseconds(backgroundStartedAt),
                 Math.Max(1, Math.Min(
                     workerCount,
-                    FixWorldScheduler.WorkerCount)),
+                    scheduler.WorkerCount)),
                 removedOrphans);
         }
 
@@ -391,7 +398,7 @@ namespace FixWorld.Textures
             }
         }
 
-        private static void QueueDeferredCompletionLog(
+        private void QueueDeferredCompletionLog(
             string buildIdentity,
             DeferredTextureCacheReport report,
             IReadOnlyList<string> warnings,
@@ -400,7 +407,7 @@ namespace FixWorld.Textures
         {
             try
             {
-                FixWorldScheduler.Post(
+                mainThread.Post(
                     "Report deferred DDS cache",
                     () =>
                     {
