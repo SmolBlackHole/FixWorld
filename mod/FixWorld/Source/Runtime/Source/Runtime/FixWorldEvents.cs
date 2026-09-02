@@ -1,8 +1,11 @@
+extern alias FixWorldShared;
+
 using System;
 using System.Threading;
 using FixWorld.Lifecycle;
 using FixWorld.Loading;
 using Verse;
+using SharedEvents = FixWorldShared::FixWorld.Events;
 
 namespace FixWorld.Runtime
 {
@@ -12,7 +15,7 @@ namespace FixWorld.Runtime
         private const int MaximumLifecycleEventsPerPump = 64;
         private static readonly object Sync = new object();
 
-        private static FixWorldEventBus bus;
+        private static SharedEvents.EventBus bus;
         private static bool stopped;
 
         internal static void Initialize()
@@ -29,15 +32,17 @@ namespace FixWorld.Runtime
                     throw new ObjectDisposedException(nameof(FixWorldEvents));
                 }
 
-                FixWorldEventBus created = new FixWorldEventBus();
+                SharedEvents.EventBus created = new SharedEvents.EventBus();
                 created.Register<LoadingStageEvent>(
                     MaximumLoadingEventsPerPump,
                     exception => Log.Error(
-                        "[FixWorld] Loading event subscriber failed: " + exception));
+                        "[FixWorld] Loading event subscriber failed: " +
+                        exception));
                 created.Register<RimWorldLifecycleEvent>(
                     MaximumLifecycleEventsPerPump,
                     exception => Log.Error(
-                        "[FixWorld] Lifecycle event subscriber failed: " + exception));
+                        "[FixWorld] Lifecycle event subscriber failed: " +
+                        exception));
                 Volatile.Write(ref bus, created);
             }
         }
@@ -64,7 +69,7 @@ namespace FixWorld.Runtime
 
         internal static void Shutdown()
         {
-            FixWorldEventBus current;
+            SharedEvents.EventBus current;
             lock (Sync)
             {
                 if (stopped)
@@ -80,7 +85,7 @@ namespace FixWorld.Runtime
             current?.Dispose();
         }
 
-        private static FixWorldEventBus RequireBus()
+        private static SharedEvents.EventBus RequireBus()
         {
             return Volatile.Read(ref bus) ??
                    throw new InvalidOperationException(
