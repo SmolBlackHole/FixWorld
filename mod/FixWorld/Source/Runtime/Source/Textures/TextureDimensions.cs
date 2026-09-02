@@ -31,7 +31,7 @@ namespace FixWorld.Textures
             return false;
         }
 
-        internal int GetBc3MipCount()
+        internal int GetBlockCompressedMipCount()
         {
             int minimumDimension = Math.Min(Width, Height);
             if (minimumDimension <= 16 || Width % 4 != 0 || Height % 4 != 0)
@@ -53,9 +53,9 @@ namespace FixWorld.Textures
             return Math.Min(supportedMipCount, requestedMipCount);
         }
 
-        internal long GetBc3FileSize(int mipCount)
+        internal long GetBc7FileSize(int mipCount)
         {
-            const int ddsHeaderBytes = 128;
+            const int ddsHeaderBytes = 148;
             long bytes = ddsHeaderBytes;
             int mipWidth = Width;
             int mipHeight = Height;

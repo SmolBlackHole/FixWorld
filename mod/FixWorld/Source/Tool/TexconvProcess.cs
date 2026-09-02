@@ -66,7 +66,7 @@ namespace FixWorld.ExternalTools
             string executablePath,
             string outputDirectory,
             IReadOnlyList<string> inputPaths,
-            int mipCount,
+            TexconvOptions options,
             CancellationToken cancellationToken)
         {
             if (!File.Exists(executablePath))
@@ -83,9 +83,9 @@ namespace FixWorld.ExternalTools
                     nameof(inputPaths));
             }
 
-            if (mipCount < 0)
+            if (options == null)
             {
-                throw new ArgumentOutOfRangeException(nameof(mipCount));
+                throw new ArgumentNullException(nameof(options));
             }
 
             string resolvedOutput = Path.GetFullPath(outputDirectory);
@@ -116,7 +116,7 @@ namespace FixWorld.ExternalTools
                     Path.GetFullPath(executablePath),
                     resolvedOutput,
                     fileListPath,
-                    mipCount,
+                    options,
                     cancellationToken);
             }
             finally
@@ -129,7 +129,7 @@ namespace FixWorld.ExternalTools
             string executablePath,
             string outputDirectory,
             string fileListPath,
-            int mipCount,
+            TexconvOptions options,
             CancellationToken cancellationToken)
         {
             ProcessStartInfo startInfo = new ProcessStartInfo
@@ -138,7 +138,7 @@ namespace FixWorld.ExternalTools
                 Arguments = BuildArguments(
                     outputDirectory,
                     fileListPath,
-                    mipCount),
+                    options),
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
@@ -195,15 +195,45 @@ namespace FixWorld.ExternalTools
         private static string BuildArguments(
             string outputDirectory,
             string fileListPath,
-            int mipCount)
+            TexconvOptions options)
         {
-            // RimWorld creates DDS textures with linear:false. Preserve the
-            // encoded source values so Unity performs the single sRGB decode.
-            return "-nologo -y --single-proc --ignore-srgb -vflip " +
-                   "-f BC3_UNORM -m " +
-                   mipCount.ToString(CultureInfo.InvariantCulture) +
-                   " -o " + Quote(outputDirectory) +
-                   " --file-list " + Quote(fileListPath);
+            StringBuilder arguments = new StringBuilder("-nologo");
+            if (options.Overwrite)
+            {
+                arguments.Append(" -y");
+            }
+
+            if (options.SingleProcess)
+            {
+                arguments.Append(" --single-proc");
+            }
+
+            if (options.IgnoreSrgb)
+            {
+                arguments.Append(" --ignore-srgb");
+            }
+
+            if (options.FlipVertical)
+            {
+                arguments.Append(" -vflip");
+            }
+
+            if (options.GpuAdapter.HasValue)
+            {
+                arguments.Append(" -gpu ")
+                    .Append(options.GpuAdapter.Value.ToString(
+                        CultureInfo.InvariantCulture));
+            }
+
+            arguments.Append(" -f ")
+                .Append(options.Format)
+                .Append(" -m ")
+                .Append(options.MipCount.ToString(CultureInfo.InvariantCulture))
+                .Append(" -o ")
+                .Append(Quote(outputDirectory))
+                .Append(" --file-list ")
+                .Append(Quote(fileListPath));
+            return arguments.ToString();
         }
 
         private static void TryLowerPriority(Process process)
@@ -304,6 +334,59 @@ namespace FixWorld.ExternalTools
             {
             }
         }
+    }
+
+    internal sealed class TexconvOptions
+    {
+        internal TexconvOptions(
+            string format,
+            int mipCount,
+            bool flipVertical = true,
+            bool ignoreSrgb = true,
+            bool overwrite = true,
+            bool singleProcess = true,
+            int? gpuAdapter = null)
+        {
+            if (string.IsNullOrWhiteSpace(format) ||
+                format.Any(char.IsWhiteSpace))
+            {
+                throw new ArgumentException(
+                    "A texconv format must be a single token.",
+                    nameof(format));
+            }
+
+            if (mipCount < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(mipCount));
+            }
+
+            if (gpuAdapter < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(gpuAdapter));
+            }
+
+            Format = format;
+            MipCount = mipCount;
+            FlipVertical = flipVertical;
+            IgnoreSrgb = ignoreSrgb;
+            Overwrite = overwrite;
+            SingleProcess = singleProcess;
+            GpuAdapter = gpuAdapter;
+        }
+
+        internal string Format { get; }
+
+        internal int MipCount { get; }
+
+        internal bool FlipVertical { get; }
+
+        internal bool IgnoreSrgb { get; }
+
+        internal bool Overwrite { get; }
+
+        internal bool SingleProcess { get; }
+
+        internal int? GpuAdapter { get; }
     }
 
     internal readonly struct TexconvProcessResult

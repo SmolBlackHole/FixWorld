@@ -108,6 +108,8 @@ namespace FixWorld.PlayData
                     return LoadingStep.ResetPlayData;
                 case PlayDataLoadStage.InitializeMods:
                     return LoadingStep.InitializeMods;
+                case PlayDataLoadStage.IndexModContent:
+                    return LoadingStep.IndexModContent;
                 case PlayDataLoadStage.PrepareModContent:
                     return LoadingStep.PrepareModContent;
                 case PlayDataLoadStage.CreateModClasses:

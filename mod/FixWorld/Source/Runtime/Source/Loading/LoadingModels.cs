@@ -17,6 +17,7 @@ namespace FixWorld.Loading
     {
         ResetPlayData,
         InitializeMods,
+        IndexModContent,
         PrepareModContent,
         CreateModClasses,
         LoadAndPatchXml,

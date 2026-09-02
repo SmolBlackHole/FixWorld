@@ -1,14 +1,34 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Xml;
+using FixWorld.Content;
+using FixWorld.Textures;
 using Verse;
 
 namespace FixWorld.PlayData
 {
     internal sealed class ModLoadingPipeline
     {
+        private const string FixWorldPackageId = "smolblackhole.fixworld";
+        private const float DefaultDdsCacheMaxGiB = 6.0f;
+
+        private readonly ModFileIndex files;
+        private readonly TextureDdsCache textures;
+
+        internal ModLoadingPipeline(
+            ModFileIndex files,
+            TextureDdsCache textures)
+        {
+            this.files = files ?? throw new ArgumentNullException(nameof(files));
+            this.textures = textures ??
+                throw new ArgumentNullException(nameof(textures));
+        }
+
         internal void Reset()
         {
+            files.Clear();
+            textures.BeginIndex();
             Profile("XmlInheritance.Clear()", XmlInheritance.Clear);
         }
 
@@ -27,6 +47,25 @@ namespace FixWorld.PlayData
         internal void CreateModClasses()
         {
             Profile("CreateModClasses()", LoadedModManager.CreateModClasses);
+        }
+
+        internal void IndexContent()
+        {
+            ModContentPack fixWorld = LoadedModManager
+                .RunningModsListForReading
+                .FirstOrDefault(mod => string.Equals(
+                    mod.PackageId,
+                    FixWorldPackageId,
+                    StringComparison.OrdinalIgnoreCase));
+            if (fixWorld != null)
+            {
+                textures.Attach(
+                    fixWorld.RootDir,
+                    DefaultDdsCacheMaxGiB);
+            }
+
+            files.Rebuild(LoadedModManager.RunningModsListForReading);
+            textures.Prepare(files);
         }
 
         internal ModXmlState LoadAndPatchXml()

@@ -2,10 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
-using FixWorld.Diagnostics;
 using FixWorld.Runtime;
-using FixWorld.Textures;
 using HarmonyLib;
+using UnityEngine;
 using Verse;
 
 namespace FixWorld.Integration
@@ -14,19 +13,15 @@ namespace FixWorld.Integration
     {
         internal static readonly Type[] PatchTypes =
         {
-            typeof(ModFileLoaderPatch)
+            typeof(ModFileIndexPatch),
+            typeof(TextureContentPatch)
         };
 
         [HarmonyPatch(
             typeof(ModContentPack),
             nameof(ModContentPack.GetAllFilesForMod))]
-        private static class ModFileLoaderPatch
+        private static class ModFileIndexPatch
         {
-            private static readonly MethodBase PatchedMethod = AccessTools.Method(
-                typeof(ModContentPack),
-                nameof(ModContentPack.GetAllFilesForMod));
-            private static bool foreignPatchReported;
-
             [HarmonyPrefix]
             [HarmonyPriority(Priority.Last)]
             private static bool Prefix(
@@ -34,105 +29,48 @@ namespace FixWorld.Integration
                 string contentPath,
                 Func<string, bool> validateExtension,
                 List<string> foldersToLoadDebug,
-                ref Dictionary<string, FileInfo> __result,
-                out ModFileLoadState __state)
+                ref Dictionary<string, FileInfo> __result)
             {
-                __state = new ModFileLoadState(
-                    BenchmarkRecorder.BeginFileDiscovery());
-                if (HasForeignPatches())
-                {
-                    ReportForeignPatchFallback();
-                    return true;
-                }
-
                 try
                 {
-                    long discoveryStartedAt = __state.DiscoveryStartedAt;
-                    __result = ModFileLoader.Discover(
+                    __result = RuntimeHost.Current.ModFiles.GetFiles(
                         mod,
                         contentPath,
                         validateExtension,
                         foldersToLoadDebug);
-
-                    BenchmarkRecorder.ObserveFiles(
-                        discoveryStartedAt,
-                        mod,
-                        contentPath,
-                        __result);
-                    RuntimeHost.Current.Textures.Apply(
-                        mod,
-                        contentPath,
-                        foldersToLoadDebug,
-                        __result);
-                    __state.OwnedByFixWorld = true;
                     return false;
                 }
                 catch (Exception exception)
                 {
                     Log.Warning(
-                        "[FixWorld] File discovery fell back to RimWorld for " +
-                        mod.PackageId + ": " + exception);
+                        "[FixWorld] Indexed file lookup fell back to RimWorld " +
+                        "for " + mod.PackageId + ": " + exception);
                     return true;
                 }
             }
+        }
 
-            [HarmonyPostfix]
-            private static void Postfix(
-                ModFileLoadState __state,
+        [HarmonyPatch]
+        private static class TextureContentPatch
+        {
+            private static MethodBase TargetMethod()
+            {
+                return AccessTools.Method(
+                    typeof(ModContentLoader<Texture2D>),
+                    nameof(ModContentLoader<Texture2D>.LoadAllForMod));
+            }
+
+            [HarmonyPrefix]
+            [HarmonyPriority(Priority.Last)]
+            private static bool Prefix(
                 ModContentPack mod,
-                string contentPath,
-                List<string> foldersToLoadDebug,
-                Dictionary<string, FileInfo> __result)
+                ref IEnumerable<Pair<
+                    string,
+                    LoadedContentItem<Texture2D>>> __result)
             {
-                if (__state.OwnedByFixWorld)
-                {
-                    return;
-                }
-
-                BenchmarkRecorder.ObserveFiles(
-                    __state.DiscoveryStartedAt,
-                    mod,
-                    contentPath,
-                    __result);
-                RuntimeHost.Current.Textures.Apply(
-                    mod,
-                    contentPath,
-                    foldersToLoadDebug,
-                    __result);
-            }
-
-            private static bool HasForeignPatches()
-            {
-                return HarmonyPatchInspector.Any(
-                    PatchedMethod,
-                    predicate: patch =>
-                        !RimWorldHooks.IsFixWorldOwner(patch.owner));
-            }
-
-            private static void ReportForeignPatchFallback()
-            {
-                if (foreignPatchReported)
-                {
-                    return;
-                }
-
-                foreignPatchReported = true;
-                Log.Warning(
-                    "[FixWorld] Another mod patches " +
-                    "ModContentPack.GetAllFilesForMod; FixWorld leaves file " +
-                    "discovery to RimWorld and only applies the DDS cache.");
-            }
-
-            private struct ModFileLoadState
-            {
-                internal readonly long DiscoveryStartedAt;
-                internal bool OwnedByFixWorld;
-
-                internal ModFileLoadState(long discoveryStartedAt)
-                {
-                    DiscoveryStartedAt = discoveryStartedAt;
-                    OwnedByFixWorld = false;
-                }
+                RuntimeContext context = RuntimeHost.Current;
+                __result = context.Textures.LoadAll(mod, context.ModFiles);
+                return false;
             }
         }
     }

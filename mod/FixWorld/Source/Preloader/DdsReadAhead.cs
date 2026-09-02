@@ -104,6 +104,8 @@ namespace FixWorld.Preloader
                     0L,
                     0,
                     ElapsedMilliseconds(startedAt));
+                HashSet<string> visitedPaths = new HashSet<string>(
+                    StringComparer.OrdinalIgnoreCase);
                 foreach (TextureCacheManifestEntry entry in OrderEntries(
                              manifest.Entries,
                              modOrder))
@@ -119,17 +121,22 @@ namespace FixWorld.Preloader
                         continue;
                     }
 
+                    if (!visitedPaths.Add(path))
+                    {
+                        continue;
+                    }
+
                     long read;
                     try
                     {
                         FileInfo file = new FileInfo(path);
                         long remaining = budgetBytes - bytesRead;
-                        if (!file.Exists || file.Length <= 0L || file.Length > remaining)
+                        if (!file.Exists || file.Length <= 0L || remaining <= 0L)
                         {
                             continue;
                         }
 
-                        read = ReadFile(path, buffer);
+                        read = ReadFile(path, buffer, remaining);
                     }
                     catch (IOException)
                     {
@@ -220,7 +227,10 @@ namespace FixWorld.Preloader
             }
         }
 
-        private static long ReadFile(string path, byte[] buffer)
+        private static long ReadFile(
+            string path,
+            byte[] buffer,
+            long maximumBytes)
         {
             long total = 0L;
             using (FileStream stream = new FileStream(
@@ -231,9 +241,17 @@ namespace FixWorld.Preloader
                        buffer.Length,
                        FileOptions.SequentialScan))
             {
-                int read;
-                while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+                while (total < maximumBytes)
                 {
+                    int requested = (int)Math.Min(
+                        buffer.Length,
+                        maximumBytes - total);
+                    int read = stream.Read(buffer, 0, requested);
+                    if (read <= 0)
+                    {
+                        break;
+                    }
+
                     total += read;
                     if (DdsCacheContract.IsReadAheadStopRequested())
                     {
@@ -338,7 +356,7 @@ namespace FixWorld.Preloader
             if (!candidate.StartsWith(root, StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(
                     Path.GetExtension(candidate),
-                    ".dds",
+                    DdsCacheContract.PackFileExtension,
                     StringComparison.OrdinalIgnoreCase))
             {
                 return false;

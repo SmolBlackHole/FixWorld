@@ -20,57 +20,53 @@ benchmarks, and logs.
 ## Verified baseline
 
 - Doorstop, Loader, Runtime, and Mod have separate boot and attachment ownership.
-- FixWorld orchestrates all 15 play-data stages and owns lifecycle, scheduling,
+- FixWorld orchestrates all 16 play-data stages and owns lifecycle, scheduling,
   and telemetry.
 - Python starts RimWorld, waits, validates, and aggregates JSON written by the Runtime.
 - Shared provides isolated caching, scheduling, profiling, and event primitives.
 - DDS creation runs deferred and starts `texconv` only through the tool wrapper.
+- Texture discovery is indexed once, warm textures load from per-mod BC7 packs,
+  and preloader read-ahead visits each pack at most once.
 
 ## Active order
 
-1. Reduce the DDS subsystem without changing behavior and sharpen its ownership.
-2. Rebuild DDS after the sRGB identity change and capture a warm 88-mod baseline.
-3. Publish a runtime diagnostics snapshot and one compact startup summary.
-4. Analyze dominant deferred work before splitting or parallelizing it.
+1. Attribute and analyze dominant deferred work before splitting or parallelizing it.
+2. Publish a runtime diagnostics snapshot and one compact startup summary.
+3. Validate BC7 color and alpha output on affected third-party textures.
+4. Measure packed read-ahead on genuinely slow storage.
 5. Add a small read-only diagnostics window over the same snapshot.
 6. Take deeper ownership of remaining RimWorld operations one stage at a time.
 7. Only then activate new worker or texture-format experiments.
 
 ## DDS texture cache
 
-Goal: one runtime service controls the workflow. Planner, Builder, and Store each
-own one domain responsibility. This cut should remove code, not invent a generic
-cache platform.
+The implemented path uses one Runtime-owned service, a persistent pack store,
+the shared scheduler, and the external-tool wrapper. Misses use source assets on
+the current launch, then one low-priority background job per mod publishes an
+atomic `.fwdp` pack after the main menu is ready.
 
-### Behavior-identical reduction
+The current 88-mod warm baseline is about 25 seconds overall, 0.9 seconds for
+the texture probe, and 0.31 seconds for packed DDS loading. The cache contains
+10,460 hits in 62 packs. On the local NVMe, 256 MiB packed read-ahead is neutral
+for total startup time.
 
-- [ ] Merge `TextureDdsCache` and `TextureDdsCacheRuntime` into one RuntimeContext-owned service.
-- [ ] Reduce the planner to one immutable `TextureCachePlan` and remove duplicate transfer models.
-- [ ] Let the builder convert only; let the store alone own index, packs, atomic publication, and recovery.
-- [ ] Limit `TextureDdsCacheBackground` to scheduler jobs, cancellation, and ordered publication of one plan.
-- [ ] Remove orphaned `.staging-*` directories and delete hash staging copies only through collision-safe logic.
-- [ ] Model configuration, metrics, and report snapshot in exactly one place each.
+### Remaining cache work
 
-Acceptance:
-
-- [ ] No static global cache instance and no pass-through-only layer remain.
-- [ ] Cache identity and results remain identical; rebuild, warm start, cancellation,
-      and restart work while the main menu stays usable.
-
-### Cache policy and experiments
-
-- [ ] Submit cache misses as deduplicated producer jobs to the scheduler.
 - [ ] Throttle or pause background work from CPU, I/O, RAM, and TPS budgets.
 - [ ] Expose background progress and remaining assets to UI, logs, and benchmarks.
-- [ ] Extend the in-memory or generic cache core only after a second measured use case exists.
-- [ ] Compare BC3, uncompressed DDS, and BC7 GPU compression for quality, size,
-      build time, and Unity compatibility.
-- [ ] Reconsider a DDS pack only after a direct byte or stream loading boundary exists.
+- [ ] Validate BC7 sRGB, alpha, normal-map, and mask handling against the reported
+      darker-texture case before treating the format as final.
+- [ ] Compare BC3, uncompressed DDS, and BC7 only where visual validation finds a
+      real compatibility or quality tradeoff.
+- [ ] Measure pack read-ahead on HDD and the affected slow NVMe with tiered budgets.
+- [ ] Decide whether settings must be available before normal-mod attachment so
+      the first pack plan uses the configured cache budget rather than 6 GiB.
 - [ ] Evaluate OBST as a possible pack format with a sidecar index.
 
 ## Deferred main-thread work
 
-The current 88-mod run spends about 37.9 seconds in `DeferredMainThreadWork`.
+The current fully warm 88-mod run spends about 13.4 seconds in
+`DeferredMainThreadWork`.
 The queue is already captured when work is enqueued. The next requirement is
 domain attribution, not a second queue.
 

@@ -41,7 +41,7 @@ namespace FixWorld.Diagnostics
         public TextureReport Textures { get; private set; }
 
         [DataMember(Name = "ddsCache", Order = 9)]
-        public DdsCacheReport DdsCache { get; private set; }
+        public TextureDdsCacheSnapshot DdsCache { get; private set; }
 
         private BenchmarkReport()
         {
@@ -80,7 +80,7 @@ namespace FixWorld.Diagnostics
                 Files = new FileDiscoveryReport(files),
                 TexturePaths = new TexturePathReport(texturePaths),
                 Textures = new TextureReport(textures),
-                DdsCache = new DdsCacheReport(ddsCache)
+                DdsCache = ddsCache
             };
         }
 
@@ -432,44 +432,4 @@ namespace FixWorld.Diagnostics
         }
     }
 
-    [DataContract]
-    internal sealed class DdsCacheReport
-    {
-        [DataMember(Name = "enabled", Order = 1)] public bool Enabled { get; private set; }
-        [DataMember(Name = "hits", Order = 2)] public long Hits { get; private set; }
-        [DataMember(Name = "misses", Order = 3)] public long Misses { get; private set; }
-        [DataMember(Name = "created", Order = 4)] public long Created { get; private set; }
-        [DataMember(Name = "invalidated", Order = 5)] public long Invalidated { get; private set; }
-        [DataMember(Name = "excluded", Order = 6)] public long Excluded { get; private set; }
-        [DataMember(Name = "unsupported", Order = 7)] public long Unsupported { get; private set; }
-        [DataMember(Name = "budgetSkipped", Order = 8)] public long BudgetSkipped { get; private set; }
-        [DataMember(Name = "failed", Order = 9)] public long Failed { get; private set; }
-        [DataMember(Name = "buildMs", Order = 10)] public long BuildMilliseconds { get; private set; }
-        [DataMember(Name = "cacheBytes", Order = 11)] public long CacheBytes { get; private set; }
-        [DataMember(Name = "maxCacheBytes", Order = 12)] public long MaxCacheBytes { get; private set; }
-        [DataMember(Name = "workerCount", Order = 13)] public int WorkerCount { get; private set; }
-        [DataMember(Name = "workerPreparedMods", Order = 14)] public long WorkerPreparedMods { get; private set; }
-        [DataMember(Name = "workerAppliedMods", Order = 15)] public long WorkerAppliedMods { get; private set; }
-        [DataMember(Name = "workerFallbackMods", Order = 16)] public long WorkerFallbackMods { get; private set; }
-
-        internal DdsCacheReport(TextureDdsCacheSnapshot cache)
-        {
-            Enabled = cache.Enabled;
-            Hits = cache.Hits;
-            Misses = cache.Misses;
-            Created = cache.Created;
-            Invalidated = cache.Invalidated;
-            Excluded = cache.Excluded;
-            Unsupported = cache.Unsupported;
-            BudgetSkipped = cache.BudgetSkipped;
-            Failed = cache.Failed;
-            BuildMilliseconds = cache.BuildMilliseconds;
-            CacheBytes = cache.CacheBytes;
-            MaxCacheBytes = cache.MaxCacheBytes;
-            WorkerCount = cache.WorkerCount;
-            WorkerPreparedMods = cache.WorkerPreparedMods;
-            WorkerAppliedMods = cache.WorkerAppliedMods;
-            WorkerFallbackMods = cache.WorkerFallbackMods;
-        }
-    }
 }

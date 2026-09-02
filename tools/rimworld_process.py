@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import ctypes
 from ctypes import wintypes
 from dataclasses import dataclass, replace
@@ -176,13 +177,23 @@ def select_monitor(friendly_name: str | None, fallback_index: int) -> Monitor:
 
 def is_rimworld_running() -> bool:
     result = subprocess.run(
-        ["tasklist", "/FI", "IMAGENAME eq RimWorldWin64.exe", "/NH"],
+        [
+            "tasklist",
+            "/FI",
+            "IMAGENAME eq RimWorldWin64.exe",
+            "/FO",
+            "CSV",
+            "/NH",
+        ],
         check=True,
         capture_output=True,
         text=True,
         errors="replace",
     )
-    return "RimWorldWin64.exe" in result.stdout
+    return any(
+        row and row[0].casefold() == "rimworldwin64.exe"
+        for row in csv.reader(result.stdout.splitlines())
+    )
 
 
 def launch(
@@ -351,7 +362,7 @@ def parse_args() -> argparse.Namespace:
         help="RimWorld directory. Defaults to RIMWORLD_ROOT.",
     )
     parser.add_argument("--monitor-name")
-    parser.add_argument("--monitor", type=int, choices=range(1, 17), default=1)
+    parser.add_argument("--monitor", type=int, choices=range(1, 17), default=2)
     parser.add_argument("--minimized", action="store_true")
     return parser.parse_args()
 

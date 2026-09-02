@@ -51,6 +51,9 @@ namespace FixWorld.PlayData
                     PlayDataLoadStage.InitializeMods,
                     modLoading.InitializeMods);
                 stages.Run(
+                    PlayDataLoadStage.IndexModContent,
+                    modLoading.IndexContent);
+                stages.Run(
                     PlayDataLoadStage.PrepareModContent,
                     modLoading.PrepareContent);
                 stages.Run(

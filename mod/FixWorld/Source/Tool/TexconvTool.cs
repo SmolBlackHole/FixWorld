@@ -42,7 +42,11 @@ namespace FixWorld.Tool
                 executablePath,
                 outputDirectory,
                 inputPaths,
-                mipCount: 0,
+                new TexconvOptions(
+                    "BC7_UNORM",
+                    mipCount: 0,
+                    singleProcess: false,
+                    gpuAdapter: 0),
                 CancellationToken.None);
             if (!string.IsNullOrWhiteSpace(result.Output))
             {

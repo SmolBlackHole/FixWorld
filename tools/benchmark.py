@@ -248,7 +248,7 @@ def validate_report(raw: object) -> BenchmarkReport:
         raise RuntimeError(f"Unexpected completion data: {completion!r}")
     stages = _object_list(loader.get("stages"))
     steps = _object_list(loader.get("steps"))
-    if stages is None or len(stages) != 6 or steps is None or len(steps) != 15:
+    if stages is None or len(stages) != 6 or steps is None or len(steps) != 16:
         raise RuntimeError("Benchmark report contains incomplete loader measurements.")
     for section in ("files", "texturePaths", "textures", "ddsCache"):
         _string_dict(report.get(section), section)
@@ -503,7 +503,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--runs", type=bounded_int(1, 10), default=1)
     parser.add_argument("--variant", default="staged-loader")
     parser.add_argument("--monitor-name")
-    parser.add_argument("--monitor", type=bounded_int(1, 8), default=1)
+    parser.add_argument("--monitor", type=bounded_int(1, 8), default=2)
     parser.add_argument("--timeout", type=bounded_int(30, 600), default=180)
     parser.add_argument("--wait-for-dds-background", action="store_true")
     parser.add_argument("--background-timeout", type=bounded_int(30, 1200), default=300)

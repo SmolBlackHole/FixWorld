@@ -1,5 +1,6 @@
 using System;
 using FixWorld.Diagnostics;
+using FixWorld.Content;
 using FixWorld.Events;
 using FixWorld.Lifecycle;
 using FixWorld.Loading;
@@ -46,6 +47,7 @@ namespace FixWorld.Runtime
             Loading = new PlayDataLoadingState(events);
             telemetry = new PlayDataTelemetry(events);
             Lifecycle = new RimWorldLifecycle(events);
+            ModFiles = new ModFileIndex();
             Textures = new TextureDdsCache(scheduler, mainThread);
 
             PlayDataStageRunner stageRunner = new PlayDataStageRunner(events);
@@ -53,7 +55,7 @@ namespace FixWorld.Runtime
             DeferredWork = deferredWork;
             PlayData = new PlayDataLoadPipeline(
                 stageRunner,
-                new ModLoadingPipeline(),
+                new ModLoadingPipeline(ModFiles, Textures),
                 new RimWorldPlayData(),
                 deferredWork,
                 BeginPlayData,
@@ -72,6 +74,8 @@ namespace FixWorld.Runtime
         internal DeferredWorkQueue DeferredWork { get; }
 
         internal TextureDdsCache Textures { get; }
+
+        internal ModFileIndex ModFiles { get; }
 
         internal int WorkerCount => scheduler.WorkerCount;
 
@@ -153,7 +157,6 @@ namespace FixWorld.Runtime
 
         private void CompletePlayData()
         {
-            Textures.Complete();
             Lifecycle.NotifyPlayDataReady("fixworld-play-data-pipeline");
         }
 
@@ -175,11 +178,11 @@ namespace FixWorld.Runtime
                         Log.Message("[FixWorld] Main menu ready.");
                     }
 
-                    Textures.StartDeferredBuild();
+                    Textures.StartBackgroundBuild();
                     break;
                 case RimWorldLifecycleEventKind.GameReady:
                     CompleteStartup(lifecycleEvent.Source);
-                    Textures.StartDeferredBuild();
+                    Textures.StartBackgroundBuild();
                     Log.Message(
                         "[FixWorld] Game ready; generation=" +
                         lifecycleEvent.GameGeneration + ".");

@@ -7,19 +7,20 @@ namespace FixWorld.PlayData
     {
         Reset = 1,
         InitializeMods = 2,
-        PrepareModContent = 3,
-        CreateModClasses = 4,
-        LoadAndPatchXml = 5,
-        ImportDefinitions = 6,
-        EarlyBinding = 7,
-        PreResolveImpliedDefinitions = 8,
-        CrossReferenceResolution = 9,
-        ReferenceResolution = 10,
-        PostResolveImpliedDefinitions = 11,
-        DefinitionFinalization = 12,
-        InitializeRuntime = 13,
-        DeferredMainThreadWork = 14,
-        Complete = 15
+        IndexModContent = 3,
+        PrepareModContent = 4,
+        CreateModClasses = 5,
+        LoadAndPatchXml = 6,
+        ImportDefinitions = 7,
+        EarlyBinding = 8,
+        PreResolveImpliedDefinitions = 9,
+        CrossReferenceResolution = 10,
+        ReferenceResolution = 11,
+        PostResolveImpliedDefinitions = 12,
+        DefinitionFinalization = 13,
+        InitializeRuntime = 14,
+        DeferredMainThreadWork = 15,
+        Complete = 16
     }
 
     internal enum PlayDataLoadStageEventKind
@@ -71,7 +72,7 @@ namespace FixWorld.PlayData
 
     internal static class PlayDataLoadStageCatalog
     {
-        internal const int Count = 15;
+        internal const int Count = 16;
 
         internal static string GetName(PlayDataLoadStage stage)
         {
@@ -85,6 +86,8 @@ namespace FixWorld.PlayData
                     return "Prepare mod content";
                 case PlayDataLoadStage.CreateModClasses:
                     return "Create mod classes";
+                case PlayDataLoadStage.IndexModContent:
+                    return "Index mod content";
                 case PlayDataLoadStage.LoadAndPatchXml:
                     return "Load and patch XML";
                 case PlayDataLoadStage.ImportDefinitions:
@@ -124,6 +127,8 @@ namespace FixWorld.PlayData
                     return "Content";
                 case PlayDataLoadStage.CreateModClasses:
                     return "Classes";
+                case PlayDataLoadStage.IndexModContent:
+                    return "Index";
                 case PlayDataLoadStage.LoadAndPatchXml:
                     return "XML";
                 case PlayDataLoadStage.ImportDefinitions:

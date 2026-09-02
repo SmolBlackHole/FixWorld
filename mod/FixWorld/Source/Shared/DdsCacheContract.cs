@@ -37,10 +37,11 @@ namespace FixWorld.Textures
 
     internal static class DdsCacheContract
     {
-        internal const int ManifestSchemaVersion = 1;
+        internal const int ManifestSchemaVersion = 2;
         internal const string CacheIdentityVersion =
-            "bc3-unorm-mips-v4-ignore-srgb-content-index";
-        internal const string CacheDirectoryName = "dds-v1";
+            "bc7-unorm-gpu-mips-v1-mod-pack";
+        internal const string CacheDirectoryName = "dds-pack-v1";
+        internal const string PackFileExtension = ".fwdp";
         internal const string IndexFileName = "index.json";
         internal const string BackupFileName = "index.backup.json";
         internal const string LockFileName = "index.lock";
@@ -263,7 +264,10 @@ namespace FixWorld.Textures
         [DataMember(Name = "cacheBytes", Order = 8)]
         public long CacheBytes { get; set; }
 
-        [DataMember(Name = "lastUsedUtcTicks", Order = 9)]
+        [DataMember(Name = "cacheOffset", Order = 9)]
+        public long CacheOffset { get; set; }
+
+        [DataMember(Name = "lastUsedUtcTicks", Order = 10)]
         public long LastUsedUtcTicks { get; set; }
     }
 }
