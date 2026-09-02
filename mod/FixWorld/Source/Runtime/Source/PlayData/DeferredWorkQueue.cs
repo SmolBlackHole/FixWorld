@@ -429,8 +429,10 @@ namespace FixWorld.PlayData
         internal DeferredWorkSnapshot(
             IReadOnlyList<DeferredWorkMeasurement> measurements)
         {
-            Measurements = measurements ??
-                throw new ArgumentNullException(nameof(measurements));
+            Measurements = new List<DeferredWorkMeasurement>(
+                measurements ??
+                throw new ArgumentNullException(nameof(measurements)))
+                .AsReadOnly();
         }
 
         internal IReadOnlyList<DeferredWorkMeasurement> Measurements { get; }

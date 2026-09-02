@@ -144,6 +144,24 @@ class DeferredWorkData(TypedDict):
     top: list[DeferredWorkItemData]
 
 
+class RuntimeSchedulerData(TypedDict):
+    workerCount: int
+    pendingMainThreadActions: int
+
+
+class RuntimeMemoryData(TypedDict):
+    available: bool
+    processBytes: int
+    freePhysicalBytes: int
+
+
+class RuntimeDiagnosticsData(TypedDict):
+    snapshotVersion: int
+    scheduler: RuntimeSchedulerData
+    memory: RuntimeMemoryData
+    detailedCaptureEnabled: bool
+
+
 class BenchmarkReport(TypedDict):
     schemaVersion: int
     preloader: PreloaderData
@@ -154,6 +172,7 @@ class BenchmarkReport(TypedDict):
     textures: TextureData
     ddsCache: DdsCacheData
     deferred: DeferredWorkData
+    runtime: RuntimeDiagnosticsData
 
 
 class ResultRecord(TypedDict):
@@ -255,7 +274,7 @@ def wait_for_json_file(
 
 def validate_report(raw: object) -> BenchmarkReport:
     report = _string_dict(raw, "benchmark report")
-    if report.get("schemaVersion") != 11:
+    if report.get("schemaVersion") != 12:
         raise RuntimeError(
             f"Unsupported benchmark schema: {report.get('schemaVersion')!r}"
         )
@@ -270,8 +289,24 @@ def validate_report(raw: object) -> BenchmarkReport:
     steps = _object_list(loader.get("steps"))
     if stages is None or len(stages) != 6 or steps is None or len(steps) != 16:
         raise RuntimeError("Benchmark report contains incomplete loader measurements.")
-    for section in ("files", "texturePaths", "textures", "ddsCache", "deferred"):
+    for section in (
+        "files",
+        "texturePaths",
+        "textures",
+        "ddsCache",
+        "deferred",
+        "runtime",
+    ):
         _string_dict(report.get(section), section)
+    runtime = _string_dict(report.get("runtime"), "runtime")
+    if runtime.get("snapshotVersion") != 1:
+        raise RuntimeError(
+            f"Unsupported runtime snapshot: {runtime.get('snapshotVersion')!r}"
+        )
+    _string_dict(runtime.get("scheduler"), "runtime scheduler")
+    _string_dict(runtime.get("memory"), "runtime memory")
+    if runtime.get("detailedCaptureEnabled") is not True:
+        raise RuntimeError("Benchmark diagnostics capture was not enabled.")
     return cast(BenchmarkReport, report)
 
 

@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using FixWorld.Diagnostics;
 using FixWorld.PlayData;
 using UnityEngine;
 using UnityEngine.Profiling;

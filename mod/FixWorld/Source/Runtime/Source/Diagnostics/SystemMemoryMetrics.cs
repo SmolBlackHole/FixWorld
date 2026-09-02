@@ -1,20 +1,25 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace FixWorld.UI
+namespace FixWorld.Diagnostics
 {
     internal readonly struct SystemMemorySnapshot
     {
-        internal readonly bool Available;
-        internal readonly long ProcessBytes;
-        internal readonly long FreePhysicalBytes;
-
-        internal SystemMemorySnapshot(bool available, long processBytes, long freePhysicalBytes)
+        internal SystemMemorySnapshot(
+            bool available,
+            long processBytes,
+            long freePhysicalBytes)
         {
             Available = available;
             ProcessBytes = processBytes;
             FreePhysicalBytes = freePhysicalBytes;
         }
+
+        internal bool Available { get; }
+
+        internal long ProcessBytes { get; }
+
+        internal long FreePhysicalBytes { get; }
     }
 
     internal static class SystemMemoryMetrics

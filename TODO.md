@@ -32,12 +32,11 @@ benchmarks, and logs.
 
 ## Active order
 
-1. Publish a runtime diagnostics snapshot and one compact startup summary.
-2. Validate BC7 color and alpha output on affected third-party textures.
-3. Measure packed read-ahead on genuinely slow storage.
-4. Add a small read-only diagnostics window over the same snapshot.
-5. Take deeper ownership of remaining RimWorld operations one stage at a time.
-6. Only then activate new worker or texture-format experiments.
+1. Validate BC7 color and alpha output on affected third-party textures.
+2. Measure packed read-ahead on genuinely slow storage.
+3. Add a small read-only diagnostics window over the Runtime snapshot.
+4. Take deeper ownership of remaining RimWorld operations one stage at a time.
+5. Only then activate new worker or texture-format experiments.
 
 ## DDS texture cache
 
@@ -148,16 +147,20 @@ Goal: the Runtime owns one cheap diagnostics source. Loader and Mod expose the
 data only at their boundaries. Opening the UI must not install patches or enable
 profiling that was previously inactive.
 
-- [ ] Compose one immutable, versioned runtime snapshot from the early timeline,
-      stage telemetry, deferred work, scheduler, DDS, and memory snapshots.
-- [ ] Feed benchmark JSON, compact log summary, and UI from that snapshot instead
-      of maintaining three measurement paths.
+The Runtime now retains one immutable versioned snapshot containing the early
+timeline, stage telemetry, deferred work, scheduler state, DDS state, texture
+measurements, and memory. Benchmark schema 12 and the single startup summary are
+both projections of that same snapshot.
+
+- [ ] Feed the diagnostics UI from the retained Runtime snapshot instead of
+      introducing a separate measurement path.
 - [ ] Separate always-on cheap counters from explicitly enabled detailed capture.
+- [ ] Add measured worker utilization after the scheduler exposes busy and queued
+      intervals; the current snapshot only reports configured workers and
+      pending main-thread actions.
 - [ ] Keep detail events in a bounded ring buffer and aggregate repeated issues by owner, path, and fingerprint.
 - [ ] Log only boot milestones, contract errors, and fallbacks from the Loader.
 - [ ] Name early-timeline fields precisely; observed early mod assemblies are not the active mod count.
-- [ ] Write one compact Runtime summary at `MainMenuReady` with stage hotpaths,
-      deferred hotpaths, DDS state, and worker utilization.
 - [ ] Aggregate missing textures and NPOT warnings by mod and path; do not call
       them FixWorld errors without reliable attribution.
 - [ ] Provide a normal-mod `MainButtonDef` and resizable diagnostics window while

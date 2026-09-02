@@ -5,6 +5,7 @@ using FixWorld.Events;
 using FixWorld.Lifecycle;
 using FixWorld.Loading;
 using FixWorld.PlayData;
+using FixWorld.Preloader;
 using FixWorld.Scheduling;
 using FixWorld.Textures;
 using Verse;
@@ -78,6 +79,8 @@ namespace FixWorld.Runtime
         internal ModFileIndex ModFiles { get; }
 
         internal int WorkerCount => scheduler.WorkerCount;
+
+        internal RuntimeDiagnosticsSnapshot Diagnostics { get; private set; }
 
         internal void AttachMod(RuntimeModAttachmentSnapshot attachment)
         {
@@ -174,11 +177,7 @@ namespace FixWorld.Runtime
             switch (lifecycleEvent.Kind)
             {
                 case RimWorldLifecycleEventKind.MainMenuReady:
-                    if (CompleteStartup(lifecycleEvent.Source))
-                    {
-                        Log.Message("[FixWorld] Main menu ready.");
-                    }
-
+                    CompleteStartup(lifecycleEvent.Source);
                     Textures.StartBackgroundBuild();
                     break;
                 case RimWorldLifecycleEventKind.GameReady:
@@ -205,11 +204,20 @@ namespace FixWorld.Runtime
             }
 
             telemetry.Complete();
-            BenchmarkRecorder.Complete(
+            Diagnostics = new RuntimeDiagnosticsSnapshot(
                 source,
+                PreloaderTimelineState.GetSnapshot(),
                 telemetry.GetMeasurement(),
+                TextureProbe.GetSnapshot(),
                 Textures.GetSnapshot(),
-                DeferredWork.GetSnapshot());
+                DeferredWork.GetSnapshot(),
+                new RuntimeSchedulerSnapshot(
+                    scheduler.WorkerCount,
+                    mainThread.PendingCount),
+                SystemMemoryMetrics.Read(),
+                BenchmarkRecorder.Enabled);
+            Log.Message(RuntimeDiagnosticsSummary.Format(Diagnostics));
+            BenchmarkRecorder.Complete(Diagnostics);
             return true;
         }
     }

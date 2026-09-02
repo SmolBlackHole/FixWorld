@@ -4,9 +4,9 @@ using System.Globalization;
 using System.Linq;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
-using FixWorld.Runtime;
 using FixWorld.Preloader;
 using FixWorld.PlayData;
+using FixWorld.Runtime;
 using FixWorld.Textures;
 using FixWorld.Loading;
 
@@ -15,7 +15,7 @@ namespace FixWorld.Diagnostics
     [DataContract]
     internal sealed class BenchmarkReport
     {
-        private const int CurrentSchemaVersion = 11;
+        private const int CurrentSchemaVersion = 12;
 
         [DataMember(Name = "schemaVersion", Order = 1)]
         public int SchemaVersion { get; private set; }
@@ -47,21 +47,24 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "deferred", Order = 10)]
         public DeferredWorkReport Deferred { get; private set; }
 
+        [DataMember(Name = "runtime", Order = 11)]
+        public RuntimeDiagnosticsReport Runtime { get; private set; }
+
         private BenchmarkReport()
         {
         }
 
         internal static BenchmarkReport Create(
-            string completionSource,
-            PreloaderTimelineSnapshot preloader,
-            LoadingMeasurement loading,
+            RuntimeDiagnosticsSnapshot diagnostics,
             FileDiscoverySnapshot files,
-            TexturePathSnapshot texturePaths,
-            TextureProbeSnapshot textures,
-            TextureDdsCacheSnapshot ddsCache,
-            DeferredWorkSnapshot deferred)
+            TexturePathSnapshot texturePaths)
         {
-            List<LoaderStepReport> steps = loading.Steps
+            if (diagnostics == null)
+            {
+                throw new ArgumentNullException(nameof(diagnostics));
+            }
+
+            List<LoaderStepReport> steps = diagnostics.Loading.Steps
                 .Select(step => new LoaderStepReport(step))
                 .ToList();
             List<LoaderStageReport> stages = Enum
@@ -75,18 +78,21 @@ namespace FixWorld.Diagnostics
             return new BenchmarkReport
             {
                 SchemaVersion = CurrentSchemaVersion,
-                CompletedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
-                Preloader = new PreloaderReport(preloader),
-                Completion = new CompletionReport(completionSource),
+                CompletedUtc = diagnostics.CapturedUtc.ToString(
+                    "O",
+                    CultureInfo.InvariantCulture),
+                Preloader = new PreloaderReport(diagnostics.Preloader),
+                Completion = new CompletionReport(diagnostics.CompletionSource),
                 Loader = new LoaderReport(
-                    loading.ObservedMilliseconds,
+                    diagnostics.Loading.ObservedMilliseconds,
                     stages,
                     steps),
                 Files = new FileDiscoveryReport(files),
                 TexturePaths = new TexturePathReport(texturePaths),
-                Textures = new TextureReport(textures),
-                DdsCache = ddsCache,
-                Deferred = new DeferredWorkReport(deferred)
+                Textures = new TextureReport(diagnostics.Textures),
+                DdsCache = diagnostics.DdsCache,
+                Deferred = new DeferredWorkReport(diagnostics.DeferredWork),
+                Runtime = new RuntimeDiagnosticsReport(diagnostics)
             };
         }
 
@@ -95,6 +101,66 @@ namespace FixWorld.Diagnostics
             DataContractJsonSerializer serializer =
                 new DataContractJsonSerializer(typeof(BenchmarkReport));
             AtomicFile.Write(path, stream => serializer.WriteObject(stream, this));
+        }
+    }
+
+    [DataContract]
+    internal sealed class RuntimeDiagnosticsReport
+    {
+        [DataMember(Name = "snapshotVersion", Order = 1)]
+        public int SnapshotVersion { get; private set; }
+
+        [DataMember(Name = "scheduler", Order = 2)]
+        public RuntimeSchedulerReport Scheduler { get; private set; }
+
+        [DataMember(Name = "memory", Order = 3)]
+        public RuntimeMemoryReport Memory { get; private set; }
+
+        [DataMember(Name = "detailedCaptureEnabled", Order = 4)]
+        public bool DetailedCaptureEnabled { get; private set; }
+
+        internal RuntimeDiagnosticsReport(RuntimeDiagnosticsSnapshot snapshot)
+        {
+            SnapshotVersion = snapshot.SchemaVersion;
+            Scheduler = new RuntimeSchedulerReport(snapshot.Scheduler);
+            Memory = new RuntimeMemoryReport(snapshot.Memory);
+            DetailedCaptureEnabled = snapshot.DetailedCaptureEnabled;
+        }
+    }
+
+    [DataContract]
+    internal sealed class RuntimeSchedulerReport
+    {
+        [DataMember(Name = "workerCount", Order = 1)]
+        public int WorkerCount { get; private set; }
+
+        [DataMember(Name = "pendingMainThreadActions", Order = 2)]
+        public int PendingMainThreadActions { get; private set; }
+
+        internal RuntimeSchedulerReport(RuntimeSchedulerSnapshot snapshot)
+        {
+            WorkerCount = snapshot.WorkerCount;
+            PendingMainThreadActions = snapshot.PendingMainThreadActions;
+        }
+    }
+
+    [DataContract]
+    internal sealed class RuntimeMemoryReport
+    {
+        [DataMember(Name = "available", Order = 1)]
+        public bool Available { get; private set; }
+
+        [DataMember(Name = "processBytes", Order = 2)]
+        public long ProcessBytes { get; private set; }
+
+        [DataMember(Name = "freePhysicalBytes", Order = 3)]
+        public long FreePhysicalBytes { get; private set; }
+
+        internal RuntimeMemoryReport(SystemMemorySnapshot snapshot)
+        {
+            Available = snapshot.Available;
+            ProcessBytes = snapshot.ProcessBytes;
+            FreePhysicalBytes = snapshot.FreePhysicalBytes;
         }
     }
 

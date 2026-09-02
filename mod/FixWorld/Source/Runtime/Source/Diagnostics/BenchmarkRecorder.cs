@@ -4,10 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
-using FixWorld.Textures;
-using FixWorld.Loading;
-using FixWorld.Preloader;
-using FixWorld.PlayData;
 using UnityEngine;
 using Verse;
 
@@ -72,12 +68,13 @@ namespace FixWorld.Diagnostics
             ObserveTexturePaths(mod, contentPath, files);
         }
 
-        internal static void Complete(
-            string source,
-            LoadingMeasurement loading,
-            TextureDdsCacheSnapshot ddsCache,
-            DeferredWorkSnapshot deferred)
+        internal static void Complete(RuntimeDiagnosticsSnapshot diagnostics)
         {
+            if (diagnostics == null)
+            {
+                throw new ArgumentNullException(nameof(diagnostics));
+            }
+
             if (!Enabled)
             {
                 return;
@@ -96,14 +93,9 @@ namespace FixWorld.Diagnostics
             try
             {
                 BenchmarkReport report = BenchmarkReport.Create(
-                    source,
-                    PreloaderTimelineState.GetSnapshot(),
-                    loading,
+                    diagnostics,
                     GetFileDiscoverySnapshot(),
-                    GetTexturePathSnapshot(),
-                    TextureProbe.GetSnapshot(),
-                    ddsCache,
-                    deferred);
+                    GetTexturePathSnapshot());
                 report.Write(OutputPath);
                 Log.Message("[FixWorld] Benchmark report written: " + OutputPath);
             }

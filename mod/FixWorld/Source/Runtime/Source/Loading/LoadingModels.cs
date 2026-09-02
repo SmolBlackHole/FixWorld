@@ -107,7 +107,9 @@ namespace FixWorld.Loading
             IReadOnlyList<LoadingStepMeasurement> steps)
         {
             ObservedMilliseconds = observedMilliseconds;
-            Steps = steps;
+            Steps = new List<LoadingStepMeasurement>(
+                steps ?? throw new ArgumentNullException(nameof(steps)))
+                .AsReadOnly();
         }
 
         internal double ObservedMilliseconds { get; }
