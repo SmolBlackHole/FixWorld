@@ -59,6 +59,11 @@ runtime appearance therefore needs a named affected texture and must focus on
 Unity sampling, alpha, and generated mip levels rather than broad top-level
 color conversion.
 
+A 40-texture converter sample took 956 ms with normal GPU BC7, 674 ms with
+quick GPU BC7, and 21.9 seconds on the CPU. Quick mode increased mean top-level
+RGBA error from 0.291 to 0.456 values out of 255. Keep normal GPU quality until
+the runtime appearance issue is resolved.
+
 ### Remaining cache work
 
 - [ ] Throttle or pause background work from CPU, I/O, RAM, and TPS budgets.
@@ -110,6 +115,9 @@ most of the work to RimWorld.
 
 - [ ] Define the LongEvent thread, synchronous events, scene changes, and exception lifecycle as a Runtime contract.
 - [ ] Re-emit and verify `MainMenuReady` across menu, game, menu, and second-game transitions.
+- [ ] Reproduce the reported colony-to-menu crash with DDS enabled and disabled.
+      The captured stack currently points to MapModeFramework background cache
+      work after teardown, so do not attribute it to DDS without an A/B result.
 - [ ] Continue reducing RimWorld and Harmony calls to thin adapters over typed FixWorld work.
 
 Acceptance for every stage cutover:
