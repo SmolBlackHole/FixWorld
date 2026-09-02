@@ -1,9 +1,11 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Runtime.Serialization;
 
 namespace FixWorld.Diagnostics
 {
-    internal readonly struct SystemMemorySnapshot
+    [DataContract]
+    internal struct SystemMemorySnapshot
     {
         internal SystemMemorySnapshot(
             bool available,
@@ -15,11 +17,14 @@ namespace FixWorld.Diagnostics
             FreePhysicalBytes = freePhysicalBytes;
         }
 
-        internal bool Available { get; }
+        [DataMember(Name = "available", Order = 1)]
+        internal bool Available { get; private set; }
 
-        internal long ProcessBytes { get; }
+        [DataMember(Name = "processBytes", Order = 2)]
+        internal long ProcessBytes { get; private set; }
 
-        internal long FreePhysicalBytes { get; }
+        [DataMember(Name = "freePhysicalBytes", Order = 3)]
+        internal long FreePhysicalBytes { get; private set; }
     }
 
     internal static class SystemMemoryMetrics

@@ -6,15 +6,29 @@ using System.Runtime.Serialization;
 
 namespace FixWorld.Textures
 {
-    internal readonly struct DdsReadAheadSnapshot
+    [DataContract]
+    internal struct DdsReadAheadSnapshot
     {
-        internal string Status { get; }
-        internal long BudgetBytes { get; }
-        internal long BytesRead { get; }
-        internal int FilesRead { get; }
-        internal double ElapsedMilliseconds { get; }
-        internal bool IndexPrefetched { get; }
-        internal string Error { get; }
+        [DataMember(Name = "status", Order = 1)]
+        internal string Status { get; private set; }
+
+        [DataMember(Name = "budgetBytes", Order = 2)]
+        internal long BudgetBytes { get; private set; }
+
+        [DataMember(Name = "bytes", Order = 3)]
+        internal long BytesRead { get; private set; }
+
+        [DataMember(Name = "files", Order = 4)]
+        internal int FilesRead { get; private set; }
+
+        [DataMember(Name = "elapsedMs", Order = 5)]
+        internal double ElapsedMilliseconds { get; private set; }
+
+        [DataMember(Name = "indexPrefetched", Order = 6)]
+        internal bool IndexPrefetched { get; private set; }
+
+        [DataMember(Name = "error", Order = 7)]
+        internal string Error { get; private set; }
 
         internal DdsReadAheadSnapshot(
             string status,

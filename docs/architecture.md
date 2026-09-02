@@ -36,7 +36,7 @@ the runtime that already exists.
 | `FixWorld.Shared` | Assembly-neutral events, scheduling, profiling, cache snapshots, and boot contracts |
 | `FixWorld.Preloader` | Earliest managed entry, Assembly-CSharp observation, Harmony resolution, and loader handoff |
 | `FixWorld.Loader` | Exact RimWorld contract validation and one runtime start call |
-| `FixWorld.Runtime` | Lifecycle, hooks, play-data stages, scheduler, telemetry, DDS cache, and loading UI state |
+| `FixWorld.Runtime` | Lifecycle, hooks, play-data stages, scheduler, telemetry store, DDS cache, and loading UI state |
 | `FixWorld.Mod` | Doorstop installation, settings, RimWorld UI, and runtime attachment |
 | `FixWorld.Tool` | Explicit command-line wrappers for preloader maintenance, DDS cleanup, and texconv |
 
@@ -47,11 +47,12 @@ boundaries and do not own domain state.
 ## Play-data pipeline
 
 FixWorld replaces `PlayDataLoader.DoPlayLoad()` with one ordered pipeline that
-currently exposes 15 stages:
+currently exposes 16 stages:
 
 ```text
 Reset
 Initialize mods
+Index mod content
 Prepare mod content
 Create mod classes
 Load and patch XML

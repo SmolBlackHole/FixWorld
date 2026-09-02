@@ -11,7 +11,6 @@ namespace FixWorld.PlayData
         private readonly IDisposable subscription;
 
         private bool active;
-        private bool completed;
         private long startedAt;
         private PlayDataLoadStage stage;
         private string activity;
@@ -38,7 +37,6 @@ namespace FixWorld.PlayData
                 }
 
                 active = true;
-                completed = false;
                 startedAt = Stopwatch.GetTimestamp();
                 stage = PlayDataLoadStage.Reset;
                 activity = null;
@@ -51,12 +49,11 @@ namespace FixWorld.PlayData
             double observed;
             lock (sync)
             {
-                if (!active || completed)
+                if (!active)
                 {
                     return false;
                 }
 
-                completed = true;
                 active = false;
                 stage = PlayDataLoadStage.Complete;
                 activity = null;
@@ -73,7 +70,6 @@ namespace FixWorld.PlayData
             lock (sync)
             {
                 active = false;
-                completed = false;
                 activity = null;
             }
         }
@@ -106,7 +102,6 @@ namespace FixWorld.PlayData
                     : stageProgress;
                 snapshot = new PlayDataLoadingSnapshot(
                     stage,
-                    PlayDataLoadStageCatalog.GetName(stage),
                     elapsed,
                     progress,
                     hasEstimate,
@@ -150,7 +145,6 @@ namespace FixWorld.PlayData
     {
         internal PlayDataLoadingSnapshot(
             PlayDataLoadStage stage,
-            string stageName,
             double elapsedMilliseconds,
             float progress,
             bool hasDurationEstimate,
@@ -158,7 +152,6 @@ namespace FixWorld.PlayData
             string activity)
         {
             Stage = stage;
-            StageName = stageName;
             ElapsedMilliseconds = elapsedMilliseconds;
             Progress = progress;
             HasDurationEstimate = hasDurationEstimate;
@@ -167,8 +160,6 @@ namespace FixWorld.PlayData
         }
 
         internal PlayDataLoadStage Stage { get; }
-
-        internal string StageName { get; }
 
         internal double ElapsedMilliseconds { get; }
 

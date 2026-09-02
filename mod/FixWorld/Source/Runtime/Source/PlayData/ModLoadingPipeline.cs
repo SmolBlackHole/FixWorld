@@ -27,7 +27,6 @@ namespace FixWorld.PlayData
 
         internal void Reset()
         {
-            files.Clear();
             textures.BeginIndex();
             Profile("XmlInheritance.Clear()", XmlInheritance.Clear);
         }

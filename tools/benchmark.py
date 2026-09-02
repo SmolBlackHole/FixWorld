@@ -45,10 +45,6 @@ RESULT_FIELDS: tuple[str, ...] = (
 )
 
 
-class CompletionData(TypedDict):
-    source: str
-
-
 class PreloaderData(TypedDict):
     active: bool
     doorstopVersion: str | None
@@ -67,48 +63,29 @@ class PreloaderData(TypedDict):
     assemblyCSharpToFirstModAssemblyMs: float | None
     modAssemblyLoadMs: float | None
     lastModAssemblyToBootstrapMs: float | None
-    ddsReadAheadStatus: str
-    ddsReadAheadBudgetBytes: int
-    ddsReadAheadBytes: int
-    ddsReadAheadFiles: int
-    ddsReadAheadMs: float
-    ddsIndexPrefetched: bool
-    ddsReadAheadError: str | None
 
 
-class LoaderStageData(TypedDict):
-    number: int
-    name: str
-    observed: bool
-    exclusiveMs: float
-    mainThreadMs: float
-    workerThreadMs: float
+class DdsReadAheadData(TypedDict):
+    status: str
+    budgetBytes: int
+    bytes: int
+    files: int
+    elapsedMs: float
+    indexPrefetched: bool
+    error: str | None
 
 
-class LoaderStepData(TypedDict):
+class PlayDataStageData(TypedDict):
     id: str
     number: int
-    stage: str
     name: str
-    calls: int
-    totalMs: float
-    exclusiveMs: float
-    mainThreadMs: float
-    workerThreadMs: float
+    elapsedMs: float
+    thread: str
 
 
 class LoaderData(TypedDict):
     observedMs: float
-    stages: list[LoaderStageData]
-    steps: list[LoaderStepData]
-
-
-class FileData(TypedDict):
-    totalMs: float
-
-
-class TexturePathData(TypedDict):
-    duplicatePaths: int
+    stages: list[PlayDataStageData]
 
 
 class TextureData(TypedDict):
@@ -155,24 +132,19 @@ class RuntimeMemoryData(TypedDict):
     freePhysicalBytes: int
 
 
-class RuntimeDiagnosticsData(TypedDict):
-    snapshotVersion: int
-    scheduler: RuntimeSchedulerData
-    memory: RuntimeMemoryData
-    detailedCaptureEnabled: bool
-
-
 class BenchmarkReport(TypedDict):
     schemaVersion: int
+    completedUtc: str
+    completionSource: str
     preloader: PreloaderData
-    completion: CompletionData
+    ddsReadAhead: DdsReadAheadData
     loader: LoaderData
-    files: FileData
-    texturePaths: TexturePathData
     textures: TextureData
     ddsCache: DdsCacheData
     deferred: DeferredWorkData
-    runtime: RuntimeDiagnosticsData
+    scheduler: RuntimeSchedulerData
+    memory: RuntimeMemoryData
+    detailedCaptureEnabled: bool
 
 
 class ResultRecord(TypedDict):
@@ -274,38 +246,30 @@ def wait_for_json_file(
 
 def validate_report(raw: object) -> BenchmarkReport:
     report = _string_dict(raw, "benchmark report")
-    if report.get("schemaVersion") != 12:
+    if report.get("schemaVersion") != 14:
         raise RuntimeError(
             f"Unsupported benchmark schema: {report.get('schemaVersion')!r}"
         )
     preloader = _string_dict(report.get("preloader"), "preloader")
     if not isinstance(preloader.get("active"), bool):
         raise RuntimeError("Benchmark report contains invalid preloader measurements.")
-    completion = _string_dict(report.get("completion"), "completion")
     loader = _string_dict(report.get("loader"), "loader")
-    if completion.get("source") != "fixworld-play-data-pipeline+main-menu-draw":
-        raise RuntimeError(f"Unexpected completion data: {completion!r}")
+    completion_source = report.get("completionSource")
+    if completion_source != "fixworld-play-data-pipeline+main-menu-draw":
+        raise RuntimeError(f"Unexpected completion source: {completion_source!r}")
     stages = _object_list(loader.get("stages"))
-    steps = _object_list(loader.get("steps"))
-    if stages is None or len(stages) != 6 or steps is None or len(steps) != 16:
+    if stages is None or len(stages) != 16:
         raise RuntimeError("Benchmark report contains incomplete loader measurements.")
     for section in (
-        "files",
-        "texturePaths",
+        "ddsReadAhead",
         "textures",
         "ddsCache",
         "deferred",
-        "runtime",
+        "scheduler",
+        "memory",
     ):
         _string_dict(report.get(section), section)
-    runtime = _string_dict(report.get("runtime"), "runtime")
-    if runtime.get("snapshotVersion") != 1:
-        raise RuntimeError(
-            f"Unsupported runtime snapshot: {runtime.get('snapshotVersion')!r}"
-        )
-    _string_dict(runtime.get("scheduler"), "runtime scheduler")
-    _string_dict(runtime.get("memory"), "runtime memory")
-    if runtime.get("detailedCaptureEnabled") is not True:
+    if report.get("detailedCaptureEnabled") is not True:
         raise RuntimeError("Benchmark diagnostics capture was not enabled.")
     return cast(BenchmarkReport, report)
 
@@ -329,27 +293,18 @@ def _object_list(value: object) -> list[object] | None:
     return cast(list[object], value)
 
 
-def write_loader_csvs(run_root: Path, report: BenchmarkReport) -> None:
+def write_loader_csv(run_root: Path, report: BenchmarkReport) -> None:
     loader = report["loader"]
     _write_csv(
         run_root / "loader-stages.csv",
-        ("number", "name", "observed", "exclusiveMs", "mainThreadMs", "workerThreadMs"),
-        loader["stages"],
-    )
-    _write_csv(
-        run_root / "loader-steps.csv",
         (
             "id",
             "number",
-            "stage",
             "name",
-            "calls",
-            "totalMs",
-            "exclusiveMs",
-            "mainThreadMs",
-            "workerThreadMs",
+            "elapsedMs",
+            "thread",
         ),
-        loader["steps"],
+        loader["stages"],
     )
 
 
@@ -454,7 +409,7 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
     )
     try:
         wall_ms, report = wait_for_report(rimworld.process, report_path, args.timeout)
-        write_loader_csvs(run_root, report)
+        write_loader_csv(run_root, report)
         background_report: dict[str, object] | None = None
         if args.wait_for_dds_background:
             background_report = wait_for_json_file(
@@ -467,13 +422,12 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
         error_count = relevant_error_count(log_path)
         loader = report["loader"]
         textures = report["textures"]
-        files = report["files"]
-        paths = report["texturePaths"]
         cache = report["ddsCache"]
         deferred = report["deferred"]
         preloader = report["preloader"]
-        top_steps = sorted(
-            loader["steps"], key=lambda item: float(item["exclusiveMs"]), reverse=True
+        read_ahead = report["ddsReadAhead"]
+        top_stages = sorted(
+            loader["stages"], key=lambda item: float(item["elapsedMs"]), reverse=True
         )[:5]
         notes = "; ".join(
             (
@@ -496,17 +450,15 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                 "preloaderEntryToBootstrapMs="
                 + _format_optional_ms(preloader["entryToBootstrapMs"]),
                 f"preloaderModAssemblies={preloader['modAssembliesLoaded']}",
-                f"ddsReadAheadStatus={preloader['ddsReadAheadStatus']}",
-                f"ddsReadAheadBudgetBytes={preloader['ddsReadAheadBudgetBytes']}",
-                f"ddsReadAheadBytes={preloader['ddsReadAheadBytes']}",
-                f"ddsReadAheadFiles={preloader['ddsReadAheadFiles']}",
-                f"ddsReadAheadMs={float(preloader['ddsReadAheadMs']):.3f}",
-                f"ddsIndexPrefetched={preloader['ddsIndexPrefetched']}",
+                f"ddsReadAheadStatus={read_ahead['status']}",
+                f"ddsReadAheadBudgetBytes={read_ahead['budgetBytes']}",
+                f"ddsReadAheadBytes={read_ahead['bytes']}",
+                f"ddsReadAheadFiles={read_ahead['files']}",
+                f"ddsReadAheadMs={float(read_ahead['elapsedMs']):.3f}",
+                f"ddsIndexPrefetched={read_ahead['indexPrefetched']}",
                 f"observedLoaderMs={float(loader['observedMs']):.3f}",
-                f"discoveryMs={float(files['totalMs']):.3f}",
                 f"textureLoadMs={float(textures['totalMs']):.3f}",
                 f"ddsLoadMs={float(textures['ddsMs']):.3f}",
-                f"duplicateTexturePaths={paths['duplicatePaths']}",
                 f"ddsCacheHits={cache['hits']}",
                 f"ddsCacheMisses={cache['misses']}",
                 f"ddsWorkerPreparedMods={cache['workerPreparedMods']}",
@@ -521,15 +473,14 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                     f"{background_report.get('failed', 0)} failed, "
                     f"{background_report.get('removedOrphans', 0)} orphans removed"
                 ),
-                "topLoaderSteps="
+                "topLoaderStages="
                 + "|".join(
-                    f"{step['id']}={float(step['exclusiveMs']):.3f}ms"
-                    for step in top_steps
+                    f"{stage['id']}={float(stage['elapsedMs']):.3f}ms"
+                    for stage in top_stages
                 ),
                 "topDeferred="
                 + "|".join(
-                    f"{item['owner']}:{item['name']}="
-                    f"{float(item['totalMs']):.3f}ms"
+                    f"{item['owner']}:{item['name']}={float(item['totalMs']):.3f}ms"
                     for item in deferred["top"][:5]
                 ),
             )

@@ -1,28 +1,71 @@
 using System;
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.Serialization;
 
 namespace FixWorld.Preloader
 {
-    internal readonly struct PreloaderTimelineSnapshot
+    [DataContract]
+    internal struct PreloaderTimelineSnapshot
     {
-        internal bool Active { get; }
-        internal string DoorstopVersion { get; }
-        internal bool AssemblyCSharpObserved { get; }
-        internal bool AssemblyCSharpAvailableAtEntry { get; }
-        internal int AssembliesAtEntry { get; }
-        internal int AssembliesAtBootstrap { get; }
-        internal int ModAssembliesAtEntry { get; }
-        internal int ModAssembliesLoaded { get; }
-        internal string FirstModAssembly { get; }
-        internal string LastModAssembly { get; }
-        internal double? EntryToAssemblyCSharpMilliseconds { get; }
-        internal double? EntryToFirstModAssemblyMilliseconds { get; }
-        internal double? EntryToLastModAssemblyMilliseconds { get; }
-        internal double? EntryToBootstrapMilliseconds { get; }
-        internal double? AssemblyCSharpToFirstModAssemblyMilliseconds { get; }
-        internal double? ModAssemblyLoadMilliseconds { get; }
-        internal double? LastModAssemblyToBootstrapMilliseconds { get; }
+        [DataMember(Name = "active", Order = 1)]
+        internal bool Active { get; private set; }
+
+        [DataMember(Name = "doorstopVersion", Order = 2)]
+        internal string DoorstopVersion { get; private set; }
+
+        [DataMember(Name = "assemblyCSharpObserved", Order = 3)]
+        internal bool AssemblyCSharpObserved { get; private set; }
+
+        [DataMember(Name = "assemblyCSharpAvailableAtEntry", Order = 4)]
+        internal bool AssemblyCSharpAvailableAtEntry { get; private set; }
+
+        [DataMember(Name = "assembliesAtEntry", Order = 5)]
+        internal int AssembliesAtEntry { get; private set; }
+
+        [DataMember(Name = "assembliesAtBootstrap", Order = 6)]
+        internal int AssembliesAtBootstrap { get; private set; }
+
+        [DataMember(Name = "modAssembliesAtEntry", Order = 7)]
+        internal int ModAssembliesAtEntry { get; private set; }
+
+        [DataMember(Name = "modAssembliesLoaded", Order = 8)]
+        internal int ModAssembliesLoaded { get; private set; }
+
+        [DataMember(Name = "firstModAssembly", Order = 9)]
+        internal string FirstModAssembly { get; private set; }
+
+        [DataMember(Name = "lastModAssembly", Order = 10)]
+        internal string LastModAssembly { get; private set; }
+
+        [DataMember(Name = "entryToAssemblyCSharpMs", Order = 11)]
+        internal double? EntryToAssemblyCSharpMilliseconds { get; private set; }
+
+        [DataMember(Name = "entryToFirstModAssemblyMs", Order = 12)]
+        internal double? EntryToFirstModAssemblyMilliseconds { get; private set; }
+
+        [DataMember(Name = "entryToLastModAssemblyMs", Order = 13)]
+        internal double? EntryToLastModAssemblyMilliseconds { get; private set; }
+
+        [DataMember(Name = "entryToBootstrapMs", Order = 14)]
+        internal double? EntryToBootstrapMilliseconds { get; private set; }
+
+        [DataMember(Name = "assemblyCSharpToFirstModAssemblyMs", Order = 15)]
+        internal double? AssemblyCSharpToFirstModAssemblyMilliseconds
+        {
+            get;
+            private set;
+        }
+
+        [DataMember(Name = "modAssemblyLoadMs", Order = 16)]
+        internal double? ModAssemblyLoadMilliseconds { get; private set; }
+
+        [DataMember(Name = "lastModAssemblyToBootstrapMs", Order = 17)]
+        internal double? LastModAssemblyToBootstrapMilliseconds
+        {
+            get;
+            private set;
+        }
 
         internal PreloaderTimelineSnapshot(
             bool active,

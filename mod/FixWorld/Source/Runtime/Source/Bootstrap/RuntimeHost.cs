@@ -41,7 +41,7 @@ namespace FixWorld.Runtime
                 {
                     Volatile.Write(ref current, created);
                     if (!RimWorldHooks.InstallBootstrap(
-                            BenchmarkRecorder.Enabled))
+                            BenchmarkExporter.Enabled))
                     {
                         throw new InvalidOperationException(
                             "FixWorld.Runtime could not install its hooks.");

@@ -23,6 +23,9 @@ benchmarks, and logs.
 - FixWorld orchestrates all 16 play-data stages and owns lifecycle, scheduling,
   and telemetry.
 - Python starts RimWorld, waits, validates, and aggregates JSON written by the Runtime.
+- One Runtime-owned telemetry store records stage events directly, owns deferred
+  profiling, and publishes one versioned schema 14 snapshot for logs, benchmarks,
+  and later UI.
 - Shared provides isolated caching, scheduling, profiling, and event primitives.
 - DDS creation runs deferred and starts `texconv` only through the tool wrapper.
 - Texture discovery is indexed once, warm textures load from per-mod BC7 packs,
@@ -32,11 +35,12 @@ benchmarks, and logs.
 
 ## Active order
 
-1. Validate BC7 color and alpha output on affected third-party textures.
-2. Measure packed read-ahead on genuinely slow storage.
-3. Add a small read-only diagnostics window over the Runtime snapshot.
-4. Take deeper ownership of remaining RimWorld operations one stage at a time.
-5. Only then activate new worker or texture-format experiments.
+1. Add a small read-only diagnostics window over the Runtime snapshot.
+2. Analyze and reduce the remaining deferred main-thread hotpaths.
+3. Take deeper ownership of remaining RimWorld operations one stage at a time.
+4. Validate BC7 color and alpha output when a named affected texture is available.
+5. Measure packed read-ahead when genuinely slow storage is available.
+6. Only then activate new worker or texture-format experiments.
 
 ## DDS texture cache
 
@@ -84,7 +88,7 @@ The current fully warm 88-mod runs spend about 11 to 13 seconds in
 `DeferredMainThreadWork`, while FixWorld scheduling and frame-yield overhead is
 about 0.5 seconds. The queue records owner, calls, failures, runtime, and queue
 delay. Static constructors and finalization operations are separate work items.
-With the current mod list, Lunar takes about 3.2 to 3.4 seconds, of which
+With the current mod list, Lunar takes about 3.2 to 3.7 seconds, of which
 GeologicalLandforms initialization takes about 2.5 seconds and Lunar's Harmony
 wrapper refresh about 0.8 seconds. `ThingDef.PostLoad` takes about 1.1 seconds.
 
@@ -147,10 +151,13 @@ Goal: the Runtime owns one cheap diagnostics source. Loader and Mod expose the
 data only at their boundaries. Opening the UI must not install patches or enable
 profiling that was previously inactive.
 
-The Runtime now retains one immutable versioned snapshot containing the early
+The Runtime telemetry store records completed stage events directly, owns the
+deferred profilers, and retains one versioned snapshot containing the early
 timeline, stage telemetry, deferred work, scheduler state, DDS state, texture
-measurements, and memory. Benchmark schema 12 and the single startup summary are
-both projections of that same snapshot.
+measurements, and memory. Benchmark schema 14 serializes that snapshot directly.
+The startup summary and later UI read the same snapshot. One-shot stage records
+contain only identity, order, elapsed time, and execution thread; redundant call,
+failure, and maximum-time fields were removed.
 
 - [ ] Feed the diagnostics UI from the retained Runtime snapshot instead of
       introducing a separate measurement path.
@@ -167,7 +174,6 @@ both projections of that same snapshot.
       keeping Runtime and Shared free of Verse UI.
 - [ ] Add Startup/Stages, Deferred/Mods, DDS/Workers, and Issues views.
 - [ ] Refresh the window at most every 250 to 500 ms and only for a new snapshot version.
-- [ ] Export a typed diagnostic report from RimWorld using the benchmark contract.
 
 Acceptance:
 

@@ -83,12 +83,13 @@ namespace FixWorld.UI
             Rect content,
             PlayDataLoadingSnapshot snapshot)
         {
+            string stageName = PlayDataLoadStageCatalog.GetName(snapshot.Stage);
             Text.Font = GameFont.Small;
             Text.Anchor = TextAnchor.UpperLeft;
             Widgets.Label(
                 new Rect(content.x, content.y + 38f, 300f, 24f),
                 (int)snapshot.Stage + " / " + PlayDataLoadStageCatalog.Count +
-                "   " + snapshot.StageName);
+                "   " + stageName);
             Text.Font = GameFont.Tiny;
             Text.Anchor = TextAnchor.UpperRight;
             Widgets.Label(
@@ -99,18 +100,18 @@ namespace FixWorld.UI
             Text.Anchor = TextAnchor.UpperLeft;
             Widgets.LabelEllipses(
                 new Rect(content.x, content.y + 62f, content.width, 24f),
-                snapshot.Activity ?? snapshot.StageName);
+                snapshot.Activity ?? stageName);
 
             if (!string.IsNullOrEmpty(snapshot.Activity) &&
                 !string.Equals(
                     snapshot.Activity,
-                    snapshot.StageName,
+                    stageName,
                     StringComparison.Ordinal))
             {
                 Text.Font = GameFont.Tiny;
                 Widgets.LabelEllipses(
                     new Rect(content.x, content.y + 86f, content.width, 20f),
-                    snapshot.StageName);
+                    stageName);
             }
         }
 

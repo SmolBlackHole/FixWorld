@@ -1,5 +1,4 @@
 using System;
-using FixWorld.Loading;
 
 namespace FixWorld.PlayData
 {
@@ -34,26 +33,16 @@ namespace FixWorld.PlayData
     internal sealed class PlayDataLoadStageEvent
     {
         internal PlayDataLoadStageEvent(
-            int sequence,
             PlayDataLoadStage stage,
             PlayDataLoadStageEventKind kind,
             TimeSpan elapsed,
-            string activity,
-            int completed,
-            int total,
-            Exception error)
+            string activity)
         {
-            Sequence = sequence;
             Stage = stage;
             Kind = kind;
             Elapsed = elapsed;
             Activity = activity;
-            Completed = completed;
-            Total = total;
-            Error = error;
         }
-
-        internal int Sequence { get; }
 
         internal PlayDataLoadStage Stage { get; }
 
@@ -62,17 +51,11 @@ namespace FixWorld.PlayData
         internal TimeSpan Elapsed { get; }
 
         internal string Activity { get; }
-
-        internal int Completed { get; }
-
-        internal int Total { get; }
-
-        internal Exception Error { get; }
     }
 
     internal static class PlayDataLoadStageCatalog
     {
-        internal const int Count = 16;
+        internal const int Count = (int)PlayDataLoadStage.Complete;
 
         internal static string GetName(PlayDataLoadStage stage)
         {
@@ -154,33 +137,6 @@ namespace FixWorld.PlayData
                 default:
                     throw new ArgumentOutOfRangeException(nameof(stage), stage, null);
             }
-        }
-
-        internal static LoadingStage GetReportStage(PlayDataLoadStage stage)
-        {
-            if (stage <= PlayDataLoadStage.InitializeMods)
-            {
-                return LoadingStage.Bootstrap;
-            }
-
-            if (stage <= PlayDataLoadStage.CreateModClasses)
-            {
-                return LoadingStage.ModPreparation;
-            }
-
-            if (stage == PlayDataLoadStage.LoadAndPatchXml)
-            {
-                return LoadingStage.XmlAndPatches;
-            }
-
-            if (stage <= PlayDataLoadStage.InitializeRuntime)
-            {
-                return LoadingStage.Definitions;
-            }
-
-            return stage == PlayDataLoadStage.DeferredMainThreadWork
-                ? LoadingStage.Content
-                : LoadingStage.Finalize;
         }
     }
 }

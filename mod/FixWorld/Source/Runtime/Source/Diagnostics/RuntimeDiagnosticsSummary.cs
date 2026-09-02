@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using FixWorld.Loading;
-using FixWorld.PlayData;
 
 namespace FixWorld.Diagnostics
 {
@@ -19,23 +17,18 @@ namespace FixWorld.Diagnostics
                 throw new ArgumentNullException(nameof(snapshot));
             }
 
-            IReadOnlyList<DeferredWorkMeasurement> deferred =
-                snapshot.DeferredWork.Measurements;
-            long deferredCalls = deferred.Sum(item => item.Calls);
-            long deferredFailures = deferred.Sum(item => item.Failures);
-            double deferredMilliseconds = deferred.Sum(
-                item => item.TotalTime.TotalMilliseconds);
+            DeferredWorkSnapshot deferred = snapshot.DeferredWork;
 
             return "[FixWorld.Runtime] Startup diagnostics v" +
                    snapshot.SchemaVersion +
                    "; source=" + CompactLabel(snapshot.CompletionSource) +
                    "; playData=" + Milliseconds(
                        snapshot.Loading.ObservedMilliseconds) +
-                   "; stages=" + FormatStageHotpaths(snapshot.Loading.Steps) +
-                   "; deferred=" + deferredCalls + " calls/" +
-                   Milliseconds(deferredMilliseconds) + "/" +
-                   deferredFailures + " failed, top=" +
-                   FormatDeferredHotpaths(deferred) +
+                   "; stages=" + FormatStageHotpaths(snapshot.Loading.Stages) +
+                   "; deferred=" + deferred.Calls + " calls/" +
+                   Milliseconds(deferred.RuntimeMilliseconds) + "/" +
+                   deferred.Failures + " failed, top=" +
+                   FormatDeferredHotpaths(deferred.Top) +
                    "; dds=" + FormatDds(snapshot) +
                    "; scheduler=" + snapshot.Scheduler.WorkerCount +
                    " workers/" + snapshot.Scheduler.PendingMainThreadActions +
@@ -44,16 +37,16 @@ namespace FixWorld.Diagnostics
         }
 
         private static string FormatStageHotpaths(
-            IReadOnlyList<LoadingStepMeasurement> steps)
+            IReadOnlyList<PlayDataStageMeasurement> stages)
         {
             return string.Join(
                 "|",
-                steps
-                    .OrderByDescending(item => item.ExclusiveMilliseconds)
+                stages
+                    .OrderByDescending(item => item.ElapsedMilliseconds)
                     .ThenBy(item => item.Name, StringComparer.Ordinal)
                     .Take(HotpathCount)
                     .Select(item => CompactLabel(item.Name) + "=" +
-                                    Milliseconds(item.ExclusiveMilliseconds)));
+                                    Milliseconds(item.ElapsedMilliseconds)));
         }
 
         private static string FormatDeferredHotpaths(
@@ -67,13 +60,13 @@ namespace FixWorld.Diagnostics
             return string.Join(
                 "|",
                 measurements
-                    .OrderByDescending(item => item.TotalTime)
+                    .OrderByDescending(item => item.TotalMilliseconds)
                     .ThenBy(item => item.Owner, StringComparer.Ordinal)
                     .ThenBy(item => item.Name, StringComparer.Ordinal)
                     .Take(HotpathCount)
                     .Select(item => CompactLabel(item.Owner + ":" + item.Name) +
                                     "=" + Milliseconds(
-                                        item.TotalTime.TotalMilliseconds)));
+                                        item.TotalMilliseconds)));
         }
 
         private static string FormatDds(RuntimeDiagnosticsSnapshot snapshot)

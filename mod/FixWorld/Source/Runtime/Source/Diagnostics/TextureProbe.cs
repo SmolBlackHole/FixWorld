@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Runtime.Serialization;
 using System.Threading;
 using RimWorld.IO;
 using UnityEngine;
@@ -85,14 +86,14 @@ namespace FixWorld.Diagnostics
         {
             long measuredTotalTicks = Interlocked.Read(ref totalTicks);
             long measuredReadTicks = Interlocked.Read(ref readTicks);
-            double totalMilliseconds = BenchmarkRecorder.ToMilliseconds(measuredTotalTicks);
-            double readMilliseconds = BenchmarkRecorder.ToMilliseconds(measuredReadTicks);
+            double totalMilliseconds = ToMilliseconds(measuredTotalTicks);
+            double readMilliseconds = ToMilliseconds(measuredReadTicks);
             double processingMilliseconds = Math.Max(0.0, totalMilliseconds - readMilliseconds);
-            double loadImageMilliseconds = BenchmarkRecorder.ToMilliseconds(
+            double loadImageMilliseconds = ToMilliseconds(
                 Interlocked.Read(ref loadImageTicks));
-            double applyMilliseconds = BenchmarkRecorder.ToMilliseconds(
+            double applyMilliseconds = ToMilliseconds(
                 Interlocked.Read(ref applyTicks));
-            double fastCompressMilliseconds = BenchmarkRecorder.ToMilliseconds(
+            double fastCompressMilliseconds = ToMilliseconds(
                 Interlocked.Read(ref fastCompressTicks));
             double otherMilliseconds = Math.Max(
                 0.0,
@@ -114,28 +115,18 @@ namespace FixWorld.Diagnostics
                 otherMilliseconds,
                 Interlocked.Read(ref ddsFileCount),
                 Interlocked.Read(ref ddsByteCount),
-                BenchmarkRecorder.ToMilliseconds(Interlocked.Read(ref ddsLoadTicks)));
+                ToMilliseconds(Interlocked.Read(ref ddsLoadTicks)));
+        }
+
+        private static double ToMilliseconds(long ticks)
+        {
+            return ticks * 1000.0 / Stopwatch.Frequency;
         }
     }
 
-    internal readonly struct TextureProbeSnapshot
+    [DataContract]
+    internal struct TextureProbeSnapshot
     {
-        internal readonly long Files;
-        internal readonly long Bytes;
-        internal readonly double TotalMilliseconds;
-        internal readonly double ReadMilliseconds;
-        internal readonly double ProcessingMilliseconds;
-        internal readonly long LoadImageCalls;
-        internal readonly double LoadImageMilliseconds;
-        internal readonly long ApplyCalls;
-        internal readonly double ApplyMilliseconds;
-        internal readonly long FastCompressCalls;
-        internal readonly double FastCompressMilliseconds;
-        internal readonly double OtherMilliseconds;
-        internal readonly long DdsFiles;
-        internal readonly long DdsBytes;
-        internal readonly double DdsMilliseconds;
-
         internal TextureProbeSnapshot(
             long files,
             long bytes,
@@ -169,6 +160,51 @@ namespace FixWorld.Diagnostics
             DdsBytes = ddsBytes;
             DdsMilliseconds = ddsMilliseconds;
         }
+
+        [DataMember(Name = "files", Order = 1)]
+        internal long Files { get; private set; }
+
+        [DataMember(Name = "bytes", Order = 2)]
+        internal long Bytes { get; private set; }
+
+        [DataMember(Name = "totalMs", Order = 3)]
+        internal double TotalMilliseconds { get; private set; }
+
+        [DataMember(Name = "readMs", Order = 4)]
+        internal double ReadMilliseconds { get; private set; }
+
+        [DataMember(Name = "processingMs", Order = 5)]
+        internal double ProcessingMilliseconds { get; private set; }
+
+        [DataMember(Name = "loadImageCalls", Order = 6)]
+        internal long LoadImageCalls { get; private set; }
+
+        [DataMember(Name = "loadImageMs", Order = 7)]
+        internal double LoadImageMilliseconds { get; private set; }
+
+        [DataMember(Name = "applyCalls", Order = 8)]
+        internal long ApplyCalls { get; private set; }
+
+        [DataMember(Name = "applyMs", Order = 9)]
+        internal double ApplyMilliseconds { get; private set; }
+
+        [DataMember(Name = "fastCompressCalls", Order = 10)]
+        internal long FastCompressCalls { get; private set; }
+
+        [DataMember(Name = "fastCompressMs", Order = 11)]
+        internal double FastCompressMilliseconds { get; private set; }
+
+        [DataMember(Name = "otherMs", Order = 12)]
+        internal double OtherMilliseconds { get; private set; }
+
+        [DataMember(Name = "ddsFiles", Order = 13)]
+        internal long DdsFiles { get; private set; }
+
+        [DataMember(Name = "ddsBytes", Order = 14)]
+        internal long DdsBytes { get; private set; }
+
+        [DataMember(Name = "ddsMs", Order = 15)]
+        internal double DdsMilliseconds { get; private set; }
     }
 
 }

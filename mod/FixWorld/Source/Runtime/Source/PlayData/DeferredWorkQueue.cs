@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
-using FixWorld.Profiling;
+using FixWorld.Diagnostics;
 using Verse;
 
 namespace FixWorld.PlayData
@@ -18,13 +18,14 @@ namespace FixWorld.PlayData
         private readonly object sync = new object();
         private readonly List<DeferredWorkItem> pending =
             new List<DeferredWorkItem>();
-        private readonly Dictionary<string, DeferredWorkDescriptor> descriptors =
-            new Dictionary<string, DeferredWorkDescriptor>(StringComparer.Ordinal);
-        private Profiler<string> runtimes =
-            new Profiler<string>(StringComparer.Ordinal);
-        private Profiler<string> waits =
-            new Profiler<string>(StringComparer.Ordinal);
+        private readonly RuntimeTelemetryStore telemetry;
         private bool capturing;
+
+        internal DeferredWorkQueue(RuntimeTelemetryStore telemetry)
+        {
+            this.telemetry = telemetry ??
+                throw new ArgumentNullException(nameof(telemetry));
+        }
 
         internal void BeginCapture()
         {
@@ -37,9 +38,6 @@ namespace FixWorld.PlayData
                 }
 
                 pending.Clear();
-                descriptors.Clear();
-                runtimes = new Profiler<string>(StringComparer.Ordinal);
-                waits = new Profiler<string>(StringComparer.Ordinal);
                 capturing = true;
             }
         }
@@ -180,46 +178,6 @@ namespace FixWorld.PlayData
             }
         }
 
-        internal DeferredWorkSnapshot GetSnapshot()
-        {
-            Dictionary<string, DeferredWorkDescriptor> current;
-            lock (sync)
-            {
-                current = new Dictionary<string, DeferredWorkDescriptor>(
-                    descriptors,
-                    StringComparer.Ordinal);
-            }
-
-            ProfileSnapshot<string> runtimeSnapshot = runtimes.Snapshot();
-            ProfileSnapshot<string> waitSnapshot = waits.Snapshot();
-            List<DeferredWorkMeasurement> measurements =
-                new List<DeferredWorkMeasurement>(runtimeSnapshot.Count);
-            foreach (ProfileMeasurement<string> runtime in runtimeSnapshot)
-            {
-                if (!current.TryGetValue(
-                        runtime.Key,
-                        out DeferredWorkDescriptor descriptor))
-                {
-                    continue;
-                }
-
-                waitSnapshot.TryGet(
-                    runtime.Key,
-                    out ProfileMeasurement<string> wait);
-                measurements.Add(new DeferredWorkMeasurement(
-                    descriptor.Owner,
-                    descriptor.Name,
-                    runtime.Calls,
-                    runtime.Failures,
-                    runtime.TotalTime,
-                    runtime.MaximumTime,
-                    wait?.AverageTime ?? TimeSpan.Zero,
-                    wait?.MaximumTime ?? TimeSpan.Zero));
-            }
-
-            return new DeferredWorkSnapshot(measurements);
-        }
-
         private IEnumerable Run(
             IReadOnlyList<DeferredWorkItem> work,
             PlayDataStageRunner stages,
@@ -246,15 +204,14 @@ namespace FixWorld.PlayData
                         if (index == 0 ||
                             startedAt - lastProgressAt >= ProgressIntervalTicks)
                         {
-                            operation.Report(item.Name, index, work.Count);
+                            operation.Report(item.Name);
                             LongEventHandler.SetCurrentEventText(
                                 "FixWorld: " + item.Name);
                             lastProgressAt = startedAt;
                         }
 
-                        waits.Observe(
-                            item.Key,
-                            ToTimeSpan(startedAt - item.EnqueuedAt));
+                        TimeSpan waitTime = ToTimeSpan(
+                            startedAt - item.EnqueuedAt);
                         bool succeeded = false;
                         try
                         {
@@ -269,10 +226,11 @@ namespace FixWorld.PlayData
                         }
                         finally
                         {
-                            runtimes.Observe(
-                                item.Key,
-                                ToTimeSpan(
-                                    Stopwatch.GetTimestamp() - startedAt),
+                            telemetry.ObserveDeferred(
+                                item.Owner,
+                                item.Name,
+                                waitTime,
+                                ToTimeSpan(Stopwatch.GetTimestamp() - startedAt),
                                 succeeded);
                         }
 
@@ -316,13 +274,11 @@ namespace FixWorld.PlayData
 
         private void Add(Action action, string name, string owner)
         {
-            string key = owner + "\n" + name;
             pending.Add(new DeferredWorkItem(
-                key,
+                owner,
                 name,
                 action,
                 Stopwatch.GetTimestamp()));
-            descriptors[key] = new DeferredWorkDescriptor(owner, name);
         }
 
         private static string GetOwner(Action action)
@@ -390,18 +346,18 @@ namespace FixWorld.PlayData
         private readonly struct DeferredWorkItem
         {
             internal DeferredWorkItem(
-                string key,
+                string owner,
                 string name,
                 Action execute,
                 long enqueuedAt)
             {
-                Key = key;
+                Owner = owner;
                 Name = name;
                 Execute = execute;
                 EnqueuedAt = enqueuedAt;
             }
 
-            internal string Key { get; }
+            internal string Owner { get; }
 
             internal string Name { get; }
 
@@ -410,70 +366,5 @@ namespace FixWorld.PlayData
             internal long EnqueuedAt { get; }
         }
 
-        private readonly struct DeferredWorkDescriptor
-        {
-            internal DeferredWorkDescriptor(string owner, string name)
-            {
-                Owner = owner;
-                Name = name;
-            }
-
-            internal string Owner { get; }
-
-            internal string Name { get; }
-        }
-    }
-
-    internal sealed class DeferredWorkSnapshot
-    {
-        internal DeferredWorkSnapshot(
-            IReadOnlyList<DeferredWorkMeasurement> measurements)
-        {
-            Measurements = new List<DeferredWorkMeasurement>(
-                measurements ??
-                throw new ArgumentNullException(nameof(measurements)))
-                .AsReadOnly();
-        }
-
-        internal IReadOnlyList<DeferredWorkMeasurement> Measurements { get; }
-    }
-
-    internal sealed class DeferredWorkMeasurement
-    {
-        internal DeferredWorkMeasurement(
-            string owner,
-            string name,
-            long calls,
-            long failures,
-            TimeSpan totalTime,
-            TimeSpan maximumTime,
-            TimeSpan averageWaitTime,
-            TimeSpan maximumWaitTime)
-        {
-            Owner = owner;
-            Name = name;
-            Calls = calls;
-            Failures = failures;
-            TotalTime = totalTime;
-            MaximumTime = maximumTime;
-            AverageWaitTime = averageWaitTime;
-            MaximumWaitTime = maximumWaitTime;
-        }
-
-        internal string Owner { get; }
-
-        internal string Name { get; }
-
-        internal long Calls { get; }
-
-        internal long Failures { get; }
-
-        internal TimeSpan TotalTime { get; }
-
-        internal TimeSpan MaximumTime { get; }
-
-        internal TimeSpan AverageWaitTime { get; }
-
-        internal TimeSpan MaximumWaitTime { get; }
     }
 }

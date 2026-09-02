@@ -5,7 +5,6 @@ using FixWorld.Events;
 using FixWorld.Lifecycle;
 using FixWorld.Loading;
 using FixWorld.PlayData;
-using FixWorld.Preloader;
 using FixWorld.Scheduling;
 using FixWorld.Textures;
 using Verse;
@@ -22,7 +21,7 @@ namespace FixWorld.Runtime
         private readonly MainThreadQueue mainThread;
         private readonly JobScheduler scheduler;
         private readonly IDisposable lifecycleSubscription;
-        private readonly PlayDataTelemetry telemetry;
+        private readonly RuntimeTelemetryStore telemetry;
         private object attachedMod;
         private bool disposed;
 
@@ -46,13 +45,13 @@ namespace FixWorld.Runtime
                     "[FixWorld] Main-thread action failed (" + name + "): " +
                     error));
             Loading = new PlayDataLoadingState(events);
-            telemetry = new PlayDataTelemetry(events);
+            telemetry = new RuntimeTelemetryStore(events);
             Lifecycle = new RimWorldLifecycle(events);
             ModFiles = new ModFileIndex();
             Textures = new TextureDdsCache(scheduler, mainThread);
 
             PlayDataStageRunner stageRunner = new PlayDataStageRunner(events);
-            DeferredWorkQueue deferredWork = new DeferredWorkQueue();
+            DeferredWorkQueue deferredWork = new DeferredWorkQueue(telemetry);
             DeferredWork = deferredWork;
             PlayData = new PlayDataLoadPipeline(
                 stageRunner,
@@ -80,7 +79,7 @@ namespace FixWorld.Runtime
 
         internal int WorkerCount => scheduler.WorkerCount;
 
-        internal RuntimeDiagnosticsSnapshot Diagnostics { get; private set; }
+        internal RuntimeDiagnosticsSnapshot Diagnostics => telemetry.Snapshot;
 
         internal void AttachMod(RuntimeModAttachmentSnapshot attachment)
         {
@@ -203,21 +202,17 @@ namespace FixWorld.Runtime
                 return false;
             }
 
-            telemetry.Complete();
-            Diagnostics = new RuntimeDiagnosticsSnapshot(
+            RuntimeDiagnosticsSnapshot diagnostics = telemetry.Complete(
                 source,
-                PreloaderTimelineState.GetSnapshot(),
-                telemetry.GetMeasurement(),
                 TextureProbe.GetSnapshot(),
                 Textures.GetSnapshot(),
-                DeferredWork.GetSnapshot(),
                 new RuntimeSchedulerSnapshot(
                     scheduler.WorkerCount,
                     mainThread.PendingCount),
                 SystemMemoryMetrics.Read(),
-                BenchmarkRecorder.Enabled);
-            Log.Message(RuntimeDiagnosticsSummary.Format(Diagnostics));
-            BenchmarkRecorder.Complete(Diagnostics);
+                BenchmarkExporter.Enabled);
+            Log.Message(RuntimeDiagnosticsSummary.Format(diagnostics));
+            BenchmarkExporter.Write(diagnostics);
             return true;
         }
     }

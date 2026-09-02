@@ -9,7 +9,6 @@ namespace FixWorld.PlayData
     internal sealed class PlayDataStageRunner
     {
         private readonly EventBus events;
-        private int nextSequence;
 
         internal PlayDataStageRunner(EventBus events)
         {
@@ -44,9 +43,9 @@ namespace FixWorld.PlayData
                     operation.Complete();
                     return result;
                 }
-                catch (Exception exception)
+                catch
                 {
-                    operation.Fail(exception);
+                    operation.Fail();
                     throw;
                 }
             }
@@ -54,10 +53,9 @@ namespace FixWorld.PlayData
 
         internal PlayDataStageOperation Begin(PlayDataLoadStage stage)
         {
-            int sequence = Interlocked.Increment(ref nextSequence);
             LongEventHandler.SetCurrentEventText(
                 "FixWorld: " + PlayDataLoadStageCatalog.GetName(stage));
-            return new PlayDataStageOperation(events, sequence, stage);
+            return new PlayDataStageOperation(events, stage);
         }
     }
 
@@ -69,43 +67,34 @@ namespace FixWorld.PlayData
 
         internal PlayDataStageOperation(
             EventBus events,
-            int sequence,
             PlayDataLoadStage stage)
         {
             this.events = events;
-            Sequence = sequence;
             Stage = stage;
             stopwatch = Stopwatch.StartNew();
-            Publish(PlayDataLoadStageEventKind.Started, null, 0, 0, null);
+            Publish(PlayDataLoadStageEventKind.Started, null);
         }
-
-        internal int Sequence { get; }
 
         internal PlayDataLoadStage Stage { get; }
 
-        internal void Report(string activity, int completed, int total)
+        internal void Report(string activity)
         {
             if (Volatile.Read(ref terminal) == 0)
             {
                 events.PublishLatest(
                     "play-data-progress",
-                    Create(
-                        PlayDataLoadStageEventKind.Progress,
-                        activity,
-                        completed,
-                        total,
-                        null));
+                    Create(PlayDataLoadStageEventKind.Progress, activity));
             }
         }
 
         internal void Complete()
         {
-            Finish(PlayDataLoadStageEventKind.Completed, null);
+            Finish(PlayDataLoadStageEventKind.Completed);
         }
 
-        internal void Fail(Exception error)
+        internal void Fail()
         {
-            Finish(PlayDataLoadStageEventKind.Failed, error);
+            Finish(PlayDataLoadStageEventKind.Failed);
         }
 
         public void Dispose()
@@ -113,9 +102,7 @@ namespace FixWorld.PlayData
             Complete();
         }
 
-        private void Finish(
-            PlayDataLoadStageEventKind kind,
-            Exception error)
+        private void Finish(PlayDataLoadStageEventKind kind)
         {
             if (Interlocked.Exchange(ref terminal, 1) != 0)
             {
@@ -123,35 +110,25 @@ namespace FixWorld.PlayData
             }
 
             stopwatch.Stop();
-            Publish(kind, null, 0, 0, error);
+            Publish(kind, null);
         }
 
         private void Publish(
             PlayDataLoadStageEventKind kind,
-            string activity,
-            int completed,
-            int total,
-            Exception error)
+            string activity)
         {
-            events.Publish(Create(kind, activity, completed, total, error));
+            events.Publish(Create(kind, activity));
         }
 
         private PlayDataLoadStageEvent Create(
             PlayDataLoadStageEventKind kind,
-            string activity,
-            int completed,
-            int total,
-            Exception error)
+            string activity)
         {
             return new PlayDataLoadStageEvent(
-                Sequence,
                 Stage,
                 kind,
                 stopwatch.Elapsed,
-                activity,
-                completed,
-                total,
-                error);
+                activity);
         }
     }
 }
