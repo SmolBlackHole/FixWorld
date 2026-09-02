@@ -20,12 +20,13 @@ benchmarks, and logs.
 ## Verified baseline
 
 - Doorstop, Loader, Runtime, and Mod have separate boot and attachment ownership.
-- FixWorld orchestrates all 16 play-data stages and owns lifecycle, scheduling,
+- FixWorld orchestrates all 17 play-data stages and owns lifecycle, scheduling,
   and telemetry.
 - Python starts RimWorld, waits, validates, and aggregates JSON written by the Runtime.
 - One Runtime-owned telemetry store records stage events directly, owns deferred
-  profiling, and publishes one versioned schema 14 snapshot for logs, benchmarks,
-  and UI.
+  profiling, and publishes one versioned schema 16 snapshot for logs, benchmarks,
+  and UI. Stage records contain the actual coordinator thread, process CPU and
+  CPU-core equivalent, managed-heap and working-set deltas, and GC counts.
 - The normal Mod exposes that retained snapshot through a resizable, read-only
   diagnostics window. Runtime formats it once; the open window polls the stable
   contract at most every 500 ms and closed UI performs no work.
@@ -38,11 +39,12 @@ benchmarks, and logs.
 
 ## Active order
 
-1. Analyze and reduce the remaining deferred main-thread hotpaths.
-2. Take deeper ownership of remaining RimWorld operations one stage at a time.
-3. Validate BC7 color and alpha output when a named affected texture is available.
-4. Measure packed read-ahead when genuinely slow storage is available.
-5. Only then activate new worker or texture-format experiments.
+1. Split XML file reading and parsing from ordered merge and patch application,
+   then test bounded parallel preparation.
+2. Analyze and reduce the remaining deferred main-thread hotpaths.
+3. Take deeper ownership of remaining RimWorld operations one stage at a time.
+4. Validate BC7 color and alpha output when a named affected texture is available.
+5. Measure packed read-ahead when genuinely slow storage is available.
 
 ## DDS texture cache
 
@@ -106,10 +108,28 @@ most of the work to RimWorld.
 
 ### Mod and assembly boot
 
+Three warm schema 15 baseline runs with 88 mods measured the former combined
+`IndexModContent` stage at 1.18 seconds and 1.08 process CPU cores,
+`LoadAndPatchXml` at 2.36 seconds and 1.19 cores, `ImportDefinitions` at 2.72
+seconds and 1.29 cores, and
+`CreateModClasses` at 4.79 seconds and 1.06 cores. The current metadata contains
+95 active dependency relationships and 123 active load-order relationships.
+These relationships constrain readiness but do not prove that unconnected mods
+cannot affect the same global definitions or patches.
+
+A three-run A/B test rejected one IO job per mod for file discovery. Parallel
+discovery averaged 734 ms and 1,276 ms including texture-cache planning;
+sequential discovery averaged 721 ms and 1,201 ms combined. The worker version
+was removed. `IndexModContent` and `PrepareTextureCache` remain separate schema
+16 stages, and the index now publishes one complete snapshot instead of an
+intermediate empty snapshot.
+
 - [ ] Split `LoadModContent()` into assembly discovery, assembly load, and enqueued asset work.
 - [ ] Measure `GetAllFilesForModPreserveOrder()` and assembly discovery per mod.
 - [ ] Fully own `CreateModClasses()` and measure constructor and Harmony time.
-- [ ] Preserve mod order and Harmony expectations at every cutover.
+- [ ] Use active dependency and load-order metadata as readiness constraints for
+      pure preparation, but preserve the effective total mod order for global
+      commits until result equivalence is proven.
 
 ### XML and definitions
 
@@ -156,10 +176,10 @@ profiling that was previously inactive.
 The Runtime telemetry store records completed stage events directly, owns the
 deferred profilers, and retains one versioned snapshot containing the early
 timeline, stage telemetry, deferred work, scheduler state, DDS state, texture
-measurements, and memory. Benchmark schema 14 serializes that snapshot directly.
+measurements, and memory. Benchmark schema 16 serializes that snapshot directly.
 The startup summary and later UI read the same snapshot. One-shot stage records
-contain only identity, order, elapsed time, and execution thread; redundant call,
-failure, and maximum-time fields were removed.
+contain identity, order, elapsed time, actual coordinator thread, process CPU,
+managed-heap and working-set deltas, and GC collections.
 
 The Runtime now formats the retained snapshot once at startup completion. The
 normal Mod reads that immutable text through the versioned Runtime contract and
@@ -169,7 +189,7 @@ in play. No UI action installs hooks or changes profiler state.
 
 - [x] Present the retained snapshot in a polished, resizable, read-only window
       with section navigation, shared FixWorld styling, and scrolling for dense
-      deferred-work details.
+      stage and deferred-work details.
 - [ ] Separate always-on cheap counters from explicitly enabled detailed capture.
 - [ ] Add measured worker utilization after the scheduler exposes busy and queued
       intervals; the current snapshot only reports configured workers and

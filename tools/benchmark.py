@@ -81,6 +81,15 @@ class PlayDataStageData(TypedDict):
     name: str
     elapsedMs: float
     thread: str
+    threadId: int
+    resourceMetricsAvailable: bool
+    processCpuMs: float
+    cpuCoreEquivalent: float
+    managedHeapDeltaBytes: int
+    workingSetDeltaBytes: int
+    gen0Collections: int
+    gen1Collections: int
+    gen2Collections: int
 
 
 class LoaderData(TypedDict):
@@ -246,7 +255,7 @@ def wait_for_json_file(
 
 def validate_report(raw: object) -> BenchmarkReport:
     report = _string_dict(raw, "benchmark report")
-    if report.get("schemaVersion") != 14:
+    if report.get("schemaVersion") != 16:
         raise RuntimeError(
             f"Unsupported benchmark schema: {report.get('schemaVersion')!r}"
         )
@@ -258,8 +267,24 @@ def validate_report(raw: object) -> BenchmarkReport:
     if completion_source != "fixworld-play-data-pipeline+main-menu-draw":
         raise RuntimeError(f"Unexpected completion source: {completion_source!r}")
     stages = _object_list(loader.get("stages"))
-    if stages is None or len(stages) != 16:
+    if stages is None or len(stages) != 17:
         raise RuntimeError("Benchmark report contains incomplete loader measurements.")
+    for index, stage_value in enumerate(stages):
+        stage = _string_dict(stage_value, f"loader stage {index + 1}")
+        if not isinstance(stage.get("resourceMetricsAvailable"), bool):
+            raise RuntimeError("Benchmark report contains invalid stage diagnostics.")
+        for key in (
+            "threadId",
+            "processCpuMs",
+            "cpuCoreEquivalent",
+            "managedHeapDeltaBytes",
+            "workingSetDeltaBytes",
+            "gen0Collections",
+            "gen1Collections",
+            "gen2Collections",
+        ):
+            if not isinstance(stage.get(key), (int, float)):
+                raise RuntimeError(f"Benchmark report stage diagnostics omit {key}.")
     for section in (
         "ddsReadAhead",
         "textures",
@@ -303,6 +328,15 @@ def write_loader_csv(run_root: Path, report: BenchmarkReport) -> None:
             "name",
             "elapsedMs",
             "thread",
+            "threadId",
+            "resourceMetricsAvailable",
+            "processCpuMs",
+            "cpuCoreEquivalent",
+            "managedHeapDeltaBytes",
+            "workingSetDeltaBytes",
+            "gen0Collections",
+            "gen1Collections",
+            "gen2Collections",
         ),
         loader["stages"],
     )
@@ -476,6 +510,11 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                 "topLoaderStages="
                 + "|".join(
                     f"{stage['id']}={float(stage['elapsedMs']):.3f}ms"
+                    for stage in top_stages
+                ),
+                "topStageCpu="
+                + "|".join(
+                    f"{stage['id']}={float(stage['cpuCoreEquivalent']):.2f}x"
                     for stage in top_stages
                 ),
                 "topDeferred="

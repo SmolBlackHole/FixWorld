@@ -64,6 +64,10 @@ namespace FixWorld.PlayData
             }
 
             files.Rebuild(LoadedModManager.RunningModsListForReading);
+        }
+
+        internal void PrepareTextureCache()
+        {
             textures.Prepare(files);
         }
 

@@ -23,8 +23,14 @@ namespace FixWorld.Content
                 keyComparer: StringComparer.Ordinal);
         private long generation;
 
-        internal void Clear()
+        internal void Rebuild(IReadOnlyList<ModContentPack> mods)
         {
+            if (mods == null)
+            {
+                throw new ArgumentNullException(nameof(mods));
+            }
+
+            long nextGeneration = ++generation;
             CacheWriter<string, ModFileSet, long> writer = cache.Writer;
             foreach (KeyValuePair<
                          string,
@@ -34,19 +40,6 @@ namespace FixWorld.Content
                 writer.Remove(entry.Key);
             }
 
-            writer.Publish();
-        }
-
-        internal void Rebuild(IReadOnlyList<ModContentPack> mods)
-        {
-            if (mods == null)
-            {
-                throw new ArgumentNullException(nameof(mods));
-            }
-
-            Clear();
-            long nextGeneration = ++generation;
-            CacheWriter<string, ModFileSet, long> writer = cache.Writer;
             foreach (ModContentPack mod in mods)
             {
                 foreach (string contentPath in IndexedContentPaths)

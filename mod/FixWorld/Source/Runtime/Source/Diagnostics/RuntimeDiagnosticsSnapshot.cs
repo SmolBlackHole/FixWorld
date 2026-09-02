@@ -10,7 +10,7 @@ namespace FixWorld.Diagnostics
     [DataContract]
     internal sealed class RuntimeDiagnosticsSnapshot
     {
-        internal const int CurrentSchemaVersion = 14;
+        internal const int CurrentSchemaVersion = 16;
 
         internal RuntimeDiagnosticsSnapshot(
             string completionSource,

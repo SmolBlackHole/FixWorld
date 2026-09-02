@@ -144,11 +144,11 @@ namespace FixWorld.Diagnostics
         {
             if (stageEvent.Kind == PlayDataLoadStageEventKind.Completed)
             {
+                PlayDataStageDiagnostics diagnostics = stageEvent.Diagnostics;
                 stages.Add(new PlayDataStageMeasurement(
                     stageEvent.Stage,
                     stageEvent.Elapsed.TotalMilliseconds,
-                    stageEvent.Stage >=
-                    PlayDataLoadStage.DeferredMainThreadWork));
+                    diagnostics));
             }
         }
 
@@ -216,13 +216,25 @@ namespace FixWorld.Diagnostics
         internal PlayDataStageMeasurement(
             PlayDataLoadStage stage,
             double elapsedMilliseconds,
-            bool mainThread)
+            PlayDataStageDiagnostics diagnostics)
         {
             Id = stage.ToString();
             Number = (int)stage;
             Name = PlayDataLoadStageCatalog.GetName(stage);
             ElapsedMilliseconds = elapsedMilliseconds;
-            Thread = mainThread ? "main" : "worker";
+            Thread = diagnostics.MainThread ? "main" : "worker";
+            ManagedThreadId = diagnostics.ManagedThreadId;
+            ResourceMetricsAvailable = diagnostics.ResourceMetricsAvailable;
+            ProcessCpuMilliseconds =
+                diagnostics.ProcessCpuTime.TotalMilliseconds;
+            CpuCoreEquivalent = elapsedMilliseconds <= 0.0
+                ? 0.0
+                : ProcessCpuMilliseconds / elapsedMilliseconds;
+            ManagedHeapDeltaBytes = diagnostics.ManagedHeapDeltaBytes;
+            WorkingSetDeltaBytes = diagnostics.WorkingSetDeltaBytes;
+            GenerationZeroCollections = diagnostics.GenerationZeroCollections;
+            GenerationOneCollections = diagnostics.GenerationOneCollections;
+            GenerationTwoCollections = diagnostics.GenerationTwoCollections;
         }
 
         [DataMember(Name = "id", Order = 1)]
@@ -239,6 +251,33 @@ namespace FixWorld.Diagnostics
 
         [DataMember(Name = "thread", Order = 5)]
         internal string Thread { get; private set; }
+
+        [DataMember(Name = "threadId", Order = 6)]
+        internal int ManagedThreadId { get; private set; }
+
+        [DataMember(Name = "resourceMetricsAvailable", Order = 7)]
+        internal bool ResourceMetricsAvailable { get; private set; }
+
+        [DataMember(Name = "processCpuMs", Order = 8)]
+        internal double ProcessCpuMilliseconds { get; private set; }
+
+        [DataMember(Name = "cpuCoreEquivalent", Order = 9)]
+        internal double CpuCoreEquivalent { get; private set; }
+
+        [DataMember(Name = "managedHeapDeltaBytes", Order = 10)]
+        internal long ManagedHeapDeltaBytes { get; private set; }
+
+        [DataMember(Name = "workingSetDeltaBytes", Order = 11)]
+        internal long WorkingSetDeltaBytes { get; private set; }
+
+        [DataMember(Name = "gen0Collections", Order = 12)]
+        internal int GenerationZeroCollections { get; private set; }
+
+        [DataMember(Name = "gen1Collections", Order = 13)]
+        internal int GenerationOneCollections { get; private set; }
+
+        [DataMember(Name = "gen2Collections", Order = 14)]
+        internal int GenerationTwoCollections { get; private set; }
     }
 
     [DataContract]

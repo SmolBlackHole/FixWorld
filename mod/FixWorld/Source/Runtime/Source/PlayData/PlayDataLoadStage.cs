@@ -7,19 +7,20 @@ namespace FixWorld.PlayData
         Reset = 1,
         InitializeMods = 2,
         IndexModContent = 3,
-        PrepareModContent = 4,
-        CreateModClasses = 5,
-        LoadAndPatchXml = 6,
-        ImportDefinitions = 7,
-        EarlyBinding = 8,
-        PreResolveImpliedDefinitions = 9,
-        CrossReferenceResolution = 10,
-        ReferenceResolution = 11,
-        PostResolveImpliedDefinitions = 12,
-        DefinitionFinalization = 13,
-        InitializeRuntime = 14,
-        DeferredMainThreadWork = 15,
-        Complete = 16
+        PrepareTextureCache = 4,
+        PrepareModContent = 5,
+        CreateModClasses = 6,
+        LoadAndPatchXml = 7,
+        ImportDefinitions = 8,
+        EarlyBinding = 9,
+        PreResolveImpliedDefinitions = 10,
+        CrossReferenceResolution = 11,
+        ReferenceResolution = 12,
+        PostResolveImpliedDefinitions = 13,
+        DefinitionFinalization = 14,
+        InitializeRuntime = 15,
+        DeferredMainThreadWork = 16,
+        Complete = 17
     }
 
     internal enum PlayDataLoadStageEventKind
@@ -36,12 +37,14 @@ namespace FixWorld.PlayData
             PlayDataLoadStage stage,
             PlayDataLoadStageEventKind kind,
             TimeSpan elapsed,
-            string activity)
+            string activity,
+            PlayDataStageDiagnostics diagnostics)
         {
             Stage = stage;
             Kind = kind;
             Elapsed = elapsed;
             Activity = activity;
+            Diagnostics = diagnostics;
         }
 
         internal PlayDataLoadStage Stage { get; }
@@ -51,6 +54,51 @@ namespace FixWorld.PlayData
         internal TimeSpan Elapsed { get; }
 
         internal string Activity { get; }
+
+        internal PlayDataStageDiagnostics Diagnostics { get; }
+    }
+
+    internal readonly struct PlayDataStageDiagnostics
+    {
+        internal PlayDataStageDiagnostics(
+            bool resourceMetricsAvailable,
+            bool mainThread,
+            int managedThreadId,
+            TimeSpan processCpuTime,
+            long managedHeapDeltaBytes,
+            long workingSetDeltaBytes,
+            int generationZeroCollections,
+            int generationOneCollections,
+            int generationTwoCollections)
+        {
+            ResourceMetricsAvailable = resourceMetricsAvailable;
+            MainThread = mainThread;
+            ManagedThreadId = managedThreadId;
+            ProcessCpuTime = processCpuTime;
+            ManagedHeapDeltaBytes = managedHeapDeltaBytes;
+            WorkingSetDeltaBytes = workingSetDeltaBytes;
+            GenerationZeroCollections = generationZeroCollections;
+            GenerationOneCollections = generationOneCollections;
+            GenerationTwoCollections = generationTwoCollections;
+        }
+
+        internal bool ResourceMetricsAvailable { get; }
+
+        internal bool MainThread { get; }
+
+        internal int ManagedThreadId { get; }
+
+        internal TimeSpan ProcessCpuTime { get; }
+
+        internal long ManagedHeapDeltaBytes { get; }
+
+        internal long WorkingSetDeltaBytes { get; }
+
+        internal int GenerationZeroCollections { get; }
+
+        internal int GenerationOneCollections { get; }
+
+        internal int GenerationTwoCollections { get; }
     }
 
     internal static class PlayDataLoadStageCatalog
@@ -71,6 +119,8 @@ namespace FixWorld.PlayData
                     return "Create mod classes";
                 case PlayDataLoadStage.IndexModContent:
                     return "Index mod content";
+                case PlayDataLoadStage.PrepareTextureCache:
+                    return "Prepare texture cache";
                 case PlayDataLoadStage.LoadAndPatchXml:
                     return "Load and patch XML";
                 case PlayDataLoadStage.ImportDefinitions:
@@ -112,6 +162,8 @@ namespace FixWorld.PlayData
                     return "Classes";
                 case PlayDataLoadStage.IndexModContent:
                     return "Index";
+                case PlayDataLoadStage.PrepareTextureCache:
+                    return "DDS";
                 case PlayDataLoadStage.LoadAndPatchXml:
                     return "XML";
                 case PlayDataLoadStage.ImportDefinitions:

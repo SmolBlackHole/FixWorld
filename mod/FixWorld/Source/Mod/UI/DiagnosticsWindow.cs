@@ -12,7 +12,7 @@ namespace FixWorld.UI
         private const float HeaderHeight = 58f;
         private const float NavigationGap = 14f;
         private const float NavigationWidth = 178f;
-        private const float DeferredRowHeight = 47f;
+        private const float DetailedRowHeight = 47f;
         private const float RefreshIntervalSeconds = 0.5f;
         private const float RowHeight = 29f;
         private const float MinimumHeight = 440f;
@@ -213,11 +213,16 @@ namespace FixWorld.UI
                 inner.y + 47f,
                 inner.width,
                 inner.height - 47f);
-            bool stackedRows = string.Equals(
-                section.Title,
-                "Deferred work",
-                StringComparison.Ordinal);
-            float rowHeight = stackedRows ? DeferredRowHeight : RowHeight;
+            bool stackedRows =
+                string.Equals(
+                    section.Title,
+                    "Stages",
+                    StringComparison.Ordinal) ||
+                string.Equals(
+                    section.Title,
+                    "Deferred work",
+                    StringComparison.Ordinal);
+            float rowHeight = stackedRows ? DetailedRowHeight : RowHeight;
             float contentHeight = Math.Max(
                 viewport.height,
                 section.Lines.Count * rowHeight);

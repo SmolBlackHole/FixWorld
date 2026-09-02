@@ -75,7 +75,7 @@ namespace FixWorld.Diagnostics
                     "  " + stage.Number.ToString("00", CultureInfo.InvariantCulture) +
                     "  " + stage.Name + ": " +
                     Milliseconds(stage.ElapsedMilliseconds) +
-                    " (" + stage.Thread + ")");
+                    " (" + FormatStageExecution(stage) + ")");
             }
 
             DeferredWorkSnapshot deferred = snapshot.DeferredWork;
@@ -198,6 +198,38 @@ namespace FixWorld.Diagnostics
                     .Take(HotpathCount)
                     .Select(item => CompactLabel(item.Name) + "=" +
                                     Milliseconds(item.ElapsedMilliseconds)));
+        }
+
+        private static string FormatStageExecution(
+            PlayDataStageMeasurement stage)
+        {
+            string thread = stage.Thread + " #" +
+                            stage.ManagedThreadId.ToString(
+                                CultureInfo.InvariantCulture);
+            if (!stage.ResourceMetricsAvailable)
+            {
+                return thread + ", resources unavailable";
+            }
+
+            return thread +
+                   ", CPU " + stage.CpuCoreEquivalent.ToString(
+                       "0.00",
+                       CultureInfo.InvariantCulture) + "x" +
+                   ", heap " + SignedMebibytes(
+                       stage.ManagedHeapDeltaBytes) +
+                   ", working set " + SignedMebibytes(
+                       stage.WorkingSetDeltaBytes) +
+                   ", GC " + stage.GenerationZeroCollections + "/" +
+                   stage.GenerationOneCollections + "/" +
+                   stage.GenerationTwoCollections;
+        }
+
+        private static string SignedMebibytes(long bytes)
+        {
+            double mebibytes = bytes / (1024.0 * 1024.0);
+            return (mebibytes > 0.0 ? "+" : string.Empty) +
+                   mebibytes.ToString("0.0", CultureInfo.InvariantCulture) +
+                   " MiB";
         }
 
         private static string FormatDeferredHotpaths(
