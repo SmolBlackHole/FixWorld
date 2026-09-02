@@ -23,6 +23,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Shared\FixWorld.Shared.csproj"
+      Aliases="FixWorldShared" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="..\Shared\DdsCacheContract.cs"
       Link="Source\Textures\DdsCacheContract.cs" />
     <Compile Include="..\Shared\PreloaderTimeline.cs"

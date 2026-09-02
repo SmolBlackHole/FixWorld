@@ -9,9 +9,11 @@ namespace FixWorld.Integration
         private const string OwnerPrefix = "smolblackhole.fixworld";
         private static readonly object Sync = new object();
         private static readonly HookGroup ModBootHookGroup = new HookGroup(
-            "mod boot",
+            "play-data and mod boot",
             OwnerPrefix + ".modboot",
-            ModBootHooks.PatchTypes);
+            CombinePatchTypes(
+                PlayDataHooks.PatchTypes,
+                ModBootHooks.PatchTypes));
         private static readonly HookGroup LoadingHookGroup = new HookGroup(
             "loading",
             OwnerPrefix + ".loading",
@@ -74,6 +76,14 @@ namespace FixWorld.Integration
                 LoadingHookGroup.Uninstall();
                 ModBootHookGroup.Uninstall();
             }
+        }
+
+        private static Type[] CombinePatchTypes(Type[] first, Type[] second)
+        {
+            Type[] combined = new Type[first.Length + second.Length];
+            Array.Copy(first, 0, combined, 0, first.Length);
+            Array.Copy(second, 0, combined, first.Length, second.Length);
+            return combined;
         }
 
         private sealed class HookGroup

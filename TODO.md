@@ -1,6 +1,6 @@
 # TODO
 
-Aktuell: **Feature Freeze. Vor weiteren Loader-Features werden die vorhandenen Infrastrukturgrenzen sauber gezogen.**
+Aktuell: **Feature Freeze. Nächster aktiver Schnitt ist Phase 1 der behavior-identischen `PlayDataLoadPipeline`.**
 
 Der abgeschlossene Stand gehört in Git, Benchmarks und Logs. Diese Datei enthält nur noch bewusst verschobene Arbeit.
 
@@ -9,9 +9,10 @@ Der abgeschlossene Stand gehört in Git, Benchmarks und Logs. Diese Datei enthä
 - [x] `texconv` ausschließlich über einen kleinen typisierten Wrapper aufrufen; Aufrufer übergeben nur Eingabepfade, Ausgabeverzeichnis und DDS-Anforderungen
 - [x] Eingabedaten an der Tool-Grenze nur als Pfade beziehungsweise `--file-list` übergeben; der Wrapper kopiert keine Assetdaten
 - [x] DDS-Cache-Cleanup in das C#-Tool übernehmen und das PowerShell-Skript entfernen
+- [x] generische Caching-, Scheduling- und Profiling-Primitiven in `FixWorld.Shared` isoliert bereitstellen und mit Contract-Tests absichern
 - [ ] die Hash-Staging-Kopien des DDS-Builders nur mit einer kollisionssicheren direkten Ausgabestrategie entfernen; der Tool-Wrapper selbst ist bereits kopierfrei
 - [ ] festlegen, welche Verträge wirklich assemblyübergreifend in `Shared` leben; zentrale Runtime-Dienste sind nicht automatisch Shared-Code
-- [ ] Caching, Scheduling, Worker und Runtime-Initialisierung anhand ihrer tatsächlichen Besitzer und Lebenszeiten neu zuschneiden
+- [ ] bestehende Runtime-Dienste erst beim jeweiligen Pipeline-Cutover durch Shared-Primitiven ersetzen; Altcode vorher nicht separat modernisieren
 - [ ] RimWorlds vorhandenes Unity Job System mit einem isolierten `IJob`-/`NativeArray`-Prototyp prüfen, bevor FixWorld einen eigenen Worker-Unterbau festlegt
 - [ ] erst nach dem Prototyp entscheiden, welche Arbeit Unity Jobs, FixWorld-Worker oder der Main Thread ausführen
 
@@ -47,22 +48,53 @@ Der abgeschlossene Stand gehört in Git, Benchmarks und Logs. Diese Datei enthä
 
 ### Vollständige Play-Data-Pipeline
 
-- [ ] `PlayDataLoader.DoPlayLoad()` als obersten FixWorld-Pipeline-Einstieg übernehmen, damit nicht nur `LoadAllActiveMods()` unter eigener Kontrolle steht
-- [ ] die neue `PlayDataLoadPipeline` als eine geordnete Folge expliziter Stages modellieren:
-  - [ ] Initialize mods
-  - [ ] Prepare mod content
-  - [ ] Create mod classes
-  - [ ] Load and patch XML
-  - [ ] Parse definitions
-  - [ ] Resolve definitions
-  - [ ] Generate implied definitions
-  - [ ] Execute deferred main-thread work
-  - [ ] Finalize static initialization
-  - [ ] Complete
-- [ ] Stage-Fortschritt, Fehler und Laufzeiten ausschließlich über typisierte Observer veröffentlichen; Pipeline-Code schreibt weder UI noch Benchmark-Reports direkt
+Verbindliche Migrationsregeln:
+
+- alten Loading-Code einfrieren; insbesondere `LoadingTelemetry` und den Delegate-Executor nicht mehr separat modernisieren
+- immer genau einen aktiven Ablauf behalten; jede Stage gehört entweder RimWorld oder FixWorld, niemals beiden gleichzeitig
+- Shared-Primitiven ausschließlich im neuen `PlayData`-Pfad verwenden
+- nach jedem Cutover vollständige Modliste testen und den dadurch ersetzten Altcode im selben Schnitt löschen
+
+Phase 1, behavior-identischer Pipeline-Root:
+
+- [x] unter `Runtime/Source/PlayData` nur `PlayDataLoadPipeline`, Run-Kontext, Stage-Vertrag und Observer anlegen
+- [x] `PlayDataLoader.DoPlayLoad()` über genau einen frühen Hook an `PlayDataLoadPipeline` übergeben
+- [x] zunächst dieselben RimWorld-Operationen in derselben Reihenfolge und ohne Optimierung ausführen
+- [x] Stage-Fortschritt, Fehler und Laufzeiten über typisierte Observer sowie den neuen Shared-Profiler veröffentlichen; Pipeline-Code schreibt weder UI noch Benchmark-Reports direkt
+- [x] vollständige Modliste bis zum eindeutig erkannten Hauptmenü laden und Stage-Reihenfolge sowie Benchmark-Ausgabe prüfen
+
+Phase 2, bestehenden Mod-Boot eingliedern:
+
+- [ ] die bestehende `ModBootPipeline` als Stage der neuen Root-Pipeline ausführen
+- [ ] danach den separaten `LoadAllActiveMods()`-Hook entfernen
+- [ ] verschachtelte Content-Profilerlabels während `PrepareModContent` nicht mehr als vorgezogene Root-Stage veröffentlichen; die sichtbare Stage-Reihenfolge darf nicht rückwärts springen
+- [ ] vollständige Modliste erneut laden und identische aktive Mods sowie Mod-Reihenfolge prüfen
+
+Phase 3, Deferred Work übernehmen:
+
+- [ ] `ExecuteWhenFinished()`-Arbeit beim Einreihen typisiert erfassen, statt Delegates und Closures später zu rekonstruieren
+- [ ] Deferred Work geordnet über eine explizite Main-Thread-Stage ausführen
 - [ ] Worker-Vorbereitung und geordneten Main-Thread-Commit über die Shared-Scheduling-Verträge abbilden
-- [ ] nach dem verifizierten Cutover die Delegate-Rekonstruktion aus `VanillaDelayedActionBridge`, `VanillaLoadingActionAdapter`, `LoadingCoordinator`, `LoadingStageExecutor` und `LoadingWork` vollständig entfernen
-- [ ] vollständige Modliste, Quarry-Save, Hauptmenüabschluss und Benchmark-Ausgabe vor dem Löschen des alten Pfads verifizieren
+- [ ] anschließend `VanillaDelayedActionBridge`, `VanillaLoadingActionAdapter`, `LoadingCoordinator`, `LoadingStageExecutor` und `LoadingWork` entfernen
+
+Phase 4, Stage-Ownership einzeln übernehmen:
+
+- [ ] Initialize mods
+- [ ] Prepare mod content
+- [ ] Create mod classes
+- [ ] Load and patch XML
+- [ ] Parse definitions
+- [ ] Resolve definitions
+- [ ] Generate implied definitions
+- [ ] Execute deferred main-thread work
+- [ ] Finalize static initialization
+- [ ] Complete
+
+Phase 5, Altlasten entfernen und verifizieren:
+
+- [ ] nicht mehr verwendete Loading-Events, Models, Telemetrie, Adapter und Harmony-Hooks löschen
+- [ ] vollständige Modliste, Quarry-Save, Hauptmenüabschluss und Benchmark-Ausgabe verifizieren
+- [ ] erst nach stabiler Verhaltensgleichheit Optimierungen oder zusätzliche Worker aktivieren
 
 ## Loader und Worker
 
