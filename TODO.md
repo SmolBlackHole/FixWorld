@@ -30,13 +30,12 @@ benchmarks, and logs.
 
 ## Active order
 
-1. Attribute and analyze dominant deferred work before splitting or parallelizing it.
-2. Publish a runtime diagnostics snapshot and one compact startup summary.
-3. Validate BC7 color and alpha output on affected third-party textures.
-4. Measure packed read-ahead on genuinely slow storage.
-5. Add a small read-only diagnostics window over the same snapshot.
-6. Take deeper ownership of remaining RimWorld operations one stage at a time.
-7. Only then activate new worker or texture-format experiments.
+1. Publish a runtime diagnostics snapshot and one compact startup summary.
+2. Validate BC7 color and alpha output on affected third-party textures.
+3. Measure packed read-ahead on genuinely slow storage.
+4. Add a small read-only diagnostics window over the same snapshot.
+5. Take deeper ownership of remaining RimWorld operations one stage at a time.
+6. Only then activate new worker or texture-format experiments.
 
 ## DDS texture cache
 
@@ -45,10 +44,11 @@ the shared scheduler, and the external-tool wrapper. Misses use source assets on
 the current launch, then one low-priority background job per mod publishes an
 atomic `.fwdp` pack after the main menu is ready.
 
-The current 88-mod warm baseline is about 25 seconds overall, 0.9 seconds for
-the texture probe, and 0.31 seconds for packed DDS loading. The cache contains
-10,460 hits in 62 packs. On the local NVMe, 256 MiB packed read-ahead is neutral
-for total startup time.
+The current 88-mod warm baseline is about 23 to 25 seconds overall, about 0.3
+seconds for texture loading, and 0.1 seconds inside packed DDS loading. The
+cache contains 10,460 hits in 62 packs. On the local NVMe, 256 MiB packed
+read-ahead is neutral for total startup time. Rebuilding 8,250 missing entries
+into 52 packs took 282 seconds in the background with one active converter.
 
 ### Remaining cache work
 
@@ -65,14 +65,15 @@ for total startup time.
 
 ## Deferred main-thread work
 
-The current fully warm 88-mod run spends about 13.4 seconds in
-`DeferredMainThreadWork`.
-The queue is already captured when work is enqueued. The next requirement is
-domain attribution, not a second queue.
+The current fully warm 88-mod runs spend about 11 to 13 seconds in
+`DeferredMainThreadWork`, while FixWorld scheduling and frame-yield overhead is
+about 0.5 seconds. The queue records owner, calls, failures, runtime, and queue
+delay. Static constructors and finalization operations are separate work items.
+With the current mod list, Lunar takes about 3.2 to 3.4 seconds, of which
+GeologicalLandforms initialization takes about 2.5 seconds and Lunar's Harmony
+wrapper refresh about 0.8 seconds. `ThingDef.PostLoad` takes about 1.1 seconds.
 
-- [ ] Record producer, mod or assembly owner, enqueue time, wait time, and runtime for every action.
 - [ ] Determine dependencies and actual main-thread requirements for every expensive action.
-- [ ] Report top actions and unattributed global work in the benchmark report.
 - [ ] Prepare pure data off-thread and commit results on the main thread in original order.
 - [ ] Fall back to the original sequential path safely or terminate the load explicitly on failure.
 - [ ] Verify deterministic order and identical results across repeated runs.
@@ -98,7 +99,6 @@ most of the work to RimWorld.
 
 ### Finalization and lifecycle
 
-- [ ] Measure static constructors, atlas building, asset unload, and forced GC separately.
 - [ ] Define the LongEvent thread, synchronous events, scene changes, and exception lifecycle as a Runtime contract.
 - [ ] Re-emit and verify `MainMenuReady` across menu, game, menu, and second-game transitions.
 - [ ] Continue reducing RimWorld and Harmony calls to thin adapters over typed FixWorld work.
@@ -118,8 +118,8 @@ Acceptance for every stage cutover:
 ## Benchmarks and pilot operation
 
 - [ ] Make preloader state explicit per benchmark instead of inheriting the installed state.
-- [ ] Compare PNG/JPG, DDS, and DDS build with cold and warm OS caches and two,
-      four, and eight workers.
+- [ ] Compare PNG/JPG, DDS, and DDS build with cold and warm OS caches. Measure
+      `texconv` batch sizing separately from the scheduler worker count.
 - [ ] Measure read-ahead on NVMe and HDD with tiered budgets, separating seek time and throughput.
 - [ ] Preload mod files and assemblies with DDS under a byte budget and measure RAM and I/O peaks.
 

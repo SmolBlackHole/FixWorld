@@ -4,6 +4,7 @@ using System.IO;
 using System.Reflection;
 using FixWorld.Runtime;
 using HarmonyLib;
+using RimWorld.IO;
 using UnityEngine;
 using Verse;
 
@@ -14,7 +15,7 @@ namespace FixWorld.Integration
         internal static readonly Type[] PatchTypes =
         {
             typeof(ModFileIndexPatch),
-            typeof(TextureContentPatch)
+            typeof(TextureLoadPatch)
         };
 
         [HarmonyPatch(
@@ -51,26 +52,28 @@ namespace FixWorld.Integration
         }
 
         [HarmonyPatch]
-        private static class TextureContentPatch
+        private static class TextureLoadPatch
         {
             private static MethodBase TargetMethod()
             {
                 return AccessTools.Method(
                     typeof(ModContentLoader<Texture2D>),
-                    nameof(ModContentLoader<Texture2D>.LoadAllForMod));
+                    "LoadTexture",
+                    new[] { typeof(VirtualFile) }) ??
+                    throw new MissingMethodException(
+                        typeof(ModContentLoader<Texture2D>).FullName,
+                        "LoadTexture");
             }
 
             [HarmonyPrefix]
             [HarmonyPriority(Priority.Last)]
             private static bool Prefix(
-                ModContentPack mod,
-                ref IEnumerable<Pair<
-                    string,
-                    LoadedContentItem<Texture2D>>> __result)
+                VirtualFile file,
+                ref Texture2D __result)
             {
-                RuntimeContext context = RuntimeHost.Current;
-                __result = context.Textures.LoadAll(mod, context.ModFiles);
-                return false;
+                return !RuntimeHost.Current.Textures.TryLoad(
+                    file,
+                    out __result);
             }
         }
     }

@@ -6,6 +6,7 @@ using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using FixWorld.Runtime;
 using FixWorld.Preloader;
+using FixWorld.PlayData;
 using FixWorld.Textures;
 using FixWorld.Loading;
 
@@ -14,7 +15,7 @@ namespace FixWorld.Diagnostics
     [DataContract]
     internal sealed class BenchmarkReport
     {
-        private const int CurrentSchemaVersion = 10;
+        private const int CurrentSchemaVersion = 11;
 
         [DataMember(Name = "schemaVersion", Order = 1)]
         public int SchemaVersion { get; private set; }
@@ -43,6 +44,9 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "ddsCache", Order = 9)]
         public TextureDdsCacheSnapshot DdsCache { get; private set; }
 
+        [DataMember(Name = "deferred", Order = 10)]
+        public DeferredWorkReport Deferred { get; private set; }
+
         private BenchmarkReport()
         {
         }
@@ -54,7 +58,8 @@ namespace FixWorld.Diagnostics
             FileDiscoverySnapshot files,
             TexturePathSnapshot texturePaths,
             TextureProbeSnapshot textures,
-            TextureDdsCacheSnapshot ddsCache)
+            TextureDdsCacheSnapshot ddsCache,
+            DeferredWorkSnapshot deferred)
         {
             List<LoaderStepReport> steps = loading.Steps
                 .Select(step => new LoaderStepReport(step))
@@ -80,7 +85,8 @@ namespace FixWorld.Diagnostics
                 Files = new FileDiscoveryReport(files),
                 TexturePaths = new TexturePathReport(texturePaths),
                 Textures = new TextureReport(textures),
-                DdsCache = ddsCache
+                DdsCache = ddsCache,
+                Deferred = new DeferredWorkReport(deferred)
             };
         }
 
@@ -89,6 +95,89 @@ namespace FixWorld.Diagnostics
             DataContractJsonSerializer serializer =
                 new DataContractJsonSerializer(typeof(BenchmarkReport));
             AtomicFile.Write(path, stream => serializer.WriteObject(stream, this));
+        }
+    }
+
+    [DataContract]
+    internal sealed class DeferredWorkReport
+    {
+        [DataMember(Name = "calls", Order = 1)]
+        public long Calls { get; private set; }
+
+        [DataMember(Name = "failures", Order = 2)]
+        public long Failures { get; private set; }
+
+        [DataMember(Name = "runtimeMs", Order = 3)]
+        public double RuntimeMilliseconds { get; private set; }
+
+        [DataMember(Name = "maxQueueDelayMs", Order = 4)]
+        public double MaximumQueueDelayMilliseconds { get; private set; }
+
+        [DataMember(Name = "top", Order = 5)]
+        public List<DeferredWorkItemReport> Top { get; private set; }
+
+        internal DeferredWorkReport(DeferredWorkSnapshot snapshot)
+        {
+            IReadOnlyList<DeferredWorkMeasurement> measurements =
+                snapshot?.Measurements ??
+                Array.Empty<DeferredWorkMeasurement>();
+            Calls = measurements.Sum(item => item.Calls);
+            Failures = measurements.Sum(item => item.Failures);
+            RuntimeMilliseconds = measurements.Sum(
+                item => item.TotalTime.TotalMilliseconds);
+            MaximumQueueDelayMilliseconds = measurements.Count == 0
+                ? 0.0
+                : measurements.Max(
+                    item => item.MaximumWaitTime.TotalMilliseconds);
+            Top = measurements
+                .OrderByDescending(item => item.TotalTime)
+                .ThenBy(item => item.Owner, StringComparer.Ordinal)
+                .ThenBy(item => item.Name, StringComparer.Ordinal)
+                .Take(20)
+                .Select(item => new DeferredWorkItemReport(item))
+                .ToList();
+        }
+    }
+
+    [DataContract]
+    internal sealed class DeferredWorkItemReport
+    {
+        [DataMember(Name = "owner", Order = 1)]
+        public string Owner { get; private set; }
+
+        [DataMember(Name = "name", Order = 2)]
+        public string Name { get; private set; }
+
+        [DataMember(Name = "calls", Order = 3)]
+        public long Calls { get; private set; }
+
+        [DataMember(Name = "failures", Order = 4)]
+        public long Failures { get; private set; }
+
+        [DataMember(Name = "totalMs", Order = 5)]
+        public double TotalMilliseconds { get; private set; }
+
+        [DataMember(Name = "maxMs", Order = 6)]
+        public double MaximumMilliseconds { get; private set; }
+
+        [DataMember(Name = "averageWaitMs", Order = 7)]
+        public double AverageWaitMilliseconds { get; private set; }
+
+        [DataMember(Name = "maxWaitMs", Order = 8)]
+        public double MaximumWaitMilliseconds { get; private set; }
+
+        internal DeferredWorkItemReport(DeferredWorkMeasurement measurement)
+        {
+            Owner = measurement.Owner;
+            Name = measurement.Name;
+            Calls = measurement.Calls;
+            Failures = measurement.Failures;
+            TotalMilliseconds = measurement.TotalTime.TotalMilliseconds;
+            MaximumMilliseconds = measurement.MaximumTime.TotalMilliseconds;
+            AverageWaitMilliseconds =
+                measurement.AverageWaitTime.TotalMilliseconds;
+            MaximumWaitMilliseconds =
+                measurement.MaximumWaitTime.TotalMilliseconds;
         }
     }
 

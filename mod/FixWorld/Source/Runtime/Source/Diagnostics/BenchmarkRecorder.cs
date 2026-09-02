@@ -7,6 +7,7 @@ using System.Threading;
 using FixWorld.Textures;
 using FixWorld.Loading;
 using FixWorld.Preloader;
+using FixWorld.PlayData;
 using UnityEngine;
 using Verse;
 
@@ -74,7 +75,8 @@ namespace FixWorld.Diagnostics
         internal static void Complete(
             string source,
             LoadingMeasurement loading,
-            TextureDdsCacheSnapshot ddsCache)
+            TextureDdsCacheSnapshot ddsCache,
+            DeferredWorkSnapshot deferred)
         {
             if (!Enabled)
             {
@@ -100,7 +102,8 @@ namespace FixWorld.Diagnostics
                     GetFileDiscoverySnapshot(),
                     GetTexturePathSnapshot(),
                     TextureProbe.GetSnapshot(),
-                    ddsCache);
+                    ddsCache,
+                    deferred);
                 report.Write(OutputPath);
                 Log.Message("[FixWorld] Benchmark report written: " + OutputPath);
             }

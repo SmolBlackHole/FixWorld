@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Threading;
@@ -36,6 +35,13 @@ namespace FixWorld.Textures
         private readonly MainThreadQueue mainThread;
         private readonly Dictionary<string, DdsModPlan> plans =
             new Dictionary<string, DdsModPlan>(StringComparer.Ordinal);
+        private readonly Dictionary<string, DdsPackSlice> startupHits =
+            new Dictionary<string, DdsPackSlice>(
+                StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, MemoryMappedFileSpanWrapper>
+            startupReaders =
+                new Dictionary<string, MemoryMappedFileSpanWrapper>(
+                    StringComparer.OrdinalIgnoreCase);
         private readonly List<JobHandle> jobs = new List<JobHandle>();
         private DdsModPlan[] pendingBuildPlans = Array.Empty<DdsModPlan>();
 
@@ -135,6 +141,8 @@ namespace FixWorld.Textures
             lock (sync)
             {
                 plans.Clear();
+                startupHits.Clear();
+                DisposeStartupReaders();
                 pendingBuildPlans = Array.Empty<DdsModPlan>();
                 backgroundStarted = false;
             }
@@ -166,8 +174,25 @@ namespace FixWorld.Textures
                 {
                     DdsModPlan plan = CreatePlan(mod, files, snapshot);
                     plans[plan.PackageId] = plan;
+                    foreach (DdsPackItem item in plan.Items)
+                    {
+                        if (item.HasExisting)
+                        {
+                            startupHits[item.Source.FullName] = item.Existing;
+                        }
+                    }
+
                     activePackages.Add(plan.PackageId);
                     Interlocked.Increment(ref workerPreparedMods);
+                    if (plan.Hits.Count > 0)
+                    {
+                        Interlocked.Increment(ref workerAppliedMods);
+                    }
+                    else
+                    {
+                        Interlocked.Increment(ref workerFallbackMods);
+                    }
+
                     Interlocked.Add(ref hits, plan.Hits.Count);
                     Interlocked.Add(ref misses, plan.MissingCount);
                     Interlocked.Add(ref excluded, plan.Excluded);
@@ -237,123 +262,55 @@ namespace FixWorld.Textures
             }
         }
 
-        internal IEnumerable<Pair<string, LoadedContentItem<Texture2D>>>
-            LoadAll(ModContentPack mod, ModFileIndex files)
+        internal bool TryLoad(VirtualFile source, out Texture2D texture)
         {
-            Dictionary<string, FileInfo> discovered = files.GetFiles(
-                mod,
-                GenFilePaths.ContentPath<Texture2D>(),
-                ModContentLoader<Texture2D>.IsAcceptableExtension);
-            HashSet<string> shippedDds = new HashSet<string>(
-                discovered.Keys
-                    .Select(key => key.ToLowerInvariant())
-                    .Where(key => key.EndsWith(
-                        ".dds",
-                        StringComparison.Ordinal)),
-                StringComparer.Ordinal);
-            string packageId = DdsCacheKey.Normalize(mod.PackageId);
-            DdsModPlan plan;
+            texture = null;
+            if (source == null || string.IsNullOrWhiteSpace(source.FullPath))
+            {
+                return false;
+            }
+
             lock (sync)
             {
-                plans.TryGetValue(packageId, out plan);
-            }
-
-            if (plan == null)
-            {
-                Interlocked.Increment(ref workerFallbackMods);
-            }
-            else
-            {
-                Interlocked.Increment(ref workerAppliedMods);
-            }
-
-            Dictionary<string, MemoryMappedFileSpanWrapper> readers =
-                new Dictionary<string, MemoryMappedFileSpanWrapper>(
-                    StringComparer.OrdinalIgnoreCase);
-            try
-            {
-                foreach (KeyValuePair<string, FileInfo> item in discovered)
+                if (!startupHits.TryGetValue(
+                        Path.GetFullPath(source.FullPath),
+                        out DdsPackSlice slice))
                 {
-                    string logicalPath = item.Key;
-                    FileInfo source = item.Value;
-                    if (!source.Extension.Equals(
-                            ".dds",
-                            StringComparison.OrdinalIgnoreCase) &&
-                        logicalPath.Length > 4 &&
-                        shippedDds.Contains(
-                            logicalPath.Substring(0, logicalPath.Length - 4)
-                                .ToLowerInvariant() + ".dds"))
+                    return false;
+                }
+
+                try
+                {
+                    if (!startupReaders.TryGetValue(
+                            slice.Path,
+                            out MemoryMappedFileSpanWrapper reader))
                     {
-                        continue;
+                        reader = new MemoryMappedFileSpanWrapper(slice.Path);
+                        startupReaders.Add(slice.Path, reader);
                     }
 
-                    IndexedVirtualFile sourceFile =
-                        new IndexedVirtualFile(source);
-                    LoadedContentItem<Texture2D> loaded;
-                    try
-                    {
-                        if (plan != null &&
-                            plan.Hits.TryGetValue(
-                                logicalPath,
-                                out DdsPackSlice slice))
-                        {
-                            if (!readers.TryGetValue(
-                                    slice.Path,
-                                    out MemoryMappedFileSpanWrapper reader))
-                            {
-                                reader = new MemoryMappedFileSpanWrapper(
-                                    slice.Path);
-                                readers.Add(slice.Path, reader);
-                            }
-
-                            Texture2D texture = DdsPackTextureLoader.Load(
-                                reader,
-                                slice,
-                                source.Name);
-                            loaded = new LoadedContentItem<Texture2D>(
-                                sourceFile,
-                                texture);
-                        }
-                        else if (source.Extension.Equals(
-                                     ".dds",
-                                     StringComparison.OrdinalIgnoreCase))
-                        {
-                            loaded = new LoadedContentItem<Texture2D>(
-                                sourceFile,
-                                DdsPackTextureLoader.LoadLoose(source));
-                        }
-                        else
-                        {
-                            loaded = ModContentLoader<Texture2D>.LoadItem(
-                                sourceFile);
-                        }
-                    }
-                    catch (Exception exception)
-                    {
-                        Log.Error(
-                            "Exception loading texture from " +
-                            source.FullName + ":\n" + exception);
-                        loaded = new LoadedContentItem<Texture2D>(
-                            sourceFile,
-                            BaseContent.BadTex);
-                    }
-
-                    if (loaded != null)
-                    {
-                        yield return new Pair<
-                            string,
-                            LoadedContentItem<Texture2D>>(
-                            logicalPath,
-                            loaded);
-                    }
+                    texture = DdsPackTextureLoader.Load(
+                        reader,
+                        slice,
+                        source.Name);
+                    return true;
+                }
+                catch (Exception exception)
+                {
+                    startupHits.Remove(source.FullPath);
+                    Log.Warning(
+                        "[FixWorld] Packed DDS load fell back to RimWorld for " +
+                        source.FullPath + ": " + exception.Message);
+                    return false;
                 }
             }
-            finally
+        }
+
+        internal void CompleteLoading()
+        {
+            lock (sync)
             {
-                foreach (MemoryMappedFileSpanWrapper reader in readers.Values)
-                {
-                    reader.Dispose();
-                }
+                DisposeStartupReaders();
             }
         }
 
@@ -384,6 +341,8 @@ namespace FixWorld.Textures
                 currentStore = store;
                 store = null;
                 plans.Clear();
+                startupHits.Clear();
+                DisposeStartupReaders();
                 pendingBuildPlans = Array.Empty<DdsModPlan>();
             }
 
@@ -421,6 +380,16 @@ namespace FixWorld.Textures
         }
 
         private bool IsRunning => !stopped && store != null;
+
+        private void DisposeStartupReaders()
+        {
+            foreach (MemoryMappedFileSpanWrapper reader in startupReaders.Values)
+            {
+                reader.Dispose();
+            }
+
+            startupReaders.Clear();
+        }
 
         private DdsModPlan CreatePlan(
             ModContentPack mod,
@@ -1263,45 +1232,8 @@ namespace FixWorld.Textures
         public int Workers { get; private set; }
     }
 
-    internal sealed class IndexedVirtualFile : VirtualFile
-    {
-        private readonly FileInfo file;
-
-        internal IndexedVirtualFile(FileInfo file)
-        {
-            this.file = file ?? throw new ArgumentNullException(nameof(file));
-        }
-
-        public override string Name => file.Name;
-        public override string FullPath => file.FullName;
-        public override bool Exists => file.Exists;
-        public override long Length => file.Length;
-        public override Stream CreateReadStream() => file.OpenRead();
-        public override string ReadAllText() => File.ReadAllText(file.FullName);
-        public override string[] ReadAllLines() => File.ReadAllLines(file.FullName);
-        public override byte[] ReadAllBytes() => File.ReadAllBytes(file.FullName);
-    }
-
     internal static class DdsPackTextureLoader
     {
-        private static readonly ConstructorInfo FilesystemFileConstructor =
-            typeof(VirtualFile).Assembly
-                .GetType("RimWorld.IO.FilesystemFile", throwOnError: true)
-                .GetConstructor(
-                    BindingFlags.Instance |
-                    BindingFlags.Public |
-                    BindingFlags.NonPublic,
-                    binder: null,
-                    new[] { typeof(FileInfo) },
-                    modifiers: null);
-
-        internal static Texture2D LoadLoose(FileInfo file)
-        {
-            VirtualFile virtualFile = (VirtualFile)
-                FilesystemFileConstructor.Invoke(new object[] { file });
-            return ModDdsLoader.TryLoadDds(virtualFile);
-        }
-
         internal unsafe static Texture2D Load(
             MemoryMappedFileSpanWrapper reader,
             DdsPackSlice slice,

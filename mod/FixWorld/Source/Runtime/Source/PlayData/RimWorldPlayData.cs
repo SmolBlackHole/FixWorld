@@ -1,7 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
+using FixWorld.Integration;
+using HarmonyLib;
 using RimWorld;
 using RimWorld.IO;
 using UnityEngine;
@@ -161,19 +166,132 @@ namespace FixWorld.PlayData
                 });
         }
 
-        internal static void FinalizeRuntime()
+        internal static IReadOnlyList<Type> GetStaticConstructorTypes()
         {
-            Profile("Static constructor calls", () =>
+            return GenTypes
+                .AllTypesWithAttribute<StaticConstructorOnStartup>()
+                .ToArray();
+        }
+
+        internal static bool TryGetSafeStaticConstructorPostfix(
+            out MethodInfo postfix,
+            out string postfixOwner,
+            out string blockedOwners)
+        {
+            postfix = null;
+            postfixOwner = null;
+            blockedOwners = null;
+            MethodInfo callAll = typeof(StaticConstructorOnStartupUtility)
+                .GetMethod(
+                    nameof(StaticConstructorOnStartupUtility.CallAll),
+                    BindingFlags.Static | BindingFlags.Public);
+            Patches patches = Harmony.GetPatchInfo(callAll);
+            if (patches == null)
             {
-                StaticConstructorOnStartupUtility.CallAll();
-                if (Prefs.DevMode)
-                {
-                    StaticConstructorOnStartupUtility
-                        .ReportProbablyMissingAttributes();
-                }
-            });
+                return true;
+            }
+
+            Patch[] prefixes = patches.Prefixes
+                .Where(IsForeignPatch)
+                .ToArray();
+            Patch[] postfixes = patches.Postfixes
+                .Where(IsForeignPatch)
+                .ToArray();
+            Patch[] transpilers = patches.Transpilers
+                .Where(IsForeignPatch)
+                .ToArray();
+            Patch[] finalizers = patches.Finalizers
+                .Where(IsForeignPatch)
+                .ToArray();
+            Patch[] all = prefixes
+                .Concat(postfixes)
+                .Concat(transpilers)
+                .Concat(finalizers)
+                .ToArray();
+            if (all.Length == 0)
+            {
+                return true;
+            }
+
+            blockedOwners = string.Join(
+                ",",
+                all.Select(patch => patch.owner)
+                    .Where(owner => !string.IsNullOrWhiteSpace(owner))
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(owner => owner, StringComparer.Ordinal));
+            if (prefixes.Length != 0 ||
+                transpilers.Length != 0 ||
+                finalizers.Length != 0 ||
+                postfixes.Length != 1)
+            {
+                return false;
+            }
+
+            MethodInfo method = postfixes[0].PatchMethod;
+            if (method == null ||
+                !method.IsStatic ||
+                method.ReturnType != typeof(void) ||
+                method.GetParameters().Length != 0)
+            {
+                return false;
+            }
+
+            postfix = method;
+            postfixOwner = postfixes[0].owner;
+            blockedOwners = null;
+            return true;
+        }
+
+        internal static void RunPatchedStaticConstructors()
+        {
+            StaticConstructorOnStartupUtility.CallAll();
+            if (Prefs.DevMode)
+            {
+                StaticConstructorOnStartupUtility.ReportProbablyMissingAttributes();
+            }
+        }
+
+        internal static void RunStaticConstructor(Type type)
+        {
+            RuntimeHelpers.RunClassConstructor(type.TypeHandle);
+        }
+
+        internal static void CompleteStaticConstructors()
+        {
+            StaticConstructorOnStartupUtility.coreStaticAssetsLoaded = true;
+        }
+
+        internal static void InvokeStaticConstructorPostfix(MethodInfo postfix)
+        {
+            Invoke(postfix);
+        }
+
+        internal static void ReportMissingStaticConstructorAttributes()
+        {
+            if (Prefs.DevMode)
+            {
+                StaticConstructorOnStartupUtility.ReportProbablyMissingAttributes();
+            }
+        }
+
+        private static bool IsForeignPatch(Patch patch)
+        {
+            return patch != null &&
+                   !RimWorldHooks.IsFixWorldOwner(patch.owner);
+        }
+
+        internal static void InitializeFloatMenus()
+        {
             FloatMenuMakerMap.Init();
+        }
+
+        internal static void BakeStaticAtlases()
+        {
             Profile("Atlas baking.", GlobalTextureAtlasManager.BakeStaticAtlases);
+        }
+
+        internal static void CollectUnusedAssets()
+        {
             Profile("Garbage Collection", () =>
             {
                 AbstractFilesystem.ClearAllCache();

@@ -125,6 +125,25 @@ class DdsCacheData(TypedDict):
     workerFallbackMods: int
 
 
+class DeferredWorkItemData(TypedDict):
+    owner: str
+    name: str
+    calls: int
+    failures: int
+    totalMs: float
+    maxMs: float
+    averageWaitMs: float
+    maxWaitMs: float
+
+
+class DeferredWorkData(TypedDict):
+    calls: int
+    failures: int
+    runtimeMs: float
+    maxQueueDelayMs: float
+    top: list[DeferredWorkItemData]
+
+
 class BenchmarkReport(TypedDict):
     schemaVersion: int
     preloader: PreloaderData
@@ -134,6 +153,7 @@ class BenchmarkReport(TypedDict):
     texturePaths: TexturePathData
     textures: TextureData
     ddsCache: DdsCacheData
+    deferred: DeferredWorkData
 
 
 class ResultRecord(TypedDict):
@@ -235,7 +255,7 @@ def wait_for_json_file(
 
 def validate_report(raw: object) -> BenchmarkReport:
     report = _string_dict(raw, "benchmark report")
-    if report.get("schemaVersion") != 10:
+    if report.get("schemaVersion") != 11:
         raise RuntimeError(
             f"Unsupported benchmark schema: {report.get('schemaVersion')!r}"
         )
@@ -250,7 +270,7 @@ def validate_report(raw: object) -> BenchmarkReport:
     steps = _object_list(loader.get("steps"))
     if stages is None or len(stages) != 6 or steps is None or len(steps) != 16:
         raise RuntimeError("Benchmark report contains incomplete loader measurements.")
-    for section in ("files", "texturePaths", "textures", "ddsCache"):
+    for section in ("files", "texturePaths", "textures", "ddsCache", "deferred"):
         _string_dict(report.get(section), section)
     return cast(BenchmarkReport, report)
 
@@ -415,6 +435,7 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
         files = report["files"]
         paths = report["texturePaths"]
         cache = report["ddsCache"]
+        deferred = report["deferred"]
         preloader = report["preloader"]
         top_steps = sorted(
             loader["steps"], key=lambda item: float(item["exclusiveMs"]), reverse=True
@@ -469,6 +490,12 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                 + "|".join(
                     f"{step['id']}={float(step['exclusiveMs']):.3f}ms"
                     for step in top_steps
+                ),
+                "topDeferred="
+                + "|".join(
+                    f"{item['owner']}:{item['name']}="
+                    f"{float(item['totalMs']):.3f}ms"
+                    for item in deferred["top"][:5]
                 ),
             )
         )

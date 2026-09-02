@@ -157,6 +157,7 @@ namespace FixWorld.Runtime
 
         private void CompletePlayData()
         {
+            Textures.CompleteLoading();
             Lifecycle.NotifyPlayDataReady("fixworld-play-data-pipeline");
         }
 
@@ -205,9 +206,10 @@ namespace FixWorld.Runtime
 
             telemetry.Complete();
             BenchmarkRecorder.Complete(
-            source,
-            telemetry.GetMeasurement(),
-            Textures.GetSnapshot());
+                source,
+                telemetry.GetMeasurement(),
+                Textures.GetSnapshot(),
+                DeferredWork.GetSnapshot());
             return true;
         }
     }
