@@ -14,6 +14,7 @@ namespace FixWorld.Runtime
     internal sealed class RuntimeContext : IDisposable
     {
         private const int MaximumStageEventsPerPump = 1024;
+        private const int MaximumOperationEventsPerPump = 256;
         private const int MaximumLifecycleEventsPerPump = 64;
 
         private readonly object attachmentSync = new object();
@@ -34,6 +35,11 @@ namespace FixWorld.Runtime
                 MaximumStageEventsPerPump,
                 error => Log.Error(
                     "[FixWorld] Play-data event subscriber failed: " + error));
+            events.Register<PlayDataOperationEvent>(
+                MaximumOperationEventsPerPump,
+                error => Log.Error(
+                    "[FixWorld] Play-data operation subscriber failed: " +
+                    error));
             events.Register<RimWorldLifecycleEvent>(
                 MaximumLifecycleEventsPerPump,
                 error => Log.Error(
@@ -57,7 +63,7 @@ namespace FixWorld.Runtime
             DeferredWork = deferredWork;
             PlayData = new PlayDataLoadPipeline(
                 stageRunner,
-                new ModLoadingPipeline(ModFiles, Textures),
+                new ModLoadingPipeline(events, ModFiles, Textures),
                 new RimWorldPlayData(),
                 deferredWork,
                 BeginPlayData,

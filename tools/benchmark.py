@@ -92,9 +92,18 @@ class PlayDataStageData(TypedDict):
     gen2Collections: int
 
 
+class PlayDataOperationData(TypedDict):
+    stageId: str
+    stageNumber: int
+    name: str
+    elapsedMs: float
+    succeeded: bool
+
+
 class LoaderData(TypedDict):
     observedMs: float
     stages: list[PlayDataStageData]
+    operations: list[PlayDataOperationData]
 
 
 class TextureData(TypedDict):
@@ -255,7 +264,7 @@ def wait_for_json_file(
 
 def validate_report(raw: object) -> BenchmarkReport:
     report = _string_dict(raw, "benchmark report")
-    if report.get("schemaVersion") != 16:
+    if report.get("schemaVersion") != 17:
         raise RuntimeError(
             f"Unsupported benchmark schema: {report.get('schemaVersion')!r}"
         )
@@ -285,6 +294,39 @@ def validate_report(raw: object) -> BenchmarkReport:
         ):
             if not isinstance(stage.get(key), (int, float)):
                 raise RuntimeError(f"Benchmark report stage diagnostics omit {key}.")
+    operations = _object_list(loader.get("operations"))
+    if operations is None:
+        raise RuntimeError("Benchmark report contains no loader operations.")
+    observed_operations: set[tuple[str, str]] = set()
+    for index, operation_value in enumerate(operations):
+        operation = _string_dict(operation_value, f"loader operation {index + 1}")
+        stage_id = operation.get("stageId")
+        if not isinstance(stage_id, str):
+            raise RuntimeError("Benchmark loader operation omits stageId.")
+        name = operation.get("name")
+        if not isinstance(name, str):
+            raise RuntimeError("Benchmark loader operation omits name.")
+        if not isinstance(operation.get("stageNumber"), int):
+            raise RuntimeError("Benchmark loader operation omits stageNumber.")
+        if not isinstance(operation.get("elapsedMs"), (int, float)):
+            raise RuntimeError("Benchmark loader operation omits elapsedMs.")
+        if not isinstance(operation.get("succeeded"), bool):
+            raise RuntimeError("Benchmark loader operation omits succeeded.")
+        observed_operations.add((stage_id, name))
+    required_operations: set[tuple[str, str]] = {
+        ("LoadAndPatchXml", "LoadModXML()"),
+        ("LoadAndPatchXml", "CombineIntoUnifiedXML()"),
+        ("LoadAndPatchXml", "TKeySystem.Parse()"),
+        ("LoadAndPatchXml", "ErrorCheckPatches()"),
+        ("LoadAndPatchXml", "ApplyPatches()"),
+        ("ImportDefinitions", "ParseAndProcessXML()"),
+    }
+    missing_operations = required_operations - observed_operations
+    if missing_operations:
+        raise RuntimeError(
+            "Benchmark report omits required loader operations: "
+            + ", ".join(f"{stage}:{name}" for stage, name in sorted(missing_operations))
+        )
     for section in (
         "ddsReadAhead",
         "textures",
@@ -339,6 +381,17 @@ def write_loader_csv(run_root: Path, report: BenchmarkReport) -> None:
             "gen2Collections",
         ),
         loader["stages"],
+    )
+    _write_csv(
+        run_root / "loader-operations.csv",
+        (
+            "stageId",
+            "stageNumber",
+            "name",
+            "elapsedMs",
+            "succeeded",
+        ),
+        loader["operations"],
     )
 
 
@@ -463,6 +516,11 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
         top_stages = sorted(
             loader["stages"], key=lambda item: float(item["elapsedMs"]), reverse=True
         )[:5]
+        top_operations = sorted(
+            loader["operations"],
+            key=lambda item: float(item["elapsedMs"]),
+            reverse=True,
+        )[:5]
         notes = "; ".join(
             (
                 f"activeMods={active_mods}",
@@ -516,6 +574,11 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                 + "|".join(
                     f"{stage['id']}={float(stage['cpuCoreEquivalent']):.2f}x"
                     for stage in top_stages
+                ),
+                "topLoaderOperations="
+                + "|".join(
+                    f"{item['stageId']}:{item['name']}={float(item['elapsedMs']):.3f}ms"
+                    for item in top_operations
                 ),
                 "topDeferred="
                 + "|".join(

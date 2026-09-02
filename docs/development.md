@@ -72,7 +72,8 @@ python .\tools\benchmark.py `
 
 The Runtime writes its versioned telemetry snapshot as typed benchmark JSON.
 Python starts RimWorld, waits for the report, validates its schema, writes one
-`loader-stages.csv`, and appends one result row. Do not compare
+`loader-stages.csv` and one `loader-operations.csv`, then appends one result
+row. Do not compare
 runs with different mod lists, cache states, or source fixtures as if they were
 the same experiment
 

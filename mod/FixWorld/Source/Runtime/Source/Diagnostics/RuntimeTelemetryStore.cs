@@ -15,7 +15,10 @@ namespace FixWorld.Diagnostics
     {
         private const int DeferredHotpathCount = 20;
 
+        private readonly IDisposable operationSubscription;
         private readonly IDisposable stageSubscription;
+        private readonly List<PlayDataOperationMeasurement> operations =
+            new List<PlayDataOperationMeasurement>();
         private readonly List<PlayDataStageMeasurement> stages =
             new List<PlayDataStageMeasurement>();
         private Profiler<DeferredWorkKey> deferredRuntimes =
@@ -33,6 +36,8 @@ namespace FixWorld.Diagnostics
 
             stageSubscription = events.Subscribe<PlayDataLoadStageEvent>(
                 ObserveStage);
+            operationSubscription = events.Subscribe<PlayDataOperationEvent>(
+                ObserveOperation);
         }
 
         internal RuntimeDiagnosticsSnapshot Snapshot { get; private set; }
@@ -40,6 +45,7 @@ namespace FixWorld.Diagnostics
         internal void Start()
         {
             stages.Clear();
+            operations.Clear();
             deferredRuntimes = new Profiler<DeferredWorkKey>();
             deferredWaits = new Profiler<DeferredWorkKey>();
             startedAt = Stopwatch.GetTimestamp();
@@ -48,6 +54,7 @@ namespace FixWorld.Diagnostics
         internal void Abort()
         {
             stages.Clear();
+            operations.Clear();
             deferredRuntimes = new Profiler<DeferredWorkKey>();
             deferredWaits = new Profiler<DeferredWorkKey>();
             startedAt = 0L;
@@ -90,6 +97,7 @@ namespace FixWorld.Diagnostics
 
         public void Dispose()
         {
+            operationSubscription.Dispose();
             stageSubscription.Dispose();
         }
 
@@ -100,7 +108,8 @@ namespace FixWorld.Diagnostics
                 : ToMilliseconds(Math.Max(0L, completedAt - startedAt));
             return new PlayDataTelemetrySnapshot(
                 observedMilliseconds,
-                stages.OrderBy(item => item.Number).ToList());
+                stages.OrderBy(item => item.Number).ToList(),
+                operations.ToList());
         }
 
         private DeferredWorkSnapshot CaptureDeferred()
@@ -152,6 +161,15 @@ namespace FixWorld.Diagnostics
             }
         }
 
+        private void ObserveOperation(PlayDataOperationEvent operationEvent)
+        {
+            operations.Add(new PlayDataOperationMeasurement(
+                operationEvent.Stage,
+                operationEvent.Name,
+                operationEvent.Elapsed.TotalMilliseconds,
+                operationEvent.Succeeded));
+        }
+
         private static double ToMilliseconds(long ticks)
         {
             return ticks * 1000.0 / Stopwatch.Frequency;
@@ -196,11 +214,14 @@ namespace FixWorld.Diagnostics
     {
         internal PlayDataTelemetrySnapshot(
             double observedMilliseconds,
-            IReadOnlyList<PlayDataStageMeasurement> stages)
+            IReadOnlyList<PlayDataStageMeasurement> stages,
+            IReadOnlyList<PlayDataOperationMeasurement> operations)
         {
             ObservedMilliseconds = observedMilliseconds;
             Stages = new List<PlayDataStageMeasurement>(
                 stages ?? throw new ArgumentNullException(nameof(stages)));
+            Operations = new List<PlayDataOperationMeasurement>(
+                operations ?? throw new ArgumentNullException(nameof(operations)));
         }
 
         [DataMember(Name = "observedMs", Order = 1)]
@@ -208,6 +229,41 @@ namespace FixWorld.Diagnostics
 
         [DataMember(Name = "stages", Order = 2)]
         internal List<PlayDataStageMeasurement> Stages { get; private set; }
+
+        [DataMember(Name = "operations", Order = 3)]
+        internal List<PlayDataOperationMeasurement> Operations { get; private set; }
+    }
+
+    [DataContract]
+    internal sealed class PlayDataOperationMeasurement
+    {
+        internal PlayDataOperationMeasurement(
+            PlayDataLoadStage stage,
+            string name,
+            double elapsedMilliseconds,
+            bool succeeded)
+        {
+            StageId = stage.ToString();
+            StageNumber = (int)stage;
+            Name = name;
+            ElapsedMilliseconds = elapsedMilliseconds;
+            Succeeded = succeeded;
+        }
+
+        [DataMember(Name = "stageId", Order = 1)]
+        internal string StageId { get; private set; }
+
+        [DataMember(Name = "stageNumber", Order = 2)]
+        internal int StageNumber { get; private set; }
+
+        [DataMember(Name = "name", Order = 3)]
+        internal string Name { get; private set; }
+
+        [DataMember(Name = "elapsedMs", Order = 4)]
+        internal double ElapsedMilliseconds { get; private set; }
+
+        [DataMember(Name = "succeeded", Order = 5)]
+        internal bool Succeeded { get; private set; }
     }
 
     [DataContract]

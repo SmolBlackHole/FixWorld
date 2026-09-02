@@ -15,7 +15,8 @@ namespace FixWorld.Content
             GenFilePaths.ContentPath<AudioClip>(),
             GenFilePaths.ContentPath<Texture2D>(),
             GenFilePaths.ContentPath<string>(),
-            GenFilePaths.ContentPath<AssetBundle>()
+            GenFilePaths.ContentPath<AssetBundle>(),
+            "Assemblies/"
         };
 
         private readonly SnapshotCache<string, ModFileSet, long> cache =
@@ -63,6 +64,31 @@ namespace FixWorld.Content
             Func<string, bool> validateExtension,
             IReadOnlyList<string> foldersToLoadDebug = null)
         {
+            return GetFileSet(
+                    mod,
+                    contentPath,
+                    foldersToLoadDebug)
+                .Filter(validateExtension);
+        }
+
+        internal List<Tuple<string, FileInfo>> GetFilesPreserveOrder(
+            ModContentPack mod,
+            string contentPath,
+            Func<string, bool> validateExtension,
+            IReadOnlyList<string> foldersToLoadDebug = null)
+        {
+            return GetFileSet(
+                    mod,
+                    contentPath,
+                    foldersToLoadDebug)
+                .FilterPreserveOrder(validateExtension);
+        }
+
+        private ModFileSet GetFileSet(
+            ModContentPack mod,
+            string contentPath,
+            IReadOnlyList<string> foldersToLoadDebug)
+        {
             if (mod == null)
             {
                 throw new ArgumentNullException(nameof(mod));
@@ -73,33 +99,23 @@ namespace FixWorld.Content
                 throw new ArgumentNullException(nameof(contentPath));
             }
 
-            ModFileSet files;
             if (foldersToLoadDebug != null)
             {
-                files = Discover(foldersToLoadDebug, contentPath);
-            }
-            else if (!cache.Snapshot.TryGet(
-                         GetKey(mod.PackageId, contentPath),
-                         out CacheEntry<ModFileSet, long> entry))
-            {
-                files = Discover(
-                    mod.foldersToLoadDescendingOrder,
-                    contentPath);
-            }
-            else
-            {
-                files = entry.Value;
+                return Discover(foldersToLoadDebug, contentPath);
             }
 
-            return files.Filter(validateExtension);
+            return cache.Snapshot.TryGet(
+                GetKey(mod.PackageId, contentPath),
+                out CacheEntry<ModFileSet, long> entry)
+                ? entry.Value
+                : Discover(mod.foldersToLoadDescendingOrder, contentPath);
         }
 
         private static ModFileSet Discover(
             IReadOnlyList<string> folders,
             string contentPath)
         {
-            Dictionary<string, FileInfo> files =
-                new Dictionary<string, FileInfo>(StringComparer.Ordinal);
+            List<IndexedModFile> files = new List<IndexedModFile>();
             for (int folderIndex = 0; folderIndex < folders.Count; folderIndex++)
             {
                 string folder = folders[folderIndex];
@@ -115,10 +131,7 @@ namespace FixWorld.Content
                              SearchOption.AllDirectories))
                 {
                     string key = file.FullName.Substring(folder.Length + 1);
-                    if (!files.ContainsKey(key))
-                    {
-                        files.Add(key, file);
-                    }
+                    files.Add(new IndexedModFile(key, file, folderIndex));
                 }
             }
 
@@ -128,18 +141,21 @@ namespace FixWorld.Content
         private static string GetKey(string packageId, string contentPath)
         {
             return packageId.ToLowerInvariant() + "\n" +
-                   contentPath.Replace('\\', '/').ToLowerInvariant();
+                   contentPath
+                       .Trim('/', '\\')
+                       .Replace('\\', '/')
+                       .ToLowerInvariant();
         }
     }
 
     internal sealed class ModFileSet
     {
-        private readonly KeyValuePair<string, FileInfo>[] files;
+        private readonly IndexedModFile[] files;
 
-        internal ModFileSet(IEnumerable<KeyValuePair<string, FileInfo>> files)
+        internal ModFileSet(IEnumerable<IndexedModFile> files)
         {
             this.files = files?.ToArray() ??
-                         Array.Empty<KeyValuePair<string, FileInfo>>();
+                         Array.Empty<IndexedModFile>();
         }
 
         internal Dictionary<string, FileInfo> Filter(
@@ -147,16 +163,76 @@ namespace FixWorld.Content
         {
             Dictionary<string, FileInfo> result =
                 new Dictionary<string, FileInfo>(StringComparer.Ordinal);
-            foreach (KeyValuePair<string, FileInfo> file in files)
+            foreach (IndexedModFile file in files)
             {
                 if (validateExtension == null ||
-                    validateExtension(file.Value.Extension))
+                    validateExtension(file.File.Extension))
                 {
-                    result.Add(file.Key, file.Value);
+                    if (!result.ContainsKey(file.Key))
+                    {
+                        result.Add(file.Key, file.File);
+                    }
                 }
             }
 
             return result;
         }
+
+        internal List<Tuple<string, FileInfo>> FilterPreserveOrder(
+            Func<string, bool> validateExtension)
+        {
+            List<Tuple<string, FileInfo>> result =
+                new List<Tuple<string, FileInfo>>();
+            int maximumFolderIndex = files.Length == 0
+                ? -1
+                : files.Max(file => file.FolderIndex);
+            for (int folderIndex = maximumFolderIndex;
+                 folderIndex >= 0;
+                 folderIndex--)
+            {
+                IndexedModFile[] folderFiles = files
+                    .Where(file =>
+                        file.FolderIndex == folderIndex &&
+                        (validateExtension == null ||
+                         validateExtension(file.File.Extension)))
+                    .ToArray();
+                Array.Sort(
+                    folderFiles,
+                    (left, right) =>
+                        left.File.Name.CompareTo(right.File.Name));
+                foreach (IndexedModFile file in folderFiles)
+                {
+                    result.Add(Tuple.Create(file.Key, file.File));
+                }
+            }
+
+            HashSet<string> seen = new HashSet<string>();
+            for (int index = result.Count - 1; index >= 0; index--)
+            {
+                if (!seen.Add(result[index].Item1))
+                {
+                    result.RemoveAt(index);
+                }
+            }
+
+            return result;
+        }
+
+    }
+
+    internal readonly struct IndexedModFile
+    {
+        internal IndexedModFile(string key, FileInfo file, int folderIndex)
+        {
+            Key = key ?? throw new ArgumentNullException(nameof(key));
+            File = file ?? throw new ArgumentNullException(nameof(file));
+            FolderIndex = folderIndex;
+        }
+
+        internal string Key { get; }
+
+        internal FileInfo File { get; }
+
+        internal int FolderIndex { get; }
     }
 }

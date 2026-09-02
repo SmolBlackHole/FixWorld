@@ -220,6 +220,10 @@ namespace FixWorld.UI
                     StringComparison.Ordinal) ||
                 string.Equals(
                     section.Title,
+                    "Stage details",
+                    StringComparison.Ordinal) ||
+                string.Equals(
+                    section.Title,
                     "Deferred work",
                     StringComparison.Ordinal);
             float rowHeight = stackedRows ? DetailedRowHeight : RowHeight;
@@ -379,6 +383,8 @@ namespace FixWorld.UI
             {
                 case "Deferred work":
                     return "Deferred";
+                case "Stage details":
+                    return "Details";
                 case "DDS and textures":
                     return "DDS / Textures";
                 default:

@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Xml;
 using FixWorld.Content;
+using FixWorld.Events;
 using FixWorld.Textures;
 using Verse;
 
@@ -13,13 +15,16 @@ namespace FixWorld.PlayData
         private const string FixWorldPackageId = "smolblackhole.fixworld";
         private const float DefaultDdsCacheMaxGiB = 6.0f;
 
+        private readonly EventBus events;
         private readonly ModFileIndex files;
         private readonly TextureDdsCache textures;
 
         internal ModLoadingPipeline(
+            EventBus events,
             ModFileIndex files,
             TextureDdsCache textures)
         {
+            this.events = events ?? throw new ArgumentNullException(nameof(events));
             this.files = files ?? throw new ArgumentNullException(nameof(files));
             this.textures = textures ??
                 throw new ArgumentNullException(nameof(textures));
@@ -28,24 +33,34 @@ namespace FixWorld.PlayData
         internal void Reset()
         {
             textures.BeginIndex();
-            Profile("XmlInheritance.Clear()", XmlInheritance.Clear);
+            Profile(
+                PlayDataLoadStage.Reset,
+                "XmlInheritance.Clear()",
+                XmlInheritance.Clear);
         }
 
         internal void InitializeMods()
         {
-            Profile("InitializeMods()", LoadedModManager.InitializeMods);
+            Profile(
+                PlayDataLoadStage.InitializeMods,
+                "InitializeMods()",
+                LoadedModManager.InitializeMods);
         }
 
         internal void PrepareContent()
         {
             Profile(
+                PlayDataLoadStage.PrepareModContent,
                 "LoadModContent()",
                 () => LoadedModManager.LoadModContent(hotReload: false));
         }
 
         internal void CreateModClasses()
         {
-            Profile("CreateModClasses()", LoadedModManager.CreateModClasses);
+            Profile(
+                PlayDataLoadStage.CreateModClasses,
+                "CreateModClasses()",
+                LoadedModManager.CreateModClasses);
         }
 
         internal void IndexContent()
@@ -74,18 +89,27 @@ namespace FixWorld.PlayData
         internal ModXmlState LoadAndPatchXml()
         {
             List<LoadableXmlAsset> assets = Profile(
+                PlayDataLoadStage.LoadAndPatchXml,
                 "LoadModXML()",
                 () => LoadedModManager.LoadModXML(hotReload: false));
             Dictionary<XmlNode, LoadableXmlAsset> lookup =
                 new Dictionary<XmlNode, LoadableXmlAsset>();
             XmlDocument document = Profile(
+                PlayDataLoadStage.LoadAndPatchXml,
                 "CombineIntoUnifiedXML()",
                 () => LoadedModManager.CombineIntoUnifiedXML(assets, lookup));
 
             TKeySystem.Clear();
-            Profile("TKeySystem.Parse()", () => TKeySystem.Parse(document));
-            Profile("ErrorCheckPatches()", LoadedModManager.ErrorCheckPatches);
             Profile(
+                PlayDataLoadStage.LoadAndPatchXml,
+                "TKeySystem.Parse()",
+                () => TKeySystem.Parse(document));
+            Profile(
+                PlayDataLoadStage.LoadAndPatchXml,
+                "ErrorCheckPatches()",
+                LoadedModManager.ErrorCheckPatches);
+            Profile(
+                PlayDataLoadStage.LoadAndPatchXml,
                 "ApplyPatches()",
                 () => LoadedModManager.ApplyPatches(document, lookup));
             return new ModXmlState(document, lookup);
@@ -99,40 +123,70 @@ namespace FixWorld.PlayData
             }
 
             Profile(
+                PlayDataLoadStage.ImportDefinitions,
                 "ParseAndProcessXML()",
                 () => LoadedModManager.ParseAndProcessXML(
                     state.Document,
                     state.AssetLookup,
                     hotReload: false));
-            Profile("ClearCachedPatches()", LoadedModManager.ClearCachedPatches);
-            Profile("XmlInheritance.Clear()", XmlInheritance.Clear);
+            Profile(
+                PlayDataLoadStage.ImportDefinitions,
+                "ClearCachedPatches()",
+                LoadedModManager.ClearCachedPatches);
+            Profile(
+                PlayDataLoadStage.ImportDefinitions,
+                "XmlInheritance.Clear()",
+                XmlInheritance.Clear);
         }
 
-        private static void Profile(string label, Action action)
+        private void Profile(
+            PlayDataLoadStage stage,
+            string label,
+            Action action)
         {
             DeepProfiler.Start(label);
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            bool succeeded = false;
             try
             {
                 action();
+                succeeded = true;
             }
             finally
             {
+                stopwatch.Stop();
                 DeepProfiler.End();
+                events.Publish(new PlayDataOperationEvent(
+                    stage,
+                    label,
+                    stopwatch.Elapsed,
+                    succeeded));
             }
         }
 
-        private static TResult Profile<TResult>(
+        private TResult Profile<TResult>(
+            PlayDataLoadStage stage,
             string label,
             Func<TResult> action)
         {
             DeepProfiler.Start(label);
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            bool succeeded = false;
             try
             {
-                return action();
+                TResult result = action();
+                succeeded = true;
+                return result;
             }
             finally
             {
+                stopwatch.Stop();
                 DeepProfiler.End();
+                events.Publish(new PlayDataOperationEvent(
+                    stage,
+                    label,
+                    stopwatch.Elapsed,
+                    succeeded));
             }
         }
     }

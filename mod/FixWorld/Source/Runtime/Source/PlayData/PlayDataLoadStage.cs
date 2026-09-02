@@ -31,6 +31,14 @@ namespace FixWorld.PlayData
         Failed
     }
 
+    internal enum PlayDataLoadStageGroup
+    {
+        Boot = 1,
+        Content = 2,
+        Definitions = 3,
+        Finalize = 4
+    }
+
     internal sealed class PlayDataLoadStageEvent
     {
         internal PlayDataLoadStageEvent(
@@ -104,6 +112,100 @@ namespace FixWorld.PlayData
     internal static class PlayDataLoadStageCatalog
     {
         internal const int Count = (int)PlayDataLoadStage.Complete;
+        internal const int GroupCount = (int)PlayDataLoadStageGroup.Finalize;
+
+        internal static PlayDataLoadStageGroup GetGroup(
+            PlayDataLoadStage stage)
+        {
+            if (stage <= PlayDataLoadStage.InitializeMods)
+            {
+                return PlayDataLoadStageGroup.Boot;
+            }
+
+            if (stage <= PlayDataLoadStage.CreateModClasses)
+            {
+                return PlayDataLoadStageGroup.Content;
+            }
+
+            if (stage <= PlayDataLoadStage.DefinitionFinalization)
+            {
+                return PlayDataLoadStageGroup.Definitions;
+            }
+
+            return PlayDataLoadStageGroup.Finalize;
+        }
+
+        internal static string GetGroupName(PlayDataLoadStageGroup group)
+        {
+            switch (group)
+            {
+                case PlayDataLoadStageGroup.Boot:
+                    return "Boot";
+                case PlayDataLoadStageGroup.Content:
+                    return "Content";
+                case PlayDataLoadStageGroup.Definitions:
+                    return "Definitions";
+                case PlayDataLoadStageGroup.Finalize:
+                    return "Finalize";
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(group),
+                        group,
+                        null);
+            }
+        }
+
+        internal static PlayDataLoadStage GetFirstStage(
+            PlayDataLoadStageGroup group)
+        {
+            switch (group)
+            {
+                case PlayDataLoadStageGroup.Boot:
+                    return PlayDataLoadStage.Reset;
+                case PlayDataLoadStageGroup.Content:
+                    return PlayDataLoadStage.IndexModContent;
+                case PlayDataLoadStageGroup.Definitions:
+                    return PlayDataLoadStage.LoadAndPatchXml;
+                case PlayDataLoadStageGroup.Finalize:
+                    return PlayDataLoadStage.InitializeRuntime;
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(group),
+                        group,
+                        null);
+            }
+        }
+
+        internal static PlayDataLoadStage GetLastStage(
+            PlayDataLoadStageGroup group)
+        {
+            switch (group)
+            {
+                case PlayDataLoadStageGroup.Boot:
+                    return PlayDataLoadStage.InitializeMods;
+                case PlayDataLoadStageGroup.Content:
+                    return PlayDataLoadStage.CreateModClasses;
+                case PlayDataLoadStageGroup.Definitions:
+                    return PlayDataLoadStage.DefinitionFinalization;
+                case PlayDataLoadStageGroup.Finalize:
+                    return PlayDataLoadStage.Complete;
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(group),
+                        group,
+                        null);
+            }
+        }
+
+        internal static int GetIndexInGroup(PlayDataLoadStage stage)
+        {
+            return (int)stage - (int)GetFirstStage(GetGroup(stage)) + 1;
+        }
+
+        internal static int GetGroupStageCount(PlayDataLoadStageGroup group)
+        {
+            return (int)GetLastStage(group) - (int)GetFirstStage(group) + 1;
+        }
 
         internal static string GetName(PlayDataLoadStage stage)
         {

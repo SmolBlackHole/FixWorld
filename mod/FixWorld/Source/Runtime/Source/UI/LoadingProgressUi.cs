@@ -11,7 +11,7 @@ namespace FixWorld.UI
 {
     internal static class LoadingProgressUi
     {
-        private const float PanelHeight = 254f;
+        private const float PanelHeight = 278f;
         private const float PanelMaxWidth = 860f;
 
         private static readonly Color Accent = ToColor(FixWorldUiTheme.Accent);
@@ -46,7 +46,8 @@ namespace FixWorld.UI
                 DrawHeader(content, snapshot);
                 DrawCurrentStep(content, snapshot);
                 DrawProgressBars(content, snapshot);
-                DrawStages(content, snapshot.Stage);
+                DrawStageGroups(content, snapshot.Stage);
+                DrawActiveGroupStages(content, snapshot.Stage);
                 DrawFooter(content, snapshot.HasDurationEstimate);
             }
             finally
@@ -85,16 +86,21 @@ namespace FixWorld.UI
             PlayDataLoadingSnapshot snapshot)
         {
             string stageName = PlayDataLoadStageCatalog.GetName(snapshot.Stage);
+            PlayDataLoadStageGroup group =
+                PlayDataLoadStageCatalog.GetGroup(snapshot.Stage);
             Text.Font = GameFont.Small;
             Text.Anchor = TextAnchor.UpperLeft;
             Widgets.Label(
-                new Rect(content.x, content.y + 38f, 300f, 24f),
-                (int)snapshot.Stage + " / " + PlayDataLoadStageCatalog.Count +
-                "   " + stageName);
+                new Rect(content.x, content.y + 38f, 440f, 24f),
+                PlayDataLoadStageCatalog.GetGroupName(group) + " " +
+                PlayDataLoadStageCatalog.GetIndexInGroup(snapshot.Stage) +
+                " / " + PlayDataLoadStageCatalog.GetGroupStageCount(group) +
+                "   |   Overall " + (int)snapshot.Stage + " / " +
+                PlayDataLoadStageCatalog.Count);
             Text.Font = GameFont.Tiny;
             Text.Anchor = TextAnchor.UpperRight;
             Widgets.Label(
-                new Rect(content.x + 300f, content.y + 40f, content.width - 300f, 20f),
+                new Rect(content.x + 440f, content.y + 40f, content.width - 440f, 20f),
                 "FixWorld-owned play-data pipeline");
 
             Text.Font = GameFont.Small;
@@ -144,22 +150,25 @@ namespace FixWorld.UI
             GUI.color = previousColor;
         }
 
-        private static void DrawStages(
+        private static void DrawStageGroups(
             Rect content,
             PlayDataLoadStage stage)
         {
             const float gap = 5f;
-            Rect rail = new Rect(content.x, content.y + 159f, content.width, 7f);
+            Rect rail = new Rect(content.x, content.y + 156f, content.width, 7f);
             float segmentWidth =
-                (rail.width - gap * (PlayDataLoadStageCatalog.Count - 1)) /
-                PlayDataLoadStageCatalog.Count;
+                (rail.width - gap * (PlayDataLoadStageCatalog.GroupCount - 1)) /
+                PlayDataLoadStageCatalog.GroupCount;
+            PlayDataLoadStageGroup activeGroup =
+                PlayDataLoadStageCatalog.GetGroup(stage);
             for (int number = 1;
-                 number <= PlayDataLoadStageCatalog.Count;
+                 number <= PlayDataLoadStageCatalog.GroupCount;
                  number++)
             {
-                Color color = number < (int)stage
+                PlayDataLoadStageGroup group = (PlayDataLoadStageGroup)number;
+                Color color = number < (int)activeGroup
                     ? Completed
-                    : number == (int)stage
+                    : number == (int)activeGroup
                         ? Accent
                         : Pending;
                 float x = rail.x + (number - 1) * (segmentWidth + gap);
@@ -171,8 +180,41 @@ namespace FixWorld.UI
                 Text.Anchor = TextAnchor.UpperCenter;
                 Widgets.Label(
                     new Rect(x, rail.yMax + 4f, segmentWidth, 19f),
-                    PlayDataLoadStageCatalog.GetShortName(
-                        (PlayDataLoadStage)number));
+                    PlayDataLoadStageCatalog.GetGroupName(group));
+            }
+        }
+
+        private static void DrawActiveGroupStages(
+            Rect content,
+            PlayDataLoadStage stage)
+        {
+            const float gap = 5f;
+            PlayDataLoadStageGroup group =
+                PlayDataLoadStageCatalog.GetGroup(stage);
+            PlayDataLoadStage first =
+                PlayDataLoadStageCatalog.GetFirstStage(group);
+            int count = PlayDataLoadStageCatalog.GetGroupStageCount(group);
+            Rect rail = new Rect(content.x, content.y + 187f, content.width, 6f);
+            float segmentWidth = (rail.width - gap * (count - 1)) / count;
+            for (int index = 0; index < count; index++)
+            {
+                PlayDataLoadStage item =
+                    (PlayDataLoadStage)((int)first + index);
+                Color color = item < stage
+                    ? Completed
+                    : item == stage
+                        ? Accent
+                        : Pending;
+                float x = rail.x + index * (segmentWidth + gap);
+                Widgets.DrawBoxSolid(
+                    new Rect(x, rail.y, segmentWidth, rail.height),
+                    color);
+
+                Text.Font = GameFont.Tiny;
+                Text.Anchor = TextAnchor.UpperCenter;
+                Widgets.Label(
+                    new Rect(x, rail.yMax + 3f, segmentWidth, 19f),
+                    PlayDataLoadStageCatalog.GetShortName(item));
             }
         }
 

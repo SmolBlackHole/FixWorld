@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Reflection;
 using FixWorld.Runtime;
 using HarmonyLib;
@@ -14,42 +12,8 @@ namespace FixWorld.Integration
     {
         internal static readonly Type[] PatchTypes =
         {
-            typeof(ModFileIndexPatch),
             typeof(TextureLoadPatch)
         };
-
-        [HarmonyPatch(
-            typeof(ModContentPack),
-            nameof(ModContentPack.GetAllFilesForMod))]
-        private static class ModFileIndexPatch
-        {
-            [HarmonyPrefix]
-            [HarmonyPriority(Priority.Last)]
-            private static bool Prefix(
-                ModContentPack mod,
-                string contentPath,
-                Func<string, bool> validateExtension,
-                List<string> foldersToLoadDebug,
-                ref Dictionary<string, FileInfo> __result)
-            {
-                try
-                {
-                    __result = RuntimeHost.Current.ModFiles.GetFiles(
-                        mod,
-                        contentPath,
-                        validateExtension,
-                        foldersToLoadDebug);
-                    return false;
-                }
-                catch (Exception exception)
-                {
-                    Log.Warning(
-                        "[FixWorld] Indexed file lookup fell back to RimWorld " +
-                        "for " + mod.PackageId + ": " + exception);
-                    return true;
-                }
-            }
-        }
 
         [HarmonyPatch]
         private static class TextureLoadPatch

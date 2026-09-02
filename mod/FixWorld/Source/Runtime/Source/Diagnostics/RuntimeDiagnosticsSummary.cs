@@ -27,6 +27,8 @@ namespace FixWorld.Diagnostics
                    "; playData=" + Milliseconds(
                        snapshot.Loading.ObservedMilliseconds) +
                    "; stages=" + FormatStageHotpaths(snapshot.Loading.Stages) +
+                   "; operations=" + FormatOperationHotpaths(
+                       snapshot.Loading.Operations) +
                    "; deferred=" + deferred.Calls + " calls/" +
                    Milliseconds(deferred.RuntimeMilliseconds) + "/" +
                    deferred.Failures + " failed, top=" +
@@ -76,6 +78,20 @@ namespace FixWorld.Diagnostics
                     "  " + stage.Name + ": " +
                     Milliseconds(stage.ElapsedMilliseconds) +
                     " (" + FormatStageExecution(stage) + ")");
+            }
+
+            text.AppendLine();
+            text.AppendLine("Stage details");
+            foreach (PlayDataOperationMeasurement operation in
+                     snapshot.Loading.Operations)
+            {
+                text.AppendLine(
+                    "  " + operation.StageNumber.ToString(
+                        "00",
+                        CultureInfo.InvariantCulture) + "  " +
+                    operation.Name + ": " +
+                    Milliseconds(operation.ElapsedMilliseconds) +
+                    (operation.Succeeded ? string.Empty : ", failed"));
             }
 
             DeferredWorkSnapshot deferred = snapshot.DeferredWork;
@@ -193,6 +209,24 @@ namespace FixWorld.Diagnostics
             return string.Join(
                 "|",
                 stages
+                    .OrderByDescending(item => item.ElapsedMilliseconds)
+                    .ThenBy(item => item.Name, StringComparer.Ordinal)
+                    .Take(HotpathCount)
+                    .Select(item => CompactLabel(item.Name) + "=" +
+                                    Milliseconds(item.ElapsedMilliseconds)));
+        }
+
+        private static string FormatOperationHotpaths(
+            IReadOnlyList<PlayDataOperationMeasurement> operations)
+        {
+            if (operations.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(
+                "|",
+                operations
                     .OrderByDescending(item => item.ElapsedMilliseconds)
                     .ThenBy(item => item.Name, StringComparer.Ordinal)
                     .Take(HotpathCount)

@@ -24,9 +24,10 @@ benchmarks, and logs.
   and telemetry.
 - Python starts RimWorld, waits, validates, and aggregates JSON written by the Runtime.
 - One Runtime-owned telemetry store records stage events directly, owns deferred
-  profiling, and publishes one versioned schema 16 snapshot for logs, benchmarks,
+  profiling, and publishes one versioned schema 17 snapshot for logs, benchmarks,
   and UI. Stage records contain the actual coordinator thread, process CPU and
-  CPU-core equivalent, managed-heap and working-set deltas, and GC counts.
+  CPU-core equivalent, managed-heap and working-set deltas, and GC counts. Stage
+  details retain timings for the existing RimWorld calls inside owned stages.
 - The normal Mod exposes that retained snapshot through a resizable, read-only
   diagnostics window. Runtime formats it once; the open window polls the stable
   contract at most every 500 ms and closed UI performs no work.
@@ -34,17 +35,21 @@ benchmarks, and logs.
 - DDS creation runs deferred and starts `texconv` only through the tool wrapper.
 - Texture discovery is indexed once, warm textures load from per-mod BC7 packs,
   and preloader read-ahead visits each pack at most once.
+- The immutable mod-file snapshot also serves normal content lookup and ordered
+  assembly lookup while RimWorld retains XML file discovery and parsing.
 - The old loose-file `dds-v1` cache is removed automatically after replacement
   pack builds through the shared migration cleanup.
 
 ## Active order
 
-1. Split XML file reading and parsing from ordered merge and patch application,
-   then test bounded parallel preparation.
-2. Analyze and reduce the remaining deferred main-thread hotpaths.
-3. Take deeper ownership of remaining RimWorld operations one stage at a time.
-4. Validate BC7 color and alpha output when a named affected texture is available.
-5. Measure packed read-ahead when genuinely slow storage is available.
+1. Attribute patch-application cost by mod and operation type without changing
+   patch order or ownership.
+2. Split `ParseAndProcessXML()` measurements into inheritance resolution, Def
+   deserialization, and publication before considering a stage replacement.
+3. Analyze and reduce the remaining deferred main-thread hotpaths.
+4. Take deeper ownership of remaining RimWorld operations one stage at a time.
+5. Validate BC7 color and alpha output when a named affected texture is available.
+6. Measure packed read-ahead when genuinely slow storage is available.
 
 ## DDS texture cache
 
@@ -122,7 +127,13 @@ discovery averaged 734 ms and 1,276 ms including texture-cache planning;
 sequential discovery averaged 721 ms and 1,201 ms combined. The worker version
 was removed. `IndexModContent` and `PrepareTextureCache` remain separate schema
 16 stages, and the index now publishes one complete snapshot instead of an
-intermediate empty snapshot.
+intermediate empty snapshot. The snapshot now retains ordered file entries and
+reproduces RimWorld's assembly precedence. A direct `DirectXmlLoader`
+replacement was rejected: three runs increased `IndexModContent` from 721 ms to
+814 ms while reducing `LoadAndPatchXml` from 2,411 ms to 2,339 ms. The combined
+difference was noise, and duplicating RimWorld's XML loader introduced an
+unnecessary compatibility surface. Defs and Patches therefore remain outside
+the startup file snapshot until the XML stage is deliberately replaced.
 
 - [ ] Split `LoadModContent()` into assembly discovery, assembly load, and enqueued asset work.
 - [ ] Measure `GetAllFilesForModPreserveOrder()` and assembly discovery per mod.
@@ -133,7 +144,20 @@ intermediate empty snapshot.
 
 ### XML and definitions
 
-- [ ] Measure XML reading, patch application, and definition import separately.
+Three schema 17 runs show that raw XML loading is not the dominant XML cost:
+`LoadModXML()` averaged 545 ms, unified-document merging 237 ms, patch checking
+107 ms, patch application 1,711 ms, and `ParseAndProcessXML()` 2,619 ms. TKey
+parsing and cleanup were negligible. The next investigation therefore targets
+patch execution and Def construction rather than another file-loader rewrite.
+
+- [x] Record the existing `LoadModXML`, unified-document merge, TKey parsing,
+      patch validation/application, `ParseAndProcessXML`, and cleanup boundaries
+      in Runtime telemetry, benchmark output, logs, and the diagnostics UI.
+- [x] Measure XML loading, patch application, and definition import separately.
+- [ ] Attribute patch time by source mod, operation type, calls, and maximum
+      duration while preserving the exact global patch sequence.
+- [ ] Split `ParseAndProcessXML()` into measured inheritance registration,
+      inheritance resolution, Def deserialization, and ModContentPack assignment.
 - [ ] Analyze cross-references, reference resolution, and both implied-definition stages separately.
 - [ ] Measure existing RimWorld parallelism during definition construction before adding FixWorld workers.
 - [ ] Document reflection, static resolvers, and global registry mutation as main-thread boundaries.
@@ -176,7 +200,8 @@ profiling that was previously inactive.
 The Runtime telemetry store records completed stage events directly, owns the
 deferred profilers, and retains one versioned snapshot containing the early
 timeline, stage telemetry, deferred work, scheduler state, DDS state, texture
-measurements, and memory. Benchmark schema 16 serializes that snapshot directly.
+measurements, and memory. Benchmark schema 17 serializes that snapshot directly
+and includes timings for the existing RimWorld calls inside owned stages.
 The startup summary and later UI read the same snapshot. One-shot stage records
 contain identity, order, elapsed time, actual coordinator thread, process CPU,
 managed-heap and working-set deltas, and GC collections.
@@ -190,6 +215,8 @@ in play. No UI action installs hooks or changes profiler state.
 - [x] Present the retained snapshot in a polished, resizable, read-only window
       with section navigation, shared FixWorld styling, and scrolling for dense
       stage and deferred-work details.
+- [x] Group the 17 technical loading stages into Boot, Content, Definitions, and
+      Finalize in the loading UI while retaining the active technical substage.
 - [ ] Separate always-on cheap counters from explicitly enabled detailed capture.
 - [ ] Add measured worker utilization after the scheduler exposes busy and queued
       intervals; the current snapshot only reports configured workers and
