@@ -43,6 +43,10 @@
             <HintPath>$(RimWorldManagedDir)\UnityEngine.CoreModule.dll</HintPath>
             <Private>false</Private>
         </Reference>
+        <Reference Include="UnityEngine.IMGUIModule">
+            <HintPath>$(RimWorldManagedDir)\UnityEngine.IMGUIModule.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
     </ItemGroup>
 
     <Target Name="ValidateLocalRimWorldReferences" BeforeTargets="ResolveReferences">
@@ -76,6 +80,10 @@
             </FixWorldPackageFile>
             <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\..\About\About.xml">
                 <PackagePath>About\About.xml</PackagePath>
+            </FixWorldPackageFile>
+            <FixWorldPackageFile
+                Include="$(MSBuildProjectDirectory)\..\..\Defs\MainButtons\FixWorld.xml">
+                <PackagePath>Defs\MainButtons\FixWorld.xml</PackagePath>
             </FixWorldPackageFile>
             <FixWorldPackageFile
                 Include="$(MSBuildProjectDirectory)\..\..\Assemblies\FixWorld.Mod.dll">

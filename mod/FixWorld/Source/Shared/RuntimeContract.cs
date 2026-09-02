@@ -8,9 +8,10 @@ namespace FixWorld.RuntimeBridge
     {
         internal const string AssemblyName = "FixWorld.Runtime";
         internal const string TypeName = "FixWorld.Runtime.FixWorldRuntime";
-        internal const int Version = 2;
+        internal const int Version = 3;
 
         private readonly MethodInfo attachMod;
+        private readonly MethodInfo getDiagnosticsText;
         private readonly MethodInfo startEarly;
 
         private RuntimeContract(Type entrypoint)
@@ -27,11 +28,21 @@ namespace FixWorld.RuntimeBridge
                     "FixWorld.Runtime contract version is missing or incompatible.");
             }
 
-            startEarly = RequireMethod(entrypoint, "StartEarly", Type.EmptyTypes);
+            startEarly = RequireMethod(
+                entrypoint,
+                "StartEarly",
+                Type.EmptyTypes,
+                typeof(void));
             attachMod = RequireMethod(
                 entrypoint,
                 "AttachMod",
-                new[] { typeof(object), typeof(object), typeof(float) });
+                new[] { typeof(object), typeof(object), typeof(float) },
+                typeof(void));
+            getDiagnosticsText = RequireMethod(
+                entrypoint,
+                "GetDiagnosticsText",
+                Type.EmptyTypes,
+                typeof(string));
         }
 
         internal static RuntimeContract Bind(Assembly assembly)
@@ -85,10 +96,16 @@ namespace FixWorld.RuntimeBridge
             Invoke(attachMod, new[] { mod, content, (object)ddsCacheMaxGiB });
         }
 
+        internal string GetDiagnosticsText()
+        {
+            return (string)Invoke(getDiagnosticsText, null);
+        }
+
         private static MethodInfo RequireMethod(
             Type entrypoint,
             string name,
-            Type[] parameters)
+            Type[] parameters,
+            Type returnType)
         {
             MethodInfo method = entrypoint.GetMethod(
                 name,
@@ -96,7 +113,7 @@ namespace FixWorld.RuntimeBridge
                 binder: null,
                 types: parameters,
                 modifiers: null);
-            if (method == null || method.ReturnType != typeof(void))
+            if (method == null || method.ReturnType != returnType)
             {
                 throw new MissingMethodException(entrypoint.FullName, name);
             }
@@ -104,11 +121,11 @@ namespace FixWorld.RuntimeBridge
             return method;
         }
 
-        private static void Invoke(MethodInfo method, object[] arguments)
+        private static object Invoke(MethodInfo method, object[] arguments)
         {
             try
             {
-                method.Invoke(null, arguments);
+                return method.Invoke(null, arguments);
             }
             catch (TargetInvocationException exception)
                 when (exception.InnerException != null)

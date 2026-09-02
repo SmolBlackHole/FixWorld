@@ -25,7 +25,10 @@ benchmarks, and logs.
 - Python starts RimWorld, waits, validates, and aggregates JSON written by the Runtime.
 - One Runtime-owned telemetry store records stage events directly, owns deferred
   profiling, and publishes one versioned schema 14 snapshot for logs, benchmarks,
-  and later UI.
+  and UI.
+- The normal Mod exposes that retained snapshot through a resizable, read-only
+  diagnostics window. Runtime formats it once; the open window polls the stable
+  contract at most every 500 ms and closed UI performs no work.
 - Shared provides isolated caching, scheduling, profiling, and event primitives.
 - DDS creation runs deferred and starts `texconv` only through the tool wrapper.
 - Texture discovery is indexed once, warm textures load from per-mod BC7 packs,
@@ -35,12 +38,11 @@ benchmarks, and logs.
 
 ## Active order
 
-1. Add a small read-only diagnostics window over the Runtime snapshot.
-2. Analyze and reduce the remaining deferred main-thread hotpaths.
-3. Take deeper ownership of remaining RimWorld operations one stage at a time.
-4. Validate BC7 color and alpha output when a named affected texture is available.
-5. Measure packed read-ahead when genuinely slow storage is available.
-6. Only then activate new worker or texture-format experiments.
+1. Analyze and reduce the remaining deferred main-thread hotpaths.
+2. Take deeper ownership of remaining RimWorld operations one stage at a time.
+3. Validate BC7 color and alpha output when a named affected texture is available.
+4. Measure packed read-ahead when genuinely slow storage is available.
+5. Only then activate new worker or texture-format experiments.
 
 ## DDS texture cache
 
@@ -159,8 +161,12 @@ The startup summary and later UI read the same snapshot. One-shot stage records
 contain only identity, order, elapsed time, and execution thread; redundant call,
 failure, and maximum-time fields were removed.
 
-- [ ] Feed the diagnostics UI from the retained Runtime snapshot instead of
-      introducing a separate measurement path.
+The Runtime now formats the retained snapshot once at startup completion. The
+normal Mod reads that immutable text through the versioned Runtime contract and
+shows Startup, Stages, Deferred work, DDS, scheduler, memory, and Issues sections.
+It is available from Mod settings in the main menu and from a normal main button
+in play. No UI action installs hooks or changes profiler state.
+
 - [ ] Separate always-on cheap counters from explicitly enabled detailed capture.
 - [ ] Add measured worker utilization after the scheduler exposes busy and queued
       intervals; the current snapshot only reports configured workers and
@@ -170,14 +176,9 @@ failure, and maximum-time fields were removed.
 - [ ] Name early-timeline fields precisely; observed early mod assemblies are not the active mod count.
 - [ ] Aggregate missing textures and NPOT warnings by mod and path; do not call
       them FixWorld errors without reliable attribution.
-- [ ] Provide a normal-mod `MainButtonDef` and resizable diagnostics window while
-      keeping Runtime and Shared free of Verse UI.
-- [ ] Add Startup/Stages, Deferred/Mods, DDS/Workers, and Issues views.
-- [ ] Refresh the window at most every 250 to 500 ms and only for a new snapshot version.
 
 Acceptance:
 
-- [ ] The last completed startup remains visible until the next run.
 - [ ] Closed UI and default logging create no log flood and no measurable hotpath.
 - [ ] The diagnostics window works in the main menu and in-game without changing loader or profiler state.
 

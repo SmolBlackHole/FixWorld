@@ -103,6 +103,14 @@ namespace FixWorld.Runtime
             return context.Loading.TryGetSnapshot(out snapshot);
         }
 
+        internal static string GetDiagnosticsText()
+        {
+            RuntimeContext context = Volatile.Read(ref current);
+            return context == null
+                ? "FixWorld.Runtime is not active."
+                : context.DiagnosticsText;
+        }
+
         internal static void Pump()
         {
             Volatile.Read(ref current)?.Pump();

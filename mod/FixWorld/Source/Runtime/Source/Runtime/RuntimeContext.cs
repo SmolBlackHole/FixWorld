@@ -23,6 +23,8 @@ namespace FixWorld.Runtime
         private readonly IDisposable lifecycleSubscription;
         private readonly RuntimeTelemetryStore telemetry;
         private object attachedMod;
+        private string diagnosticsText =
+            "No completed startup diagnostics are available yet.";
         private bool disposed;
 
         internal RuntimeContext()
@@ -79,7 +81,7 @@ namespace FixWorld.Runtime
 
         internal int WorkerCount => scheduler.WorkerCount;
 
-        internal RuntimeDiagnosticsSnapshot Diagnostics => telemetry.Snapshot;
+        internal string DiagnosticsText => diagnosticsText;
 
         internal void AttachMod(RuntimeModAttachmentSnapshot attachment)
         {
@@ -211,6 +213,7 @@ namespace FixWorld.Runtime
                     mainThread.PendingCount),
                 SystemMemoryMetrics.Read(),
                 BenchmarkExporter.Enabled);
+            diagnosticsText = RuntimeDiagnosticsSummary.FormatDetails(diagnostics);
             Log.Message(RuntimeDiagnosticsSummary.Format(diagnostics));
             BenchmarkExporter.Write(diagnostics);
             return true;

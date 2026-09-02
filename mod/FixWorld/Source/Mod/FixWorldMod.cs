@@ -1,6 +1,7 @@
 using System;
 using FixWorld.Preloader;
 using FixWorld.RuntimeBridge;
+using FixWorld.UI;
 using UnityEngine;
 using Verse;
 
@@ -9,10 +10,14 @@ namespace FixWorld
     public sealed class FixWorldMod : Mod
     {
         private readonly PreloaderService preloader;
+        private readonly RuntimeContract runtime;
         private readonly FixWorldSettings settings;
+
+        internal static FixWorldMod Instance { get; private set; }
 
         public FixWorldMod(ModContentPack content) : base(content)
         {
+            Instance = this;
             settings = GetSettings<FixWorldSettings>();
             preloader = new PreloaderService(content.RootDir);
             if (!preloader.EnsureActive())
@@ -20,7 +25,8 @@ namespace FixWorld
                 return;
             }
 
-            RuntimeContract.BindLoaded().AttachMod(
+            runtime = RuntimeContract.BindLoaded();
+            runtime.AttachMod(
                 this,
                 content,
                 settings.DdsCacheMaxGiB);
@@ -56,7 +62,19 @@ namespace FixWorld
                 settings.DdsCacheMaxGiB = cacheLimit;
                 WriteSettings();
             }
+            listing.GapLine();
+            if (listing.ButtonText("Open startup diagnostics"))
+            {
+                DiagnosticsWindow.Toggle();
+            }
             listing.End();
+        }
+
+        internal string GetDiagnosticsText()
+        {
+            return runtime == null
+                ? "FixWorld.Runtime is not active for this launch."
+                : runtime.GetDiagnosticsText();
         }
     }
 }

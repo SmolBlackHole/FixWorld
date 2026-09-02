@@ -2,7 +2,7 @@ namespace FixWorld.Runtime
 {
     public static class FixWorldRuntime
     {
-        public const int ContractVersion = 2;
+        public const int ContractVersion = 3;
 
         public static void StartEarly()
         {
@@ -20,6 +20,11 @@ namespace FixWorld.Runtime
                     content,
                     ddsCacheMaxGiB);
             RuntimeHost.AttachMod(attachment);
+        }
+
+        public static string GetDiagnosticsText()
+        {
+            return RuntimeHost.GetDiagnosticsText();
         }
 
         public static void Shutdown()
