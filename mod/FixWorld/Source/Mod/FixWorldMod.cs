@@ -63,7 +63,7 @@ namespace FixWorld
                 WriteSettings();
             }
             listing.GapLine();
-            if (listing.ButtonText("Open startup diagnostics"))
+            if (listing.ButtonText("Open FixWorld diagnostics"))
             {
                 DiagnosticsWindow.Toggle();
             }

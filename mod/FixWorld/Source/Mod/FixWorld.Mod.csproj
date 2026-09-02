@@ -29,6 +29,8 @@
             Link="Preloader\PreloaderTimeline.cs" />
         <Compile Include="..\Shared\RuntimeContract.cs"
             Link="Runtime\RuntimeContract.cs" />
+        <Compile Include="..\Shared\UI\FixWorldUiTheme.cs"
+            Link="UI\FixWorldUiTheme.cs" />
         <Compile Include="..\Shared\Migrations\MigrationCleanup.cs"
             Link="Migrations\MigrationCleanup.cs" />
     </ItemGroup>
@@ -47,6 +49,10 @@
             <HintPath>$(RimWorldManagedDir)\UnityEngine.IMGUIModule.dll</HintPath>
             <Private>false</Private>
         </Reference>
+        <Reference Include="UnityEngine.TextRenderingModule">
+            <HintPath>$(RimWorldManagedDir)\UnityEngine.TextRenderingModule.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
     </ItemGroup>
 
     <Target Name="ValidateLocalRimWorldReferences" BeforeTargets="ResolveReferences">
@@ -54,6 +60,8 @@
             Text="Assembly-CSharp.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
         <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.CoreModule.dll')"
             Text="UnityEngine.CoreModule.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
+        <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.TextRenderingModule.dll')"
+            Text="UnityEngine.TextRenderingModule.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
     </Target>
 
     <Target Name="RemoveLegacyModAssembly" BeforeTargets="PrepareForBuild">

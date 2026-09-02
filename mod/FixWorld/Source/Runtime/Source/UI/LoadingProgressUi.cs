@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using FixWorld.Diagnostics;
 using FixWorld.PlayData;
+using FixWorld.Presentation;
 using UnityEngine;
 using UnityEngine.Profiling;
 using Verse;
@@ -13,10 +14,10 @@ namespace FixWorld.UI
         private const float PanelHeight = 254f;
         private const float PanelMaxWidth = 860f;
 
-        private static readonly Color Accent = new Color(0.25f, 0.73f, 0.90f, 1f);
-        private static readonly Color Completed = new Color(0.16f, 0.48f, 0.68f, 1f);
-        private static readonly Color Pending = new Color(1f, 1f, 1f, 0.14f);
-        private static readonly Color Track = new Color(0f, 0f, 0f, 0.34f);
+        private static readonly Color Accent = ToColor(FixWorldUiTheme.Accent);
+        private static readonly Color Completed = ToColor(FixWorldUiTheme.Completed);
+        private static readonly Color Pending = ToColor(FixWorldUiTheme.Pending);
+        private static readonly Color Track = ToColor(FixWorldUiTheme.Track);
 
         private static float nextMemoryRefresh;
         private static long managedBytes;
@@ -260,6 +261,11 @@ namespace FixWorld.UI
 
             return (bytes / (1024.0 * 1024.0))
                 .ToString("N0", CultureInfo.InvariantCulture) + " MiB";
+        }
+
+        private static Color ToColor(UiColor color)
+        {
+            return new Color(color.Red, color.Green, color.Blue, color.Alpha);
         }
 
     }

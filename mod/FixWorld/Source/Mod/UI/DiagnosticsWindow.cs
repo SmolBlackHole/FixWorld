@@ -1,4 +1,5 @@
 using System;
+using FixWorld.Presentation;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -7,15 +8,30 @@ namespace FixWorld.UI
 {
     public sealed class DiagnosticsWindow : Window
     {
+        private const float FooterHeight = 24f;
+        private const float HeaderHeight = 58f;
+        private const float NavigationGap = 14f;
+        private const float NavigationWidth = 178f;
+        private const float DeferredRowHeight = 47f;
         private const float RefreshIntervalSeconds = 0.5f;
-        private static readonly Vector2 DefaultSize = new Vector2(900f, 650f);
+        private const float RowHeight = 29f;
+        private const float MinimumHeight = 440f;
+        private const float MinimumWidth = 640f;
 
-        private string diagnosticsText =
-            "No completed startup diagnostics are available yet.";
-        private float measuredContentHeight;
-        private float measuredContentWidth = -1f;
+        private static readonly Vector2 DefaultSize = new Vector2(980f, 680f);
+        private static readonly Color Accent = ToColor(FixWorldUiTheme.Accent);
+        private static readonly Color Completed = ToColor(FixWorldUiTheme.Completed);
+        private static readonly Color MutedText = ToColor(FixWorldUiTheme.MutedText);
+        private static readonly Color Pending = ToColor(FixWorldUiTheme.Pending);
+        private static readonly Color Row = ToColor(FixWorldUiTheme.Row);
+        private static readonly Color Track = ToColor(FixWorldUiTheme.Track);
+
+        private DiagnosticsDocument document = DiagnosticsDocument.Parse(
+            "Status\n  No completed startup diagnostics are available yet.");
+        private string diagnosticsText;
         private float nextRefreshAt;
         private Vector2 scrollPosition;
+        private int selectedSection;
 
         public DiagnosticsWindow()
         {
@@ -30,6 +46,27 @@ namespace FixWorld.UI
         }
 
         public override Vector2 InitialSize => DefaultSize;
+
+        protected override float Margin => 18f;
+
+        public override void WindowUpdate()
+        {
+            base.WindowUpdate();
+            windowRect.width = Mathf.Min(
+                global::Verse.UI.screenWidth,
+                Mathf.Max(MinimumWidth, windowRect.width));
+            windowRect.height = Mathf.Min(
+                global::Verse.UI.screenHeight,
+                Mathf.Max(MinimumHeight, windowRect.height));
+            windowRect.x = Mathf.Clamp(
+                windowRect.x,
+                0f,
+                global::Verse.UI.screenWidth - windowRect.width);
+            windowRect.y = Mathf.Clamp(
+                windowRect.y,
+                0f,
+                global::Verse.UI.screenHeight - windowRect.height);
+        }
 
         internal static void Toggle()
         {
@@ -55,40 +92,254 @@ namespace FixWorld.UI
             Refresh(force: false);
 
             GameFont previousFont = Text.Font;
+            TextAnchor previousAnchor = Text.Anchor;
+            Color previousColor = GUI.color;
             try
             {
-                Text.Font = GameFont.Medium;
-                Widgets.Label(
-                    new Rect(inRect.x, inRect.y, inRect.width, 32f),
-                    "FixWorld diagnostics");
+                DrawHeader(inRect);
 
-                Text.Font = GameFont.Small;
                 Rect body = new Rect(
                     inRect.x,
-                    inRect.y + 40f,
+                    inRect.y + HeaderHeight,
                     inRect.width,
-                    inRect.height - 40f);
-                float contentWidth = Math.Max(100f, body.width - 20f);
-                if (Math.Abs(contentWidth - measuredContentWidth) > 0.5f)
-                {
-                    measuredContentWidth = contentWidth;
-                    measuredContentHeight =
-                        Text.CalcHeight(diagnosticsText, contentWidth) + 8f;
-                }
+                    inRect.height - HeaderHeight - FooterHeight);
+                float navigationWidth = Mathf.Min(
+                    NavigationWidth,
+                    Mathf.Max(138f, body.width * 0.24f));
+                Rect navigation = new Rect(
+                    body.x,
+                    body.y,
+                    navigationWidth,
+                    body.height);
+                Rect details = new Rect(
+                    navigation.xMax + NavigationGap,
+                    body.y,
+                    body.width - navigation.width - NavigationGap,
+                    body.height);
 
-                Rect content = new Rect(
-                    0f,
-                    0f,
-                    contentWidth,
-                    Math.Max(body.height, measuredContentHeight));
-                Widgets.BeginScrollView(body, ref scrollPosition, content);
-                Widgets.Label(content, diagnosticsText);
-                Widgets.EndScrollView();
+                DrawNavigation(navigation);
+                DrawSection(details);
+                DrawFooter(inRect);
             }
             finally
             {
                 Text.Font = previousFont;
+                Text.Anchor = previousAnchor;
+                GUI.color = previousColor;
             }
+        }
+
+        private void DrawHeader(Rect bounds)
+        {
+            Text.Font = GameFont.Medium;
+            Text.Anchor = TextAnchor.UpperLeft;
+            GUI.color = Color.white;
+            Widgets.Label(
+                new Rect(bounds.x + 4f, bounds.y + 3f, 360f, 32f),
+                "FixWorld diagnostics");
+
+            Text.Font = GameFont.Tiny;
+            Text.Anchor = TextAnchor.UpperRight;
+            GUI.color = MutedText;
+            Widgets.Label(
+                new Rect(bounds.x + 360f, bounds.y + 9f, bounds.width - 364f, 24f),
+                "Read-only startup snapshot");
+
+            GUI.color = Color.white;
+            Widgets.DrawBoxSolid(
+                new Rect(bounds.x, bounds.y + 42f, bounds.width, 3f),
+                Accent);
+        }
+
+        private void DrawNavigation(Rect bounds)
+        {
+            GUI.color = Color.white;
+            Widgets.DrawBoxSolid(bounds, Track);
+            Rect inner = bounds.ContractedBy(8f);
+            for (int index = 0; index < document.Sections.Count; index++)
+            {
+                Rect item = new Rect(
+                    inner.x,
+                    inner.y + index * 36f,
+                    inner.width,
+                    31f);
+                bool selected = index == selectedSection;
+                GUI.color = Color.white;
+                if (selected)
+                {
+                    Widgets.DrawBoxSolid(item, Completed);
+                    Widgets.DrawBoxSolid(
+                        new Rect(item.x, item.y, 1f, item.height),
+                        Accent);
+                }
+                else
+                {
+                    Widgets.DrawHighlightIfMouseover(item);
+                }
+
+                Text.Font = GameFont.Small;
+                Text.Anchor = TextAnchor.MiddleLeft;
+                GUI.color = selected ? Color.white : MutedText;
+                Widgets.Label(
+                    new Rect(item.x + 11f, item.y, item.width - 15f, item.height),
+                    NavigationLabel(document.Sections[index].Title));
+                if (Widgets.ButtonInvisible(item))
+                {
+                    selectedSection = index;
+                    scrollPosition = Vector2.zero;
+                }
+            }
+        }
+
+        private void DrawSection(Rect bounds)
+        {
+            GUI.color = Color.white;
+            Widgets.DrawBoxSolid(bounds, Track);
+            Rect inner = bounds.ContractedBy(18f);
+            DiagnosticsSection section = document.Sections[selectedSection];
+
+            Text.Font = GameFont.Medium;
+            Text.Anchor = TextAnchor.UpperLeft;
+            GUI.color = Color.white;
+            Widgets.Label(
+                new Rect(inner.x, inner.y, inner.width, 34f),
+                section.Title);
+            Widgets.DrawBoxSolid(
+                new Rect(inner.x, inner.y + 34f, inner.width, 1f),
+                Pending);
+
+            Rect viewport = new Rect(
+                inner.x,
+                inner.y + 47f,
+                inner.width,
+                inner.height - 47f);
+            bool stackedRows = string.Equals(
+                section.Title,
+                "Deferred work",
+                StringComparison.Ordinal);
+            float rowHeight = stackedRows ? DeferredRowHeight : RowHeight;
+            float contentHeight = Math.Max(
+                viewport.height,
+                section.Lines.Count * rowHeight);
+            Rect content = new Rect(
+                0f,
+                0f,
+                Math.Max(100f, viewport.width - 18f),
+                contentHeight);
+            Widgets.BeginScrollView(viewport, ref scrollPosition, content);
+            for (int index = 0; index < section.Lines.Count; index++)
+            {
+                DrawRow(
+                    new Rect(
+                        content.x,
+                        content.y + index * rowHeight,
+                        content.width,
+                        rowHeight - 3f),
+                    section.Lines[index],
+                    index,
+                    stackedRows);
+            }
+
+            Widgets.EndScrollView();
+        }
+
+        private static void DrawRow(
+            Rect bounds,
+            string line,
+            int index,
+            bool stacked)
+        {
+            if (index % 2 == 0)
+            {
+                GUI.color = Color.white;
+                Widgets.DrawBoxSolid(bounds, Row);
+            }
+
+            const string separator = ": ";
+            int separatorIndex = line.IndexOf(
+                separator,
+                StringComparison.Ordinal);
+            if (separatorIndex <= 0)
+            {
+                Text.Font = GameFont.Small;
+                Text.Anchor = TextAnchor.MiddleLeft;
+                GUI.color = Color.white;
+                Widgets.LabelEllipses(bounds.ContractedBy(7f, 0f), line);
+                TooltipHandler.TipRegion(bounds, line);
+                return;
+            }
+
+            string label = line.Substring(0, separatorIndex);
+            string value = line.Substring(separatorIndex + separator.Length);
+            if (stacked)
+            {
+                DrawStackedRow(bounds, label, value, line);
+                return;
+            }
+
+            float labelWidth = bounds.width * 0.43f;
+            Rect labelBounds = new Rect(
+                bounds.x + 7f,
+                bounds.y,
+                labelWidth - 12f,
+                bounds.height);
+            Rect valueBounds = new Rect(
+                bounds.x + labelWidth,
+                bounds.y,
+                bounds.width - labelWidth - 7f,
+                bounds.height);
+
+            Text.Font = GameFont.Tiny;
+            Text.Anchor = TextAnchor.MiddleLeft;
+            GUI.color = MutedText;
+            Widgets.LabelEllipses(labelBounds, label);
+            Text.Font = GameFont.Small;
+            GUI.color = Color.white;
+            Widgets.LabelEllipses(valueBounds, value);
+            TooltipHandler.TipRegion(bounds, line);
+        }
+
+        private static void DrawStackedRow(
+            Rect bounds,
+            string label,
+            string value,
+            string tooltip)
+        {
+            Text.Font = GameFont.Tiny;
+            Text.Anchor = TextAnchor.MiddleLeft;
+            GUI.color = MutedText;
+            Widgets.LabelEllipses(
+                new Rect(
+                    bounds.x + 7f,
+                    bounds.y + 2f,
+                    bounds.width - 14f,
+                    18f),
+                label);
+
+            Text.Font = GameFont.Small;
+            GUI.color = Color.white;
+            Widgets.LabelEllipses(
+                new Rect(
+                    bounds.x + 7f,
+                    bounds.y + 20f,
+                    bounds.width - 14f,
+                    21f),
+                value);
+            TooltipHandler.TipRegion(bounds, tooltip);
+        }
+
+        private static void DrawFooter(Rect bounds)
+        {
+            Text.Font = GameFont.Tiny;
+            Text.Anchor = TextAnchor.LowerLeft;
+            GUI.color = MutedText;
+            Widgets.Label(
+                new Rect(
+                    bounds.x + 4f,
+                    bounds.yMax - FooterHeight,
+                    bounds.width - 8f,
+                    FooterHeight),
+                "Runtime snapshot   /   refreshes at most every 500 ms");
         }
 
         private void Refresh(bool force)
@@ -101,15 +352,38 @@ namespace FixWorld.UI
 
             nextRefreshAt = now + RefreshIntervalSeconds;
             string current = FixWorldMod.Instance?.GetDiagnosticsText() ??
-                "FixWorld.Mod is not active.";
-            if (!string.Equals(
+                "Status\n  FixWorld.Mod is not active.";
+            if (string.Equals(
                     current,
                     diagnosticsText,
                     StringComparison.Ordinal))
             {
-                diagnosticsText = current;
-                measuredContentWidth = -1f;
+                return;
             }
+
+            string selectedTitle = document.Sections[selectedSection].Title;
+            diagnosticsText = current;
+            document = DiagnosticsDocument.Parse(current);
+            selectedSection = document.FindSection(selectedTitle);
+            scrollPosition = Vector2.zero;
+        }
+
+        private static string NavigationLabel(string title)
+        {
+            switch (title)
+            {
+                case "Deferred work":
+                    return "Deferred";
+                case "DDS and textures":
+                    return "DDS / Textures";
+                default:
+                    return title;
+            }
+        }
+
+        private static Color ToColor(UiColor color)
+        {
+            return new Color(color.Red, color.Green, color.Blue, color.Alpha);
         }
     }
 

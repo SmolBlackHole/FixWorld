@@ -167,6 +167,9 @@ shows Startup, Stages, Deferred work, DDS, scheduler, memory, and Issues section
 It is available from Mod settings in the main menu and from a normal main button
 in play. No UI action installs hooks or changes profiler state.
 
+- [x] Present the retained snapshot in a polished, resizable, read-only window
+      with section navigation, shared FixWorld styling, and scrolling for dense
+      deferred-work details.
 - [ ] Separate always-on cheap counters from explicitly enabled detailed capture.
 - [ ] Add measured worker utilization after the scheduler exposes busy and queued
       intervals; the current snapshot only reports configured workers and
