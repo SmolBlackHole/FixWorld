@@ -166,6 +166,8 @@ namespace FixWorld.Textures
                 DdsPackSnapshot snapshot = store.Snapshot();
                 HashSet<string> activePackages = new HashSet<string>(
                     StringComparer.Ordinal);
+                HashSet<string> usedPackages = new HashSet<string>(
+                    StringComparer.Ordinal);
                 List<DdsModPlan> buildPlans = new List<DdsModPlan>();
                 long availableBytes = new DriveInfo(Path.GetPathRoot(cacheRoot))
                     .AvailableFreeSpace;
@@ -186,6 +188,7 @@ namespace FixWorld.Textures
                     Interlocked.Increment(ref workerPreparedMods);
                     if (plan.Hits.Count > 0)
                     {
+                        usedPackages.Add(plan.PackageId);
                         Interlocked.Increment(ref workerAppliedMods);
                     }
                     else
@@ -204,14 +207,6 @@ namespace FixWorld.Textures
                     AddInvalidated(store.ReconcilePackage(
                         plan.PackageId,
                         retained));
-                    foreach (DdsPackItem item in plan.Items)
-                    {
-                        if (item.HasExisting)
-                        {
-                            store.Touch(plan.PackageId, item.SourcePath);
-                        }
-                    }
-
                     if (plan.MissingCount == 0)
                     {
                         continue;
@@ -231,6 +226,7 @@ namespace FixWorld.Textures
                     buildPlans.Add(plan);
                 }
 
+                store.TouchPackages(usedPackages);
                 AddInvalidated(store.RemoveInactivePackages(activePackages));
                 store.Save();
                 SetCacheBytes(store.CurrentBytes);
@@ -1282,7 +1278,7 @@ namespace FixWorld.Textures
 
             texture.name = Path.GetFileNameWithoutExtension(name);
             texture.filterMode = FilterMode.Trilinear;
-            texture.anisoLevel = 0;
+            texture.anisoLevel = 2;
             texture.Apply(!hasMipmaps, makeNoLongerReadable: true);
             return texture;
         }

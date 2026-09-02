@@ -14,6 +14,9 @@ namespace FixWorld.Textures
 {
     internal sealed class DdsPackStore : IDisposable
     {
+        private static readonly long AccessUpdateIntervalTicks =
+            TimeSpan.FromHours(12).Ticks;
+
         private readonly string cacheRoot;
         private readonly string indexPath;
         private readonly string backupPath;
@@ -112,21 +115,36 @@ namespace FixWorld.Textures
             return root;
         }
 
-        internal void Touch(string packageId, string sourcePath)
+        internal void TouchPackages(ISet<string> packageIds)
         {
-            string key = DdsCacheKey.Entry(packageId, sourcePath);
-            if (!writer.TryGet(
-                    key,
-                    out CacheEntry<DdsPackArtifact, DdsSourceStamp> entry))
+            if (packageIds == null)
             {
-                return;
+                throw new ArgumentNullException(nameof(packageIds));
             }
 
-            writer.Upsert(
-                key,
-                entry.Value.WithLastUsed(DateTime.UtcNow.Ticks),
-                entry.Stamp);
-            dirty = true;
+            long now = DateTime.UtcNow.Ticks;
+            long cutoff = now - AccessUpdateIntervalTicks;
+            bool changed = false;
+            foreach (KeyValuePair<
+                         string,
+                         CacheEntry<DdsPackArtifact, DdsSourceStamp>> pair in
+                     writer.SnapshotEntries())
+            {
+                DdsPackArtifact artifact = pair.Value.Value;
+                if (!packageIds.Contains(artifact.PackageId) ||
+                    artifact.LastUsedUtcTicks > cutoff)
+                {
+                    continue;
+                }
+
+                writer.Upsert(
+                    pair.Key,
+                    artifact.WithLastUsed(now),
+                    pair.Value.Stamp);
+                changed = true;
+            }
+
+            dirty |= changed;
         }
 
         internal int ReconcilePackage(

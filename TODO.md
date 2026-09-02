@@ -49,13 +49,22 @@ seconds for texture loading, and 0.1 seconds inside packed DDS loading. The
 cache contains 10,460 hits in 62 packs. On the local NVMe, 256 MiB packed
 read-ahead is neutral for total startup time. Rebuilding 8,250 missing entries
 into 52 packs took 282 seconds in the background with one active converter.
+Warm access timestamps are updated per pack at most every 12 hours, so ordinary
+warm starts do not rewrite the complete index.
+
+An automated comparison decoded 10,344 packed BC7 top mip levels and compared
+them with their source PNG or JPEG. Mean luminance ratios remained approximately
+1.000 with and without PNG gamma, sRGB, or ICC metadata. The reported darker
+runtime appearance therefore needs a named affected texture and must focus on
+Unity sampling, alpha, and generated mip levels rather than broad top-level
+color conversion.
 
 ### Remaining cache work
 
 - [ ] Throttle or pause background work from CPU, I/O, RAM, and TPS budgets.
 - [ ] Expose background progress and remaining assets to UI, logs, and benchmarks.
-- [ ] Validate BC7 sRGB, alpha, normal-map, and mask handling against the reported
-      darker-texture case before treating the format as final.
+- [ ] Capture a named darker texture in-game, then validate its Unity sampling,
+      alpha, and generated mip levels before treating BC7 as final.
 - [ ] Compare BC3, uncompressed DDS, and BC7 only where visual validation finds a
       real compatibility or quality tradeoff.
 - [ ] Measure pack read-ahead on HDD and the affected slow NVMe with tiered budgets.
