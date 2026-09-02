@@ -27,6 +27,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\CombinedXmlCacheContract.cs"
+      Link="CombinedXmlCacheContract.cs" />
     <Compile Include="..\Shared\DdsCacheContract.cs"
       Link="DdsCacheContract.cs" />
     <Compile Include="..\Shared\PreloaderTimeline.cs"

@@ -16,15 +16,19 @@ namespace FixWorld.PlayData
         private const float DefaultDdsCacheMaxGiB = 6.0f;
 
         private readonly EventBus events;
+        private readonly CombinedXmlCache combinedXml;
         private readonly ModFileIndex files;
         private readonly TextureDdsCache textures;
 
         internal ModLoadingPipeline(
             EventBus events,
+            CombinedXmlCache combinedXml,
             ModFileIndex files,
             TextureDdsCache textures)
         {
             this.events = events ?? throw new ArgumentNullException(nameof(events));
+            this.combinedXml = combinedXml ??
+                throw new ArgumentNullException(nameof(combinedXml));
             this.files = files ?? throw new ArgumentNullException(nameof(files));
             this.textures = textures ??
                 throw new ArgumentNullException(nameof(textures));
@@ -88,16 +92,11 @@ namespace FixWorld.PlayData
 
         internal ModXmlState LoadAndPatchXml()
         {
-            List<LoadableXmlAsset> assets = Profile(
-                PlayDataLoadStage.LoadAndPatchXml,
-                "LoadModXML()",
-                () => LoadedModManager.LoadModXML(hotReload: false));
-            Dictionary<XmlNode, LoadableXmlAsset> lookup =
-                new Dictionary<XmlNode, LoadableXmlAsset>();
-            XmlDocument document = Profile(
-                PlayDataLoadStage.LoadAndPatchXml,
-                "CombineIntoUnifiedXML()",
-                () => LoadedModManager.CombineIntoUnifiedXML(assets, lookup));
+            ModXmlState state = combinedXml.Enabled
+                ? LoadCombinedXml()
+                : LoadCombinedXmlFromMods(out _);
+            XmlDocument document = state.Document;
+            Dictionary<XmlNode, LoadableXmlAsset> lookup = state.AssetLookup;
 
             TKeySystem.Clear();
             Profile(
@@ -112,6 +111,101 @@ namespace FixWorld.PlayData
                 PlayDataLoadStage.LoadAndPatchXml,
                 "ApplyPatches()",
                 () => LoadedModManager.ApplyPatches(document, lookup));
+            return state;
+        }
+
+        private ModXmlState LoadCombinedXml()
+        {
+            CombinedXmlProbe probe = null;
+            try
+            {
+                probe = Profile(
+                    PlayDataLoadStage.LoadAndPatchXml,
+                    "ProbeCombinedXmlCache()",
+                    combinedXml.Probe);
+            }
+            catch (Exception exception)
+            {
+                Log.Warning(
+                    "[FixWorld] Combined XML cache validation failed; using " +
+                    "RimWorld XML loading: " + exception);
+            }
+
+            try
+            {
+                ModXmlState restored = null;
+                double preloadMilliseconds = 0.0;
+                bool hit = Profile(
+                    PlayDataLoadStage.LoadAndPatchXml,
+                    "AcceptPreloadedCombinedXML()",
+                    () => combinedXml.TryRestore(
+                        probe,
+                        out restored,
+                        out preloadMilliseconds));
+                if (hit)
+                {
+                    Log.Message(
+                        "[FixWorld] Reused pre-parsed combined XML cache; " +
+                        "preloader parse=" +
+                        preloadMilliseconds.ToString("F1") + " ms.");
+                    return restored;
+                }
+            }
+            catch (Exception exception)
+            {
+                Log.Warning(
+                    "[FixWorld] Combined XML cache candidate was rejected; " +
+                    "using RimWorld XML loading: " + exception);
+            }
+            finally
+            {
+                combinedXml.DiscardPublished();
+            }
+
+            ModXmlState state = LoadCombinedXmlFromMods(out List<LoadableXmlAsset> assets);
+            try
+            {
+                CombinedXmlProbe completedProbe = Profile(
+                    PlayDataLoadStage.LoadAndPatchXml,
+                    "VerifyCombinedXmlCacheInputs()",
+                    combinedXml.Probe);
+                if (probe != null && completedProbe != null && string.Equals(
+                        probe.Identity,
+                        completedProbe.Identity,
+                        StringComparison.Ordinal))
+                {
+                    Profile(
+                        PlayDataLoadStage.LoadAndPatchXml,
+                        "StoreCombinedXmlCache()",
+                        () => combinedXml.Store(completedProbe, assets, state));
+                }
+            }
+            catch (Exception exception)
+            {
+                Log.Warning(
+                    "[FixWorld] Could not update the combined XML cache: " +
+                    exception);
+            }
+
+            return state;
+        }
+
+        private ModXmlState LoadCombinedXmlFromMods(
+            out List<LoadableXmlAsset> assets)
+        {
+            List<LoadableXmlAsset> loadedAssets = Profile(
+                PlayDataLoadStage.LoadAndPatchXml,
+                "LoadModXML()",
+                () => LoadedModManager.LoadModXML(hotReload: false));
+            assets = loadedAssets;
+            Dictionary<XmlNode, LoadableXmlAsset> lookup =
+                new Dictionary<XmlNode, LoadableXmlAsset>();
+            XmlDocument document = Profile(
+                PlayDataLoadStage.LoadAndPatchXml,
+                "CombineIntoUnifiedXML()",
+                () => LoadedModManager.CombineIntoUnifiedXML(
+                    loadedAssets,
+                    lookup));
             return new ModXmlState(document, lookup);
         }
 

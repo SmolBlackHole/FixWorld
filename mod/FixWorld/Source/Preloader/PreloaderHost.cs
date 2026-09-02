@@ -40,6 +40,11 @@ namespace FixWorld.Preloader
 
             try
             {
+                if (CombinedXmlPreload.Start(log))
+                {
+                    log.Write("Queued combined XML cache preload.");
+                }
+
                 DdsReadAhead.Start();
                 log.Write("Queued bounded DDS read-ahead.");
             }

@@ -150,6 +150,16 @@ Three schema 17 runs show that raw XML loading is not the dominant XML cost:
 parsing and cleanup were negligible. The next investigation therefore targets
 patch execution and Def construction rather than another file-loader rewrite.
 
+A preloader-owned combined-XML cache now removes the repeated raw XML parse and
+unified-document merge on an unchanged warm start. With DDS read-ahead disabled,
+two 88-mod hits reduced `LoadAndPatchXml` from 2.45-2.59 seconds to 1.75-1.79
+seconds. Preloader parsing took 249-260 ms before Runtime startup; the XML
+barrier then spent about 42 ms validating inputs and 13-18 ms rebuilding only
+the provenance lookup around the same `XmlDocument` reference. A deliberately
+stale identity fell back to the complete RimWorld path and refreshed the cache
+atomically in 154 ms. Reuse remains disabled when Harmony patches touch the
+replaced XML discovery or merge methods.
+
 - [x] Record the existing `LoadModXML`, unified-document merge, TKey parsing,
       patch validation/application, `ParseAndProcessXML`, and cleanup boundaries
       in Runtime telemetry, benchmark output, logs, and the diagnostics UI.

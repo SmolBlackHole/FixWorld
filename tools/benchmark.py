@@ -314,8 +314,6 @@ def validate_report(raw: object) -> BenchmarkReport:
             raise RuntimeError("Benchmark loader operation omits succeeded.")
         observed_operations.add((stage_id, name))
     required_operations: set[tuple[str, str]] = {
-        ("LoadAndPatchXml", "LoadModXML()"),
-        ("LoadAndPatchXml", "CombineIntoUnifiedXML()"),
         ("LoadAndPatchXml", "TKeySystem.Parse()"),
         ("LoadAndPatchXml", "ErrorCheckPatches()"),
         ("LoadAndPatchXml", "ApplyPatches()"),
@@ -326,6 +324,22 @@ def validate_report(raw: object) -> BenchmarkReport:
         raise RuntimeError(
             "Benchmark report omits required loader operations: "
             + ", ".join(f"{stage}:{name}" for stage, name in sorted(missing_operations))
+        )
+    vanilla_xml_operations = {
+        ("LoadAndPatchXml", "LoadModXML()"),
+        ("LoadAndPatchXml", "CombineIntoUnifiedXML()"),
+    }
+    preloaded_xml_operation = (
+        "LoadAndPatchXml",
+        "AcceptPreloadedCombinedXML()",
+    )
+    if not (
+        vanilla_xml_operations <= observed_operations
+        or preloaded_xml_operation in observed_operations
+    ):
+        raise RuntimeError(
+            "Benchmark report contains neither RimWorld XML loading nor the "
+            "combined XML preload operation."
         )
     for section in (
         "ddsReadAhead",

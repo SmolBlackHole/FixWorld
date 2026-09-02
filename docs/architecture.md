@@ -13,6 +13,7 @@ RimWorldWin64.exe
   -> UnityDoorstop
   -> FixWorld.Preloader.dll
      -> wait for Assembly-CSharp
+     -> preload a combined-XML cache candidate
      -> resolve the installed Harmony assembly
   -> FixWorld.Loader.dll
      -> validate RimWorld version, MVID, and required methods
@@ -20,6 +21,7 @@ RimWorldWin64.exe
   -> FixWorld.Runtime
      -> create runtime services
      -> claim PlayDataLoader.DoPlayLoad()
+     -> validate or rebuild the combined-XML cache
      -> execute the owned play-data pipeline
   -> FixWorld.Mod.dll
      -> attach settings and ModContentPack to the running runtime
@@ -36,7 +38,7 @@ the runtime that already exists.
 | `FixWorld.Shared` | Assembly-neutral events, scheduling, profiling, cache snapshots, and boot contracts |
 | `FixWorld.Preloader` | Earliest managed entry, Assembly-CSharp observation, Harmony resolution, and loader handoff |
 | `FixWorld.Loader` | Exact RimWorld contract validation and one runtime start call |
-| `FixWorld.Runtime` | Lifecycle, hooks, play-data stages, scheduler, telemetry store, DDS cache, and loading UI state |
+| `FixWorld.Runtime` | Lifecycle, hooks, play-data stages, scheduler, telemetry store, XML and DDS caches, and loading UI state |
 | `FixWorld.Mod` | Doorstop installation, settings, RimWorld UI, and runtime attachment |
 | `FixWorld.Tool` | Explicit command-line wrappers for preloader maintenance, DDS cleanup, and texconv |
 

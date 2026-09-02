@@ -4,11 +4,13 @@ FixWorld is an experimental performance mod for RimWorld 1.6 on Windows x64.
 It enters the process through UnityDoorstop, validates the exact RimWorld build,
 and then owns the play-data loading pipeline through a small early runtime.
 
-The current pilot focuses on two measured bottlenecks:
+The current pilot focuses on three measured bottlenecks:
 
 - deterministic orchestration and diagnostics for RimWorld's mod-loading stages;
 - a persistent DDS texture cache that avoids repeated image decoding, mipmap
-  generation, and BC3 compression on later launches.
+  generation, and BC3 compression on later launches;
+- a validated combined-XML cache parsed before the Runtime needs it, avoiding
+  repeated Def-file parsing and merging on unchanged warm starts.
 
 FixWorld is not a stable release yet. It currently targets RimWorld
 `1.6.4871 rev591`, requires Harmony, and deliberately disables its early runtime

@@ -56,6 +56,7 @@ namespace FixWorld.Runtime
             telemetry = new RuntimeTelemetryStore(events);
             Lifecycle = new RimWorldLifecycle(events);
             ModFiles = new ModFileIndex();
+            CombinedXmlCache combinedXml = new CombinedXmlCache();
             Textures = new TextureDdsCache(scheduler, mainThread);
 
             PlayDataStageRunner stageRunner = new PlayDataStageRunner(events);
@@ -63,7 +64,11 @@ namespace FixWorld.Runtime
             DeferredWork = deferredWork;
             PlayData = new PlayDataLoadPipeline(
                 stageRunner,
-                new ModLoadingPipeline(events, ModFiles, Textures),
+                new ModLoadingPipeline(
+                    events,
+                    combinedXml,
+                    ModFiles,
+                    Textures),
                 new RimWorldPlayData(),
                 deferredWork,
                 BeginPlayData,

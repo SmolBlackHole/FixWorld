@@ -70,6 +70,15 @@ DDS read-ahead is optional best-effort preloader work. Its failure cannot disabl
 the loader bridge. The default budget is the smaller of 256 MiB and one eighth of
 available physical memory. `FIXWORLD_DDS_READ_AHEAD_MIB=0` disables read-ahead only
 
+The preloader also parses a validated combined-XML cache candidate in the
+background. The Runtime accepts the same in-memory `XmlDocument` only after mod
+order, load folders, effective Def files, sizes, and modification times match.
+It never waits for an unfinished candidate. A miss uses RimWorld's normal XML
+loader and atomically refreshes the artifact. Harmony patches on the replaced
+XML discovery or merge path disable reuse for compatibility.
+`FIXWORLD_COMBINED_XML_PRELOAD=0` disables this cache, and
+`FIXWORLD_COMBINED_XML_CACHE_ROOT` overrides its storage directory.
+
 ## Status, repair, and removal
 
 Close RimWorld before manually changing the installation:
