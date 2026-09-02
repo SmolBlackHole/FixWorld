@@ -41,6 +41,7 @@ namespace FixWorld.Textures
         internal const string CacheIdentityVersion =
             "bc7-unorm-gpu-mips-v1-mod-pack";
         internal const string CacheDirectoryName = "dds-pack-v1";
+        internal const string LegacyCacheDirectoryName = "dds-v1";
         internal const string PackFileExtension = ".fwdp";
         internal const string IndexFileName = "index.json";
         internal const string BackupFileName = "index.backup.json";

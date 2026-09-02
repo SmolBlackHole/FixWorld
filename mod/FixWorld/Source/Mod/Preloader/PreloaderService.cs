@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using FixWorld.Migrations;
 using UnityEngine;
 using Verse;
 
@@ -120,16 +121,9 @@ namespace FixWorld.Preloader
         private void RemoveLegacyModAssembly()
         {
             string assemblies = Path.Combine(modRoot, "Assemblies");
-            RemoveIfPresent(Path.Combine(assemblies, "FixWorld.dll"));
-            RemoveIfPresent(Path.Combine(assemblies, "FixWorld.pdb"));
-        }
-
-        private static void RemoveIfPresent(string path)
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
+            MigrationCleanup.DeleteFiles(
+                Path.Combine(assemblies, "FixWorld.dll"),
+                Path.Combine(assemblies, "FixWorld.pdb"));
         }
     }
 }

@@ -27,6 +27,8 @@ benchmarks, and logs.
 - DDS creation runs deferred and starts `texconv` only through the tool wrapper.
 - Texture discovery is indexed once, warm textures load from per-mod BC7 packs,
   and preloader read-ahead visits each pack at most once.
+- The old loose-file `dds-v1` cache is removed automatically after replacement
+  pack builds through the shared migration cleanup.
 
 ## Active order
 

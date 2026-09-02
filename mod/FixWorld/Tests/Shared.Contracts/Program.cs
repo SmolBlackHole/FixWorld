@@ -5,9 +5,11 @@ using System.Security.Cryptography;
 using System.Threading;
 using FixWorld.Caching;
 using FixWorld.Events;
+using FixWorld.Migrations;
 using FixWorld.Preloader;
 using FixWorld.Profiling;
 using FixWorld.Scheduling;
+using FixWorld.Textures;
 
 internal static class Program
 {
@@ -18,6 +20,7 @@ internal static class Program
         try
         {
             CacheSnapshotsAreImmutable();
+            MigrationCleanupIsSafeAndIdempotent();
             PreloaderInstallationIsVersionedAndRepairable();
             ProfilingAggregatesImmutableSnapshots();
             ProfileScopesCompleteExactlyOnce();
@@ -42,6 +45,101 @@ internal static class Program
         {
             Console.Error.WriteLine(exception);
             return 1;
+        }
+    }
+
+    private static void MigrationCleanupIsSafeAndIdempotent()
+    {
+        string fixture = Path.Combine(
+            Path.GetTempPath(),
+            "FixWorld-Migration-" + Guid.NewGuid().ToString("N"));
+        string currentRoot = Path.Combine(
+            fixture,
+            DdsCacheContract.CacheDirectoryName);
+        string legacyRoot = Path.Combine(
+            fixture,
+            DdsCacheContract.LegacyCacheDirectoryName);
+        string hash = new string('a', 64);
+        string dds = Path.Combine(legacyRoot, "example.mod", hash, "one.dds");
+        string staging = Path.Combine(
+            legacyRoot,
+            ".staging-123-" + new string('b', 32),
+            "pending.tmp");
+        string unknown = Path.Combine(
+            legacyRoot,
+            "example.mod",
+            hash,
+            "keep.txt");
+        string falseStaging = Path.Combine(
+            legacyRoot,
+            ".staging-unowned",
+            "keep.dds");
+        string exactLegacyFile = Path.Combine(fixture, "FixWorld.dll");
+        Directory.CreateDirectory(Path.GetDirectoryName(dds));
+        Directory.CreateDirectory(Path.GetDirectoryName(staging));
+        Directory.CreateDirectory(Path.GetDirectoryName(falseStaging));
+        try
+        {
+            File.WriteAllText(dds, "dds");
+            File.WriteAllText(staging, "staging");
+            File.WriteAllText(unknown, "unknown");
+            File.WriteAllText(falseStaging, "unknown staging");
+            File.WriteAllText(
+                Path.Combine(legacyRoot, DdsCacheContract.IndexFileName),
+                "index");
+            File.WriteAllText(exactLegacyFile, "legacy assembly");
+
+            Assert(
+                string.Equals(
+                    LegacyDdsCacheMigration.GetRoot(currentRoot),
+                    legacyRoot,
+                    StringComparison.OrdinalIgnoreCase),
+                "The current DDS pack root did not resolve its legacy sibling.");
+            Assert(
+                LegacyDdsCacheMigration.GetRoot(legacyRoot) == null,
+                "A custom or legacy-named active root could delete itself.");
+
+            MigrationCleanupResult inspection =
+                LegacyDdsCacheMigration.Inspect(legacyRoot);
+            Assert(
+                inspection.Files == 5 && inspection.Bytes > 0,
+                "Legacy DDS inspection did not cover the owned directory.");
+
+            MigrationCleanupResult cleanup =
+                LegacyDdsCacheMigration.Clean(legacyRoot);
+            Assert(
+                cleanup.Files == 5 &&
+                cleanup.Removed &&
+                cleanup.Errors.Count == 0,
+                "Legacy DDS cleanup did not remove every file.");
+            Assert(
+                !File.Exists(dds) &&
+                !File.Exists(staging) &&
+                !File.Exists(unknown) &&
+                !File.Exists(falseStaging) &&
+                !Directory.Exists(legacyRoot),
+                "Legacy DDS cleanup retained part of its owned directory.");
+
+            MigrationCleanupResult repeated =
+                LegacyDdsCacheMigration.Clean(legacyRoot);
+            Assert(
+                repeated.Files == 0 &&
+                repeated.Bytes == 0 &&
+                !repeated.Removed,
+                "Legacy DDS cleanup was not idempotent.");
+
+            Assert(
+                MigrationCleanup.DeleteFiles(exactLegacyFile) == 1 &&
+                !File.Exists(exactLegacyFile) &&
+                MigrationCleanup.DeleteFiles(exactLegacyFile) == 0,
+                "Exact legacy-file cleanup was not idempotent.");
+        }
+        finally
+        {
+            if (Directory.Exists(fixture))
+            {
+                Directory.Delete(fixture, recursive: true);
+            }
         }
     }
 

@@ -9,6 +9,7 @@ using System.Runtime.Serialization.Json;
 using System.Threading;
 using FixWorld.Content;
 using FixWorld.ExternalTools;
+using FixWorld.Migrations;
 using FixWorld.Runtime;
 using FixWorld.Scheduling;
 using RimWorld.IO;
@@ -46,6 +47,7 @@ namespace FixWorld.Textures
         private DdsModPlan[] pendingBuildPlans = Array.Empty<DdsModPlan>();
 
         private string cacheRoot;
+        private string legacyCacheRoot;
         private string texconvPath;
         private string converterIdentity;
         private long maximumCacheBytes;
@@ -525,6 +527,66 @@ namespace FixWorld.Textures
                     concurrencyKey: "dds-pack-store",
                     maxConcurrency: 1));
             jobs.Add(maintenance);
+
+            if (!string.IsNullOrEmpty(legacyCacheRoot) &&
+                Directory.Exists(legacyCacheRoot))
+            {
+                JobHandle<MigrationCleanupResult> migration =
+                    scheduler.Schedule(
+                        new Job<MigrationCleanupResult>(
+                            "migration/dds-v1-cleanup",
+                            CleanLegacyCache,
+                            name: "Remove legacy DDS cache",
+                            lifetime: JobLifetime.Background,
+                            priority: JobPriority.Low,
+                            resourceClass: JobResourceClass.Io,
+                            dependencies: buildHandles,
+                            concurrencyKey: "dds-pack-store",
+                            maxConcurrency: 1));
+                jobs.Add(migration);
+            }
+        }
+
+        private MigrationCleanupResult CleanLegacyCache(
+            CancellationToken cancellationToken)
+        {
+            MigrationCleanupResult result =
+                LegacyDdsCacheMigration.Clean(
+                    legacyCacheRoot,
+                    cancellationToken);
+            try
+            {
+                mainThread.Post(
+                    "Report legacy DDS cache migration",
+                    () => ReportLegacyCacheMigration(result));
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+
+            return result;
+        }
+
+        private static void ReportLegacyCacheMigration(
+            MigrationCleanupResult result)
+        {
+            if (result.Removed)
+            {
+                Log.Message(
+                    "[FixWorld] Removed " + result.Files +
+                    " files from the legacy DDS cache (" +
+                    ToMiB(result.Bytes).ToString(
+                        "0.0",
+                        CultureInfo.InvariantCulture) + " MiB).");
+            }
+
+            if (result.Errors.Count > 0)
+            {
+                Log.Warning(
+                    "[FixWorld] Legacy DDS cleanup could not remove the " +
+                    "complete cache: " +
+                    string.Join("; ", result.Errors));
+            }
         }
 
         private DdsBuildResult BuildAndPublish(
@@ -914,6 +976,7 @@ namespace FixWorld.Textures
 
             cacheRoot = Path.GetFullPath(cacheRoot);
             Directory.CreateDirectory(cacheRoot);
+            legacyCacheRoot = LegacyDdsCacheMigration.GetRoot(cacheRoot);
             maximumCacheBytes = ReadGiBLimit(
                 MaxCacheGiBEnvironmentVariable,
                 GiBToBytes(ddsCacheMaxGiB));
@@ -986,6 +1049,11 @@ namespace FixWorld.Textures
         private static double ToGiB(long bytes)
         {
             return bytes / (1024.0 * 1024.0 * 1024.0);
+        }
+
+        private static double ToMiB(long bytes)
+        {
+            return bytes / (1024.0 * 1024.0);
         }
 
         private static int ReadWorkerCount()

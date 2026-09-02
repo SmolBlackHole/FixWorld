@@ -29,6 +29,8 @@
             Link="Preloader\PreloaderTimeline.cs" />
         <Compile Include="..\Shared\RuntimeContract.cs"
             Link="Runtime\RuntimeContract.cs" />
+        <Compile Include="..\Shared\Migrations\MigrationCleanup.cs"
+            Link="Migrations\MigrationCleanup.cs" />
     </ItemGroup>
 
     <ItemGroup>

@@ -46,15 +46,21 @@ When space is insufficient or `texconv` is unavailable, FixWorld loads the
 original texture. Removed sources and disabled mods become cleanup candidates.
 Least-recently-used entries are evicted when the configured limit is exceeded
 
-Inspect or remove the cache without Python:
+After an upgrade from the loose-file pilot cache, FixWorld removes the owned
+`dds-v1` directory automatically. The migration waits for the new pack builds
+and runs as a low-priority background I/O job, so deleting thousands of old
+files does not extend the startup path. It is idempotent and is skipped when a
+custom active cache root cannot be mapped safely to the standard legacy sibling
+
+Inspect or remove that legacy cache manually without Python:
 
 ```powershell
 .\Tools\Windows-x64\FixWorld.Tool.exe dds-cache status
 .\Tools\Windows-x64\FixWorld.Tool.exe dds-cache clean
 ```
 
-`status` is read-only. `clean` removes only recognized FixWorld DDS, index,
-backup, and staging artifacts and refuses to run while RimWorld is active
+`status` is read-only. `clean` removes the complete FixWorld-owned legacy
+`dds-v1` directory and refuses to run while RimWorld is active
 
 ## Converter boundary
 

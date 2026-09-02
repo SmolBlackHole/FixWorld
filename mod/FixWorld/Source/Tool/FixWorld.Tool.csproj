@@ -28,7 +28,6 @@
     </ItemGroup>
 
     <ItemGroup>
-        <Compile Include="..\Shared\PreloaderInstallation.cs"
-            Link="PreloaderInstallation.cs" />
+        <ProjectReference Include="..\Shared\FixWorld.Shared.csproj" />
     </ItemGroup>
 </Project>
