@@ -1,59 +1,82 @@
-# Windows-Preloader
+# Windows preloader
 
-FixWorld benötigt unter Windows x64 einen frühen Prozesseinstieg über
-[UnityDoorstop 4.4.0](https://github.com/NeighTools/UnityDoorstop/releases/tag/v4.4.0).
+FixWorld uses [UnityDoorstop 4.4.0](https://github.com/NeighTools/UnityDoorstop/releases/tag/v4.4.0)
+for its early Windows x64 process entry.
 
-Beim ersten Start installiert der normale Mod zwei Dateien neben
-`RimWorldWin64.exe` und startet RimWorld einmal neu:
+## First boot
 
-- `winhttp.dll`, unverändert aus UnityDoorstop 4.4.0
-- `doorstop_config.ini`, mit FixWorld-Eigentumsmarker
+The normal RimWorld mod owns installation policy. On the first launch it:
 
-Ab dem nächsten Start gilt genau ein Pfad:
+1. validates the bundled Doorstop and FixWorld preloader;
+2. refuses to overwrite an unknown `winhttp.dll` or Doorstop configuration;
+3. removes the superseded `FixWorld.dll` deployment if present;
+4. installs the managed files next to `RimWorldWin64.exe`;
+5. records a pending restart atomically; and
+6. restarts RimWorld once.
+
+The managed files are:
+
+- `winhttp.dll`, the verified UnityDoorstop 4.4.0 binary;
+- `doorstop_config.ini`, marked as FixWorld-owned; and
+- `FixWorld.preloader.json`, the versioned installation manifest.
+
+The manifest records its schema, Doorstop version and hash, configuration hash,
+preloader path and hash, and whether the first restart is still pending. This lets
+FixWorld distinguish an owned outdated installation from another proxy DLL and
+repair a moved or updated mod without overwriting foreign files.
+
+If the first restart does not activate the preloader, FixWorld does not restart
+again. The normal RimWorld loader continues and FixWorld stays disabled for that
+launch.
+
+## Normal boot
 
 ```text
-Doorstop -> FixWorld.Preloader -> FixWorld.Loader -> FixWorld.Runtime
-                                                        |
-                                                        -> ModLoadingCoordinator
+RimWorldWin64.exe
+  -> UnityDoorstop
+  -> FixWorld.Preloader
+     -> wait for Assembly-CSharp
+     -> resolve the installed Harmony 2 assembly
+  -> FixWorld.Loader
+     -> validate the RimWorld MVID and runtime contract
+     -> load FixWorld.Runtime
+  -> FixWorld.Runtime.StartEarly()
+     -> install the safe LoadAllPlayData bootstrap hook
+     -> activate runtime hooks at the play-data boundary
+     -> own DoPlayLoad through the FixWorld play-data pipeline
+  -> CreateModClasses
+     -> FixWorld.Mod attaches settings and its ModContentPack
 ```
 
-Der Preloader lädt die DLL der installierten Harmony-Mod. `FixWorld.Loader` prüft die
-RimWorld-Assembly per MVID und den versionierten Runtime-Vertrag, lädt
-`FixWorld.Runtime` und ruft `StartEarly()` auf. Die Runtime richtet die langlebige
-Infrastruktur ein und übernimmt danach `LoadedModManager.LoadAllActiveMods()`.
-Der Loader besitzt weder einen Harmony-Patch noch eine fachliche Loading-Stage. Die
-normale `FixWorld.Mod.dll` bindet sich später genau einmal an dieselbe Runtime.
-Unbekannte `winhttp.dll`- oder `doorstop_config.ini`-Dateien werden nicht
-überschrieben.
+The delayed hook activation is intentional. Patching `DoPlayLoad()` at the
+Doorstop entry caused Unity resource initialization while the engine was not ready.
+The bootstrap hook enters early but installs the actual play-data detour only at
+`PlayDataLoader.LoadAllPlayData()`.
 
-Seit Phase 3 ersetzt `FixWorld.Mod.dll` die frühere `FixWorld.dll`. Build und Runtime
-entfernen einen eindeutig erkannten Altbestand, bevor RimWorld beide Assemblies
-gleichzeitig laden kann. Das erlaubt auch ein Update, das über einen bestehenden
-privaten Pilotordner kopiert wurde.
+The normal `FixWorld.Mod.dll` is not a second runtime. It remains the RimWorld-facing
+installer, settings UI, and `ModContentPack` adapter for the already running
+`FixWorld.Runtime`.
 
-Es gibt keine Legacy-Konfiguration, keinen optionalen Spätpfad und keinen
-Enable-/Disable-Modus. Das Testscript installiert denselben produktiven Pfad über
-`FixWorld.Tool.exe preloader install`.
+After the runtime has claimed the play-data pipeline, the mod confirms the
+installation and clears `restartPending`. If Doorstop is active but the runtime did
+not claim the pipeline, FixWorld disables itself for that launch and leaves the
+original RimWorld loader intact.
 
-Ist Doorstop nach dem Neustart zwar aktiviert, aber nicht im Prozess aktiv,
-startet FixWorld RimWorld nicht erneut. Ist Doorstop aktiv, konnte
-`FixWorld.Runtime` die Mod-Ladepipeline aber nicht übernehmen, bleibt FixWorld für
-diesen Start deaktiviert und RimWorld verwendet seinen ursprünglichen Loader.
+## DDS read-ahead
 
-## DDS-Read-ahead
+DDS read-ahead is optional best-effort preloader work. Its failure cannot disable
+the loader bridge. The default budget is the smaller of 256 MiB and one eighth of
+available physical memory. `FIXWORLD_DDS_READ_AHEAD_MIB=0` disables read-ahead only.
 
-Der Preloader kann den vorhandenen DDS-Index und begrenzt DDS-Daten aktiver Mods in den
-Windows-Dateicache lesen. Das Standardbudget ist der kleinere Wert aus 256 MiB und einem
-Achtel des freien physischen RAM. `FIXWORLD_DDS_READ_AHEAD_MIB=0` deaktiviert nur diesen
-Read-ahead, nicht den Preloader.
+## Status, repair, and removal
 
-## Entfernen
-
-RimWorld schließen und aus dem FixWorld-Modordner ausführen:
+Close RimWorld before manually changing the installation:
 
 ```powershell
+.\Tools\Windows-x64\FixWorld.Tool.exe preloader status
+.\Tools\Windows-x64\FixWorld.Tool.exe preloader install
 .\Tools\Windows-x64\FixWorld.Tool.exe preloader uninstall
 ```
 
-Das Tool entfernt ausschließlich eine über Eigentumsmarker und Doorstop-Prüfsumme
-erkannte FixWorld-Installation. Linux bleibt ein späterer, separater Port.
+The tool and normal mod use the same installation implementation. Uninstall removes
+only files proven to be FixWorld-owned. Linux remains a separate future port.

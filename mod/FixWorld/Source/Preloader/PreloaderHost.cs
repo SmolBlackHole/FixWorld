@@ -15,11 +15,9 @@ namespace FixWorld.Preloader
                 string gameRoot = PreloaderPaths.FindGameRoot();
                 log = new PreloaderLog(Path.Combine(gameRoot, "FixWorld.Preloader.log"));
                 EarlyLoaderBridge.Start(log);
-                DdsReadAhead.Start();
                 log.Write(
                     "Doorstop entered FixWorld preloader, armed FixWorld.Loader, " +
-                    "started the early assembly timeline, and queued bounded DDS " +
-                    "read-ahead.");
+                    "and started the early assembly timeline.");
             }
             catch (Exception exception)
             {
@@ -36,8 +34,21 @@ namespace FixWorld.Preloader
                 {
                     log.Write(message);
                 }
+
+                return;
+            }
+
+            try
+            {
+                DdsReadAhead.Start();
+                log.Write("Queued bounded DDS read-ahead.");
+            }
+            catch (Exception exception)
+            {
+                log.Write(
+                    "DDS read-ahead was not started, but the early loader remains " +
+                    "active: " + exception);
             }
         }
-
     }
 }

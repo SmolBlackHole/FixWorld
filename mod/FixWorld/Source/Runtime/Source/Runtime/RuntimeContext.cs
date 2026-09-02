@@ -15,34 +15,40 @@ namespace FixWorld.Runtime
         private const int MaximumStageEventsPerPump = 1024;
         private const int MaximumLifecycleEventsPerPump = 64;
 
+        private readonly object attachmentSync = new object();
+        private readonly EventBus events;
+        private readonly MainThreadQueue mainThread;
+        private readonly JobScheduler scheduler;
         private readonly IDisposable lifecycleSubscription;
+        private readonly PlayDataTelemetry telemetry;
+        private object attachedMod;
         private bool disposed;
 
         internal RuntimeContext()
         {
-            Events = new EventBus();
-            Events.Register<PlayDataLoadStageEvent>(
+            events = new EventBus();
+            events.Register<PlayDataLoadStageEvent>(
                 MaximumStageEventsPerPump,
                 error => Log.Error(
                     "[FixWorld] Play-data event subscriber failed: " + error));
-            Events.Register<RimWorldLifecycleEvent>(
+            events.Register<RimWorldLifecycleEvent>(
                 MaximumLifecycleEventsPerPump,
                 error => Log.Error(
                     "[FixWorld] Lifecycle event subscriber failed: " + error));
 
             JobSchedulerOptions options = RuntimeSchedulerSettings.Create();
-            Scheduler = new JobScheduler(options);
-            MainThread = new MainThreadQueue(
+            scheduler = new JobScheduler(options);
+            mainThread = new MainThreadQueue(
                 options.QueueCapacity,
                 (name, error) => Log.Error(
                     "[FixWorld] Main-thread action failed (" + name + "): " +
                     error));
-            Loading = new PlayDataLoadingState(Events);
-            Telemetry = new PlayDataTelemetry(Events);
-            Lifecycle = new RimWorldLifecycle(Events);
-            Textures = new TextureCacheAdapter(Scheduler, MainThread);
+            Loading = new PlayDataLoadingState(events);
+            telemetry = new PlayDataTelemetry(events);
+            Lifecycle = new RimWorldLifecycle(events);
+            Textures = new TextureCacheAdapter(scheduler, mainThread);
 
-            PlayDataStageRunner stageRunner = new PlayDataStageRunner(Events);
+            PlayDataStageRunner stageRunner = new PlayDataStageRunner(events);
             DeferredWorkQueue deferredWork = new DeferredWorkQueue();
             DeferredWork = deferredWork;
             PlayData = new PlayDataLoadPipeline(
@@ -53,21 +59,13 @@ namespace FixWorld.Runtime
                 BeginPlayData,
                 CompletePlayData,
                 FailPlayData);
-            lifecycleSubscription = Events.Subscribe<RimWorldLifecycleEvent>(
+            lifecycleSubscription = events.Subscribe<RimWorldLifecycleEvent>(
                 ConsumeLifecycleEvent);
         }
-
-        internal EventBus Events { get; }
-
-        internal JobScheduler Scheduler { get; }
-
-        internal MainThreadQueue MainThread { get; }
 
         internal RimWorldLifecycle Lifecycle { get; }
 
         internal PlayDataLoadingState Loading { get; }
-
-        internal PlayDataTelemetry Telemetry { get; }
 
         internal PlayDataLoadPipeline PlayData { get; }
 
@@ -75,7 +73,7 @@ namespace FixWorld.Runtime
 
         internal TextureCacheAdapter Textures { get; }
 
-        internal int WorkerCount => Scheduler.WorkerCount;
+        internal int WorkerCount => scheduler.WorkerCount;
 
         internal void AttachMod(RuntimeModAttachmentSnapshot attachment)
         {
@@ -84,17 +82,33 @@ namespace FixWorld.Runtime
                 throw new ArgumentNullException(nameof(attachment));
             }
 
-            Textures.Attach(
-                attachment.Content.RootDir,
-                attachment.Settings.DdsCacheMaxGiB);
+            lock (attachmentSync)
+            {
+                if (attachedMod != null)
+                {
+                    if (ReferenceEquals(attachedMod, attachment.Mod))
+                    {
+                        return;
+                    }
+
+                    throw new InvalidOperationException(
+                        "FixWorld.Runtime is already attached to another mod " +
+                        "instance.");
+                }
+
+                Textures.Attach(
+                    attachment.Content.RootDir,
+                    attachment.Settings.DdsCacheMaxGiB);
+                attachedMod = attachment.Mod;
+            }
         }
 
         internal void Pump()
         {
-            MainThread.BindCurrentThread();
-            MainThread.Pump(64, TimeSpan.FromMilliseconds(4));
+            mainThread.BindCurrentThread();
+            mainThread.Pump(64, TimeSpan.FromMilliseconds(4));
             Lifecycle.ObserveFrame();
-            Events.Pump();
+            events.Pump();
         }
 
         public void Dispose()
@@ -108,7 +122,7 @@ namespace FixWorld.Runtime
             try
             {
                 Lifecycle.NotifyShuttingDown();
-                Events.Pump();
+                events.Pump();
             }
             catch (Exception exception)
             {
@@ -118,23 +132,23 @@ namespace FixWorld.Runtime
 
             lifecycleSubscription.Dispose();
             Loading.Dispose();
-            Telemetry.Dispose();
+            telemetry.Dispose();
             Textures.Shutdown();
-            if (!Scheduler.Shutdown(TimeSpan.FromSeconds(2)))
+            if (!scheduler.Shutdown(TimeSpan.FromSeconds(2)))
             {
                 Log.Warning(
                     "[FixWorld.Runtime] Scheduler workers did not stop within " +
                     "two seconds.");
             }
 
-            MainThread.Dispose();
-            Events.Dispose();
+            mainThread.Dispose();
+            events.Dispose();
         }
 
         private void BeginPlayData()
         {
             Loading.Start();
-            Telemetry.Start();
+            telemetry.Start();
         }
 
         private void CompletePlayData()
@@ -146,7 +160,7 @@ namespace FixWorld.Runtime
         private void FailPlayData(Exception exception)
         {
             Loading.Abort();
-            Telemetry.Abort();
+            telemetry.Abort();
             Log.Error("[FixWorld.Runtime] Play-data load failed: " + exception);
         }
 
@@ -186,10 +200,10 @@ namespace FixWorld.Runtime
                 return false;
             }
 
-            Telemetry.Complete();
+            telemetry.Complete();
             BenchmarkRecorder.Complete(
                 source,
-                Telemetry.GetMeasurement(),
+                telemetry.GetMeasurement(),
                 XmlLoadingSnapshot.Empty,
                 Textures.Snapshot());
             return true;

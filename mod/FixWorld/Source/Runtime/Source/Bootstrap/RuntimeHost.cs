@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Threading;
 using FixWorld.Diagnostics;
 using FixWorld.Integration;
@@ -13,6 +12,7 @@ namespace FixWorld.Runtime
     {
         private static readonly object Sync = new object();
         private static RuntimeContext current;
+        private static bool shutdown;
 
         internal static RuntimeContext Current =>
             Volatile.Read(ref current) ??
@@ -28,7 +28,12 @@ namespace FixWorld.Runtime
                     return;
                 }
 
-                RemoveLegacyModAssembly();
+                if (shutdown)
+                {
+                    throw new InvalidOperationException(
+                        "FixWorld.Runtime has already shut down.");
+                }
+
                 PreloaderTimelineSnapshot timeline =
                     PreloaderTimelineState.Capture();
                 RuntimeContext created = new RuntimeContext();
@@ -115,62 +120,21 @@ namespace FixWorld.Runtime
 
         internal static void Shutdown()
         {
-            RuntimeContext stopped;
+            RuntimeContext stoppedContext;
             lock (Sync)
             {
-                stopped = current;
+                if (shutdown)
+                {
+                    return;
+                }
+
+                shutdown = true;
+                stoppedContext = current;
                 current = null;
             }
 
             RimWorldHooks.Uninstall();
-            stopped?.Dispose();
-        }
-
-        private static void RemoveLegacyModAssembly()
-        {
-            string runtimeDirectory = Path.GetDirectoryName(
-                typeof(RuntimeHost).Assembly.Location);
-            if (string.IsNullOrWhiteSpace(runtimeDirectory))
-            {
-                throw new InvalidOperationException(
-                    "FixWorld.Runtime has no assembly location.");
-            }
-
-            string modRoot = Path.GetFullPath(
-                Path.Combine(runtimeDirectory, "..", ".."));
-            string assembliesDirectory = Path.Combine(modRoot, "Assemblies");
-            string currentAssembly = Path.Combine(
-                assembliesDirectory,
-                "FixWorld.Mod.dll");
-            if (!File.Exists(currentAssembly))
-            {
-                return;
-            }
-
-            string legacyAssembly = Path.Combine(
-                assembliesDirectory,
-                "FixWorld.dll");
-            string legacySymbols = Path.Combine(
-                assembliesDirectory,
-                "FixWorld.pdb");
-            bool removed = false;
-            if (File.Exists(legacyAssembly))
-            {
-                File.Delete(legacyAssembly);
-                removed = true;
-            }
-
-            if (File.Exists(legacySymbols))
-            {
-                File.Delete(legacySymbols);
-                removed = true;
-            }
-
-            if (removed)
-            {
-                Log.Message(
-                    "[FixWorld.Runtime] Removed the superseded FixWorld.dll.");
-            }
+            stoppedContext?.Dispose();
         }
     }
 }

@@ -8,12 +8,14 @@ namespace FixWorld
 {
     public sealed class FixWorldMod : Mod
     {
+        private readonly PreloaderService preloader;
         private readonly FixWorldSettings settings;
 
         public FixWorldMod(ModContentPack content) : base(content)
         {
             settings = GetSettings<FixWorldSettings>();
-            if (!PreloaderStartup.EnsureInstalled(content.RootDir))
+            preloader = new PreloaderService(content.RootDir);
+            if (!preloader.EnsureActive())
             {
                 return;
             }
@@ -34,7 +36,7 @@ namespace FixWorld
             Listing_Standard listing = new Listing_Standard();
             listing.Begin(inRect);
             listing.Label("Required Windows early loader");
-            PreloaderState state = PreloaderManager.GetState();
+            PreloaderState state = preloader.GetState();
             listing.Label(state.Message);
             listing.Gap();
             listing.Label(

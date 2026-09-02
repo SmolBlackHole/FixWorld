@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Security.Cryptography;
 using System.Threading;
 using FixWorld.Caching;
 using FixWorld.Events;
+using FixWorld.Preloader;
 using FixWorld.Profiling;
 using FixWorld.Scheduling;
 
@@ -15,6 +18,7 @@ internal static class Program
         try
         {
             CacheSnapshotsAreImmutable();
+            PreloaderInstallationIsVersionedAndRepairable();
             ProfilingAggregatesImmutableSnapshots();
             ProfileScopesCompleteExactlyOnce();
             ProfilingIsThreadSafe();
@@ -38,6 +42,133 @@ internal static class Program
         {
             Console.Error.WriteLine(exception);
             return 1;
+        }
+    }
+
+    private static void PreloaderInstallationIsVersionedAndRepairable()
+    {
+        if (Environment.OSVersion.Platform != PlatformID.Win32NT)
+        {
+            return;
+        }
+
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            "FixWorld-Preloader-" + Guid.NewGuid().ToString("N"));
+        string previousActive = Environment.GetEnvironmentVariable(
+            "FIXWORLD_PRELOADER_ACTIVE");
+        Directory.CreateDirectory(root);
+        try
+        {
+            Environment.SetEnvironmentVariable(
+                "FIXWORLD_PRELOADER_ACTIVE",
+                null);
+            string gameRoot = Path.Combine(root, "game");
+            string bundleRoot = Path.Combine(root, "bundle");
+            string movedRoot = Path.Combine(root, "moved");
+            Directory.CreateDirectory(gameRoot);
+            Directory.CreateDirectory(bundleRoot);
+            Directory.CreateDirectory(movedRoot);
+            File.WriteAllText(
+                Path.Combine(gameRoot, "RimWorldWin64.exe"),
+                string.Empty);
+            string bundledDoorstop = Path.Combine(bundleRoot, "winhttp.dll");
+            string bundledPreloader = Path.Combine(
+                bundleRoot,
+                "FixWorld.Preloader.dll");
+            File.WriteAllText(bundledDoorstop, "doorstop fixture");
+            File.WriteAllText(bundledPreloader, "preloader fixture");
+            string doorstopHash = FileHash(bundledDoorstop);
+            PreloaderInstallationPaths paths =
+                new PreloaderInstallationPaths(
+                    gameRoot,
+                    bundledDoorstop,
+                    bundledPreloader,
+                    doorstopHash);
+
+            Assert(
+                PreloaderInstallation.GetState(paths).Status ==
+                PreloaderStatus.NotInstalled,
+                "A clean game directory was not reported as uninstalled.");
+            PreloaderState installed = PreloaderInstallation.Install(paths);
+            Assert(
+                installed.Status == PreloaderStatus.Enabled &&
+                installed.RestartPending,
+                "Installing the preloader did not publish a pending restart.");
+
+            string movedPreloader = Path.Combine(
+                movedRoot,
+                "FixWorld.Preloader.dll");
+            File.Copy(bundledPreloader, movedPreloader);
+            PreloaderInstallationPaths movedPaths =
+                new PreloaderInstallationPaths(
+                    gameRoot,
+                    bundledDoorstop,
+                    movedPreloader,
+                    doorstopHash);
+            Assert(
+                PreloaderInstallation.GetState(movedPaths).Status ==
+                PreloaderStatus.Enabled,
+                "Equivalent preloader paths were treated as different installs.");
+            PreloaderState confirmed =
+                PreloaderInstallation.ConfirmStarted(movedPaths);
+            Assert(
+                confirmed.Status == PreloaderStatus.Enabled &&
+                !confirmed.RestartPending,
+                "Confirming runtime ownership did not repair the equivalent " +
+                "target and clear the restart marker.");
+
+            string updatedPreloader = Path.Combine(
+                movedRoot,
+                "FixWorld.Preloader.Updated.dll");
+            File.WriteAllText(updatedPreloader, "updated preloader fixture");
+            PreloaderInstallationPaths updatedPaths =
+                new PreloaderInstallationPaths(
+                    gameRoot,
+                    bundledDoorstop,
+                    updatedPreloader,
+                    doorstopHash);
+            Assert(
+                PreloaderInstallation.GetState(updatedPaths).Status ==
+                PreloaderStatus.Incomplete,
+                "A genuinely outdated preloader target was accepted as current.");
+            PreloaderState repaired =
+                PreloaderInstallation.Install(updatedPaths);
+            Assert(
+                repaired.Status == PreloaderStatus.Enabled &&
+                repaired.RestartPending,
+                "Repairing an outdated preloader did not request one restart.");
+
+            PreloaderInstallation.Uninstall(updatedPaths);
+            Assert(
+                !File.Exists(Path.Combine(gameRoot, "winhttp.dll")) &&
+                !File.Exists(Path.Combine(gameRoot, "doorstop_config.ini")) &&
+                !File.Exists(Path.Combine(gameRoot, "FixWorld.preloader.json")),
+                "Uninstall left owned preloader files behind.");
+            File.WriteAllText(
+                Path.Combine(gameRoot, "winhttp.dll"),
+                "foreign proxy");
+            Assert(
+                PreloaderInstallation.GetState(movedPaths).Status ==
+                PreloaderStatus.Conflict,
+                "An unknown proxy DLL was treated as FixWorld-owned.");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                "FIXWORLD_PRELOADER_ACTIVE",
+                previousActive);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static string FileHash(string path)
+    {
+        using (SHA256 sha256 = SHA256.Create())
+        using (FileStream stream = File.OpenRead(path))
+        {
+            return BitConverter.ToString(sha256.ComputeHash(stream))
+                .Replace("-", string.Empty);
         }
     }
 

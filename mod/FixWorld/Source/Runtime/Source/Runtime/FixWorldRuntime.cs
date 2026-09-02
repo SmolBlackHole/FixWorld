@@ -1,19 +1,12 @@
-using System;
-
 namespace FixWorld.Runtime
 {
     public static class FixWorldRuntime
     {
-        public const int ContractVersion = 1;
-
-        private static readonly RuntimeLifecycle Lifecycle =
-            new RuntimeLifecycle();
-
-        public static FixWorldRuntimeSnapshot Snapshot => Lifecycle.Snapshot;
+        public const int ContractVersion = 2;
 
         public static void StartEarly()
         {
-            Lifecycle.StartEarly(RuntimeHost.StartEarly);
+            RuntimeHost.StartEarly();
         }
 
         public static void AttachMod(
@@ -26,14 +19,12 @@ namespace FixWorld.Runtime
                     mod,
                     content,
                     ddsCacheMaxGiB);
-            Lifecycle.AttachMod(
-                attachment.Mod,
-                () => RuntimeHost.AttachMod(attachment));
+            RuntimeHost.AttachMod(attachment);
         }
 
         public static void Shutdown()
         {
-            Lifecycle.Shutdown(RuntimeHost.Shutdown);
+            RuntimeHost.Shutdown();
         }
     }
 }

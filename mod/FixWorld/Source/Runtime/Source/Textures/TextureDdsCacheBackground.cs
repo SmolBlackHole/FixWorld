@@ -85,9 +85,7 @@ namespace FixWorld.Textures
                 .ToArray();
             string buildIdentity = TextureCacheIdentity.GetDeferredBuildIdentity(
                 entries);
-            int parallelism = Math.Max(
-                1,
-                Math.Min(workerCount, scheduler.WorkerCount));
+            int parallelism = GetParallelism();
 
             if (entries.Count == 0)
             {
@@ -323,9 +321,7 @@ namespace FixWorld.Textures
                         created,
                         failed,
                         backgroundMilliseconds,
-                        Math.Max(1, Math.Min(
-                            workerCount,
-                            scheduler.WorkerCount)),
+                        GetParallelism(),
                         removedOrphans);
                 string reportError = WriteDeferredReport(report);
                 QueueDeferredCompletionLog(
@@ -361,10 +357,15 @@ namespace FixWorld.Textures
                 created,
                 failed,
                 GetElapsedMilliseconds(backgroundStartedAt),
-                Math.Max(1, Math.Min(
-                    workerCount,
-                    scheduler.WorkerCount)),
+                GetParallelism(),
                 removedOrphans);
+        }
+
+        private int GetParallelism()
+        {
+            return Math.Max(
+                1,
+                Math.Min(2, Math.Min(workerCount, scheduler.WorkerCount)));
         }
 
         private static double GetElapsedMilliseconds(long startedAt)

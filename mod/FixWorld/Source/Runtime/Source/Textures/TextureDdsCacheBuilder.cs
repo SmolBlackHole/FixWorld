@@ -4,15 +4,13 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
+using FixWorld.ExternalTools;
 
 namespace FixWorld.Textures
 {
     internal sealed class TextureDdsCacheBuilder
     {
-        private const int ConversionTimeoutMilliseconds = 10 * 60 * 1000;
-
         private readonly string cacheRoot;
         private readonly string texconvPath;
         private readonly string identity;
@@ -20,7 +18,10 @@ namespace FixWorld.Textures
         internal TextureDdsCacheBuilder(string cacheRoot, string modRoot)
         {
             this.cacheRoot = cacheRoot;
-            texconvPath = FindTexconv(modRoot);
+            texconvPath = TexconvProcess.FindExecutable(Path.Combine(
+                modRoot,
+                "Tools",
+                "Windows-x64"));
             identity = File.Exists(texconvPath)
                 ? TextureCacheIdentity.GetConverterIdentity(texconvPath)
                 : null;
@@ -74,12 +75,18 @@ namespace FixWorld.Textures
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     string groupName = group.Key.ToString(CultureInfo.InvariantCulture);
-                    string inputPattern = Path.Combine(stagingRoot, "input", groupName, "*.*");
+                    string[] inputPaths = group
+                        .Select(entry => Path.Combine(
+                            stagingRoot,
+                            "input",
+                            groupName,
+                            entry.Hash + entry.Source.Extension.ToLowerInvariant()))
+                        .ToArray();
                     string outputDirectory = Path.Combine(stagingRoot, "output", groupName);
                     Directory.CreateDirectory(outputDirectory);
 
                     string error = RunTexconv(
-                        inputPattern,
+                        inputPaths,
                         outputDirectory,
                         group.Key,
                         cancellationToken);
@@ -199,166 +206,28 @@ namespace FixWorld.Textures
         }
 
         private string RunTexconv(
-            string inputPattern,
+            IReadOnlyList<string> inputPaths,
             string outputDirectory,
             int mipCount,
             CancellationToken cancellationToken)
         {
-            ProcessStartInfo startInfo = new()
+            TexconvProcessResult result = TexconvProcess.Run(
+                texconvPath,
+                outputDirectory,
+                inputPaths,
+                mipCount,
+                cancellationToken);
+            if (result.ExitCode != 0)
             {
-                FileName = texconvPath,
-                // RimWorld creates DDS textures with linear:false. Preserve the
-                // encoded source values so Unity performs the single sRGB decode.
-                Arguments = "-nologo -y --ignore-srgb -vflip -f BC3_UNORM -m " +
-                            mipCount.ToString(CultureInfo.InvariantCulture) +
-                            " -o " + Quote(outputDirectory) + " " + Quote(inputPattern),
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-            StringBuilder output = new();
-            StringBuilder error = new();
-            using Process process = new() { StartInfo = startInfo };
-            process.OutputDataReceived += (_, eventArgs) =>
-            {
-                if (eventArgs.Data != null)
-                {
-                    output.AppendLine(eventArgs.Data);
-                }
-            };
-            process.ErrorDataReceived += (_, eventArgs) =>
-            {
-                if (eventArgs.Data != null)
-                {
-                    error.AppendLine(eventArgs.Data);
-                }
-            };
-            process.Start();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-            Stopwatch timeout = Stopwatch.StartNew();
-            while (!process.WaitForExit(100))
-            {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    TryKill(process);
-                    cancellationToken.ThrowIfCancellationRequested();
-                }
-
-                if (timeout.ElapsedMilliseconds >= ConversionTimeoutMilliseconds)
-                {
-                    TryKill(process);
-                    return "texconv exceeded its time limit";
-                }
-            }
-
-            process.WaitForExit();
-            if (process.ExitCode != 0)
-            {
-                string detail = error.Length > 0 ? error.ToString() : output.ToString();
+                string detail = !string.IsNullOrWhiteSpace(result.Error)
+                    ? result.Error
+                    : result.Output;
                 return "texconv failed with exit code " +
-                       process.ExitCode.ToString(CultureInfo.InvariantCulture) + ": " + detail.Trim();
+                       result.ExitCode.ToString(CultureInfo.InvariantCulture) +
+                       ": " + detail.Trim();
             }
 
             return null;
-        }
-
-        private static void TryKill(Process process)
-        {
-            try
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill();
-                    process.WaitForExit();
-                }
-            }
-            catch
-            {
-                // The process may exit between the state check and Kill().
-            }
-        }
-
-        private static string FindTexconv(string modRoot)
-        {
-            string configuredPath = Environment.GetEnvironmentVariable("FIXWORLD_TEXCONV_PATH");
-            if (File.Exists(configuredPath))
-            {
-                return Path.GetFullPath(configuredPath);
-            }
-
-            bool isWindows = IsWindows();
-            string executableName = isWindows ? "texconv.exe" : "texconv";
-            if (isWindows)
-            {
-                string bundledPath = Path.Combine(
-                    modRoot,
-                    "Tools",
-                    "Windows-x64",
-                    executableName);
-                if (File.Exists(bundledPath))
-                {
-                    return bundledPath;
-                }
-            }
-
-            string path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-            foreach (string directory in path.Split(Path.PathSeparator))
-            {
-                if (string.IsNullOrWhiteSpace(directory))
-                {
-                    continue;
-                }
-
-                string candidate = Path.Combine(directory.Trim().Trim('"'), executableName);
-                if (File.Exists(candidate))
-                {
-                    return candidate;
-                }
-            }
-
-            if (!isWindows)
-            {
-                return null;
-            }
-
-            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            string packagesRoot = Path.Combine(localAppData, "Microsoft", "WinGet", "Packages");
-            if (!Directory.Exists(packagesRoot))
-            {
-                return null;
-            }
-
-            try
-            {
-                return Directory
-                    .EnumerateDirectories(packagesRoot, "Microsoft.DirectXTex.Texconv_*")
-                    .Select(directory => Path.Combine(directory, "texconv.exe"))
-                    .FirstOrDefault(File.Exists);
-            }
-            catch (IOException)
-            {
-                return null;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                return null;
-            }
-        }
-
-        private static bool IsWindows()
-        {
-            PlatformID platform = Environment.OSVersion.Platform;
-            return platform == PlatformID.Win32NT ||
-                   platform == PlatformID.Win32S ||
-                   platform == PlatformID.Win32Windows ||
-                   platform == PlatformID.WinCE;
-        }
-
-        private static string Quote(string value)
-        {
-            return "\"" + value.Replace("\"", "\\\"") + "\"";
         }
     }
 

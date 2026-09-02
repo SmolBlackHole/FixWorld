@@ -8,10 +8,9 @@ namespace FixWorld.RuntimeBridge
     {
         internal const string AssemblyName = "FixWorld.Runtime";
         internal const string TypeName = "FixWorld.Runtime.FixWorldRuntime";
-        internal const int Version = 1;
+        internal const int Version = 2;
 
         private readonly MethodInfo attachMod;
-        private readonly MethodInfo shutdown;
         private readonly MethodInfo startEarly;
 
         private RuntimeContract(Type entrypoint)
@@ -33,10 +32,6 @@ namespace FixWorld.RuntimeBridge
                 entrypoint,
                 "AttachMod",
                 new[] { typeof(object), typeof(object), typeof(float) });
-            shutdown = RequireMethod(
-                entrypoint,
-                "Shutdown",
-                Type.EmptyTypes);
         }
 
         internal static RuntimeContract Bind(Assembly assembly)
@@ -88,11 +83,6 @@ namespace FixWorld.RuntimeBridge
             float ddsCacheMaxGiB)
         {
             Invoke(attachMod, new[] { mod, content, (object)ddsCacheMaxGiB });
-        }
-
-        internal void Shutdown()
-        {
-            Invoke(shutdown, null);
         }
 
         private static MethodInfo RequireMethod(

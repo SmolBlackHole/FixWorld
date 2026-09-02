@@ -1,8 +1,9 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Runtime.Serialization;
+using System.Runtime.Serialization.Json;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -21,36 +22,61 @@ namespace FixWorld.Preloader
 
     internal readonly struct PreloaderState
     {
-        internal PreloaderStatus Status { get; }
-        internal string Message { get; }
-        internal bool ActiveThisLaunch { get; }
-
         internal PreloaderState(
             PreloaderStatus status,
             string message,
-            bool activeThisLaunch)
+            bool activeThisLaunch,
+            bool restartPending)
         {
             Status = status;
             Message = message;
             ActiveThisLaunch = activeThisLaunch;
+            RestartPending = restartPending;
         }
+
+        internal PreloaderStatus Status { get; }
+
+        internal string Message { get; }
+
+        internal bool ActiveThisLaunch { get; }
+
+        internal bool RestartPending { get; }
     }
 
     internal sealed class PreloaderInstallationPaths
     {
-        internal string GameRoot { get; }
-        internal string BundledDoorstop { get; }
-        internal string BundledPreloader { get; }
-
         internal PreloaderInstallationPaths(
             string gameRoot,
             string bundledDoorstop,
             string bundledPreloader)
+            : this(
+                gameRoot,
+                bundledDoorstop,
+                bundledPreloader,
+                PreloaderInstallation.DoorstopSha256)
+        {
+        }
+
+        internal PreloaderInstallationPaths(
+            string gameRoot,
+            string bundledDoorstop,
+            string bundledPreloader,
+            string doorstopSha256)
         {
             GameRoot = Path.GetFullPath(gameRoot);
             BundledDoorstop = Path.GetFullPath(bundledDoorstop);
             BundledPreloader = Path.GetFullPath(bundledPreloader);
+            DoorstopSha256 = doorstopSha256 ??
+                throw new ArgumentNullException(nameof(doorstopSha256));
         }
+
+        internal string GameRoot { get; }
+
+        internal string BundledDoorstop { get; }
+
+        internal string BundledPreloader { get; }
+
+        internal string DoorstopSha256 { get; }
 
         internal string Target(string fileName)
         {
@@ -58,34 +84,70 @@ namespace FixWorld.Preloader
         }
     }
 
+    [DataContract]
+    internal sealed class PreloaderInstallationManifest
+    {
+        internal const int CurrentSchemaVersion = 1;
+
+        [DataMember(Name = "schemaVersion", Order = 1)]
+        internal int SchemaVersion { get; set; }
+
+        [DataMember(Name = "doorstopVersion", Order = 2)]
+        internal string DoorstopVersion { get; set; }
+
+        [DataMember(Name = "doorstopSha256", Order = 3)]
+        internal string DoorstopSha256 { get; set; }
+
+        [DataMember(Name = "configSha256", Order = 4)]
+        internal string ConfigSha256 { get; set; }
+
+        [DataMember(Name = "preloaderPath", Order = 5)]
+        internal string PreloaderPath { get; set; }
+
+        [DataMember(Name = "preloaderSha256", Order = 6)]
+        internal string PreloaderSha256 { get; set; }
+
+        [DataMember(Name = "restartPending", Order = 7)]
+        internal bool RestartPending { get; set; }
+    }
+
     internal static class PreloaderInstallation
     {
         internal const string DoorstopSha256 =
             "93406D0A02E7C164B89828CBFE3B289930A112D2ECA50BD4A52E72ECE169E6A8";
 
+        private const string DoorstopVersion = "4.4.0";
         private const string OwnershipMarker = "# Managed by FixWorld";
         private const string DoorstopFileName = "winhttp.dll";
         private const string DoorstopConfigFileName = "doorstop_config.ini";
+        private const string ManifestFileName = "FixWorld.preloader.json";
 
         private static readonly string[] InstalledFiles =
         {
             DoorstopConfigFileName,
-            DoorstopFileName
+            DoorstopFileName,
+            ManifestFileName
         };
 
         internal static PreloaderState GetState(PreloaderInstallationPaths paths)
         {
-            bool active = string.Equals(
-                Environment.GetEnvironmentVariable("FIXWORLD_PRELOADER_ACTIVE"),
-                Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture),
-                StringComparison.Ordinal);
+            if (paths == null)
+            {
+                throw new ArgumentNullException(nameof(paths));
+            }
+
+            bool active = IsActiveThisLaunch();
+            PreloaderInstallationManifest manifest = ReadManifest(
+                paths.Target(ManifestFileName));
+            bool restartPending = manifest?.RestartPending == true;
 
             if (Environment.OSVersion.Platform != PlatformID.Win32NT)
             {
                 return State(
                     PreloaderStatus.Unsupported,
                     "The early loader is currently available only on Windows.",
-                    active);
+                    active,
+                    restartPending);
             }
 
             if (!File.Exists(Path.Combine(paths.GameRoot, "RimWorldWin64.exe")))
@@ -93,57 +155,125 @@ namespace FixWorld.Preloader
                 return State(
                     PreloaderStatus.Unavailable,
                     "FixWorld could not locate the RimWorld game directory.",
-                    active);
+                    active,
+                    restartPending);
             }
 
             if (!ValidateBundledFiles(paths, out string validationError))
             {
-                return State(PreloaderStatus.Unavailable, validationError, active);
+                return State(
+                    PreloaderStatus.Unavailable,
+                    validationError,
+                    active,
+                    restartPending);
             }
 
             string doorstopPath = paths.Target(DoorstopFileName);
-            string doorstopConfigPath = paths.Target(DoorstopConfigFileName);
+            string configPath = paths.Target(DoorstopConfigFileName);
+            string manifestPath = paths.Target(ManifestFileName);
             bool anyFile = File.Exists(doorstopPath) ||
-                           File.Exists(doorstopConfigPath);
+                           File.Exists(configPath) ||
+                           File.Exists(manifestPath);
             if (!anyFile)
             {
                 return State(
                     PreloaderStatus.NotInstalled,
                     "The required early loader is not installed.",
-                    active);
+                    active,
+                    restartPending);
             }
 
-            if (File.Exists(doorstopPath) &&
-                !string.Equals(Hash(doorstopPath), DoorstopSha256, StringComparison.Ordinal))
+            string installedDoorstopHash = File.Exists(doorstopPath)
+                ? Hash(doorstopPath)
+                : null;
+            if (installedDoorstopHash != null &&
+                !IsOwnedDoorstop(
+                    installedDoorstopHash,
+                    paths.DoorstopSha256,
+                    manifest))
             {
                 return Conflict(
-                    "RimWorld already has an unknown winhttp.dll. FixWorld will not overwrite it.",
-                    active);
+                    "RimWorld already has an unknown winhttp.dll. " +
+                    "FixWorld will not overwrite it.",
+                    active,
+                    restartPending);
             }
 
-            if (File.Exists(doorstopConfigPath) &&
-                !IsOwnedDoorstopConfig(doorstopConfigPath))
+            if (File.Exists(configPath) && !IsOwnedConfig(configPath))
             {
                 return Conflict(
                     "RimWorld already has a Doorstop config not owned by FixWorld.",
-                    active);
+                    active,
+                    restartPending);
             }
 
-            if (!File.Exists(doorstopPath) || !File.Exists(doorstopConfigPath))
+            if (!File.Exists(doorstopPath) || !File.Exists(configPath))
             {
                 return State(
                     PreloaderStatus.Incomplete,
                     "The FixWorld early-loader installation is incomplete.",
-                    active);
+                    active,
+                    restartPending);
             }
 
-            bool enabled = ReadEnabled(doorstopConfigPath);
-            string activity = active ? " It is active in this launch." : string.Empty;
+            if (!string.Equals(
+                    installedDoorstopHash,
+                    paths.DoorstopSha256,
+                    StringComparison.Ordinal))
+            {
+                return State(
+                    PreloaderStatus.Incomplete,
+                    "The FixWorld early loader requires a Doorstop update.",
+                    active,
+                    restartPending);
+            }
+
+            bool enabled;
+            string configuredTarget;
+            try
+            {
+                enabled = ReadBoolean(configPath, "enabled");
+                configuredTarget = ReadValue(configPath, "target_assembly");
+            }
+            catch (InvalidDataException exception)
+            {
+                return State(
+                    PreloaderStatus.Incomplete,
+                    exception.Message,
+                    active,
+                    restartPending);
+            }
+
+            if (!TargetsMatch(configuredTarget, paths.BundledPreloader))
+            {
+                return State(
+                    PreloaderStatus.Incomplete,
+                    "The FixWorld early loader points to an outdated preloader path.",
+                    active,
+                    restartPending);
+            }
+
+            if (!ManifestMatches(paths, configPath, manifest))
+            {
+                return State(
+                    PreloaderStatus.Incomplete,
+                    "The FixWorld early-loader installation metadata is outdated.",
+                    active,
+                    restartPending);
+            }
+
+            string activity = active
+                ? " It is active in this launch."
+                : string.Empty;
+            string pending = restartPending
+                ? " A restart is pending."
+                : string.Empty;
             return State(
                 enabled ? PreloaderStatus.Enabled : PreloaderStatus.Disabled,
                 "The FixWorld early loader is installed and " +
-                (enabled ? "enabled." : "disabled.") + activity,
-                active);
+                (enabled ? "enabled." : "disabled.") + activity + pending,
+                active,
+                restartPending);
         }
 
         internal static PreloaderState Install(PreloaderInstallationPaths paths)
@@ -157,37 +287,71 @@ namespace FixWorld.Preloader
                 throw new InvalidOperationException(state.Message);
             }
 
-            List<string> createdFiles = new List<string>();
-            try
-            {
-                CopyDoorstop(paths, createdFiles);
-                WriteDoorstopConfig(paths, createdFiles);
-                return GetState(paths);
-            }
-            catch
-            {
-                for (int index = createdFiles.Count - 1; index >= 0; index--)
-                {
-                    TryDelete(createdFiles[index]);
-                }
+            InstallDoorstop(paths);
+            WriteDoorstopConfig(paths);
+            WriteManifest(paths, restartPending: true);
+            return GetState(paths);
+        }
 
-                throw;
+        internal static PreloaderState ConfirmStarted(
+            PreloaderInstallationPaths paths)
+        {
+            string doorstopPath = paths.Target(DoorstopFileName);
+            string configPath = paths.Target(DoorstopConfigFileName);
+            string configuredTarget = File.Exists(configPath)
+                ? ReadValue(configPath, "target_assembly")
+                : null;
+            if (!File.Exists(doorstopPath) ||
+                !string.Equals(
+                    Hash(doorstopPath),
+                    paths.DoorstopSha256,
+                    StringComparison.Ordinal) ||
+                !File.Exists(configPath) ||
+                !IsOwnedConfig(configPath) ||
+                !ReadBoolean(configPath, "enabled") ||
+                !TargetsMatch(configuredTarget, paths.BundledPreloader))
+            {
+                throw new InvalidOperationException(
+                    "The active FixWorld early-loader installation does not " +
+                    "match the current mod package.");
             }
+
+            if (!PathsEqual(configuredTarget, paths.BundledPreloader))
+            {
+                WriteDoorstopConfig(paths);
+            }
+
+            WriteManifest(paths, restartPending: false);
+            return GetState(paths);
         }
 
         internal static void Uninstall(PreloaderInstallationPaths paths)
         {
             PreloaderState state = GetState(paths);
             if (state.Status != PreloaderStatus.Enabled &&
-                state.Status != PreloaderStatus.Disabled)
+                state.Status != PreloaderStatus.Disabled &&
+                state.Status != PreloaderStatus.Incomplete)
             {
                 throw new InvalidOperationException(state.Message);
             }
 
             foreach (string fileName in InstalledFiles)
             {
-                File.Delete(paths.Target(fileName));
+                string path = paths.Target(fileName);
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
             }
+        }
+
+        private static bool IsActiveThisLaunch()
+        {
+            return string.Equals(
+                Environment.GetEnvironmentVariable("FIXWORLD_PRELOADER_ACTIVE"),
+                Process.GetCurrentProcess().Id.ToString(
+                    CultureInfo.InvariantCulture),
+                StringComparison.Ordinal);
         }
 
         private static bool ValidateBundledFiles(
@@ -202,7 +366,7 @@ namespace FixWorld.Preloader
 
             if (!string.Equals(
                     Hash(paths.BundledDoorstop),
-                    DoorstopSha256,
+                    paths.DoorstopSha256,
                     StringComparison.Ordinal))
             {
                 error = "The bundled UnityDoorstop file failed its SHA-256 check.";
@@ -219,31 +383,47 @@ namespace FixWorld.Preloader
             return true;
         }
 
-        private static void CopyDoorstop(
-            PreloaderInstallationPaths paths,
-            ICollection<string> createdFiles)
+        private static bool IsOwnedDoorstop(
+            string installedHash,
+            string currentHash,
+            PreloaderInstallationManifest manifest)
+        {
+            return string.Equals(
+                       installedHash,
+                       currentHash,
+                       StringComparison.Ordinal) ||
+                   manifest != null &&
+                   string.Equals(
+                       installedHash,
+                       manifest.DoorstopSha256,
+                       StringComparison.Ordinal);
+        }
+
+        private static void InstallDoorstop(PreloaderInstallationPaths paths)
         {
             string destination = paths.Target(DoorstopFileName);
-            if (File.Exists(destination))
+            if (File.Exists(destination) &&
+                string.Equals(
+                    Hash(destination),
+                    paths.DoorstopSha256,
+                    StringComparison.Ordinal))
             {
                 return;
             }
 
-            CopyAtomic(paths.BundledDoorstop, destination);
-            createdFiles.Add(destination);
+            CopyAtomic(paths.BundledDoorstop, destination, File.Exists(destination));
         }
 
-        private static void WriteDoorstopConfig(
-            PreloaderInstallationPaths paths,
-            ICollection<string> createdFiles = null)
+        private static void WriteDoorstopConfig(PreloaderInstallationPaths paths)
         {
             string path = paths.Target(DoorstopConfigFileName);
-            bool existed = File.Exists(path);
             string content = OwnershipMarker + Environment.NewLine +
-                             "# UnityDoorstop 4.4.0, Windows x64" + Environment.NewLine +
+                             "# UnityDoorstop " + DoorstopVersion +
+                             ", Windows x64" + Environment.NewLine +
                              "[General]" + Environment.NewLine +
                              "enabled=true" + Environment.NewLine +
-                             "target_assembly=" + paths.BundledPreloader + Environment.NewLine +
+                             "target_assembly=" + paths.BundledPreloader +
+                             Environment.NewLine +
                              "redirect_output_log=false" + Environment.NewLine +
                              "boot_config_override=" + Environment.NewLine +
                              "ignore_disable_switch=false" + Environment.NewLine +
@@ -253,36 +433,176 @@ namespace FixWorld.Preloader
                              "debug_enabled=false" + Environment.NewLine +
                              "debug_suspend=false" + Environment.NewLine +
                              "debug_address=127.0.0.1:10000" + Environment.NewLine;
-            WriteAtomic(path, content, existed);
-            if (!existed && createdFiles != null)
+            WriteAtomic(path, content);
+        }
+
+        private static void WriteManifest(
+            PreloaderInstallationPaths paths,
+            bool restartPending)
+        {
+            string configPath = paths.Target(DoorstopConfigFileName);
+            PreloaderInstallationManifest manifest =
+                new PreloaderInstallationManifest
+                {
+                    SchemaVersion =
+                        PreloaderInstallationManifest.CurrentSchemaVersion,
+                    DoorstopVersion = DoorstopVersion,
+                    DoorstopSha256 = paths.DoorstopSha256,
+                    ConfigSha256 = Hash(configPath),
+                    PreloaderPath = paths.BundledPreloader,
+                    PreloaderSha256 = Hash(paths.BundledPreloader),
+                    RestartPending = restartPending
+                };
+            DataContractJsonSerializer serializer =
+                new DataContractJsonSerializer(
+                    typeof(PreloaderInstallationManifest));
+            using (MemoryStream stream = new MemoryStream())
             {
-                createdFiles.Add(path);
+                serializer.WriteObject(stream, manifest);
+                WriteAtomic(
+                    paths.Target(ManifestFileName),
+                    Encoding.UTF8.GetString(stream.ToArray()));
             }
         }
 
-        private static bool ReadEnabled(string path)
+        private static PreloaderInstallationManifest ReadManifest(string path)
         {
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            try
+            {
+                DataContractJsonSerializer serializer =
+                    new DataContractJsonSerializer(
+                        typeof(PreloaderInstallationManifest));
+                using (FileStream stream = File.OpenRead(path))
+                {
+                    return serializer.ReadObject(stream) as
+                        PreloaderInstallationManifest;
+                }
+            }
+            catch (IOException)
+            {
+                return null;
+            }
+            catch (SerializationException)
+            {
+                return null;
+            }
+        }
+
+        private static bool ManifestMatches(
+            PreloaderInstallationPaths paths,
+            string configPath,
+            PreloaderInstallationManifest manifest)
+        {
+            return manifest != null &&
+                   manifest.SchemaVersion ==
+                   PreloaderInstallationManifest.CurrentSchemaVersion &&
+                   string.Equals(
+                       manifest.DoorstopVersion,
+                       DoorstopVersion,
+                       StringComparison.Ordinal) &&
+                   string.Equals(
+                       manifest.DoorstopSha256,
+                       paths.DoorstopSha256,
+                       StringComparison.Ordinal) &&
+                   string.Equals(
+                       manifest.ConfigSha256,
+                       Hash(configPath),
+                       StringComparison.Ordinal) &&
+                   TargetsMatch(
+                       manifest.PreloaderPath,
+                       paths.BundledPreloader) &&
+                   string.Equals(
+                       manifest.PreloaderSha256,
+                       Hash(paths.BundledPreloader),
+                       StringComparison.Ordinal);
+        }
+
+        private static bool ReadBoolean(string path, string key)
+        {
+            string value = ReadValue(path, key);
+            if (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (string.Equals(value, "false", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            throw new InvalidDataException(
+                "Doorstop config has an invalid " + key + " setting.");
+        }
+
+        private static string ReadValue(string path, string key)
+        {
+            string prefix = key + "=";
             foreach (string line in File.ReadAllLines(path))
             {
-                if (!line.Trim().StartsWith("enabled=", StringComparison.OrdinalIgnoreCase))
+                string trimmed = line.Trim();
+                if (trimmed.StartsWith(
+                        prefix,
+                        StringComparison.OrdinalIgnoreCase))
                 {
-                    continue;
+                    return trimmed.Substring(prefix.Length).Trim();
                 }
-
-                return string.Equals(
-                    line.Substring(line.IndexOf('=') + 1).Trim(),
-                    "true",
-                    StringComparison.OrdinalIgnoreCase);
             }
 
-            throw new InvalidDataException("Doorstop config has no enabled setting.");
+            throw new InvalidDataException(
+                "Doorstop config has no " + key + " setting.");
         }
 
-        private static bool IsOwnedDoorstopConfig(string path)
+        private static bool IsOwnedConfig(string path)
         {
             return File.ReadAllText(path).StartsWith(
                 OwnershipMarker,
                 StringComparison.Ordinal);
+        }
+
+        private static bool PathsEqual(string left, string right)
+        {
+            if (string.IsNullOrWhiteSpace(left) ||
+                string.IsNullOrWhiteSpace(right))
+            {
+                return false;
+            }
+
+            try
+            {
+                return string.Equals(
+                    Path.GetFullPath(left.Trim().Trim('"')),
+                    Path.GetFullPath(right.Trim().Trim('"')),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception exception)
+                when (exception is ArgumentException ||
+                      exception is NotSupportedException ||
+                      exception is PathTooLongException)
+            {
+                return false;
+            }
+        }
+
+        private static bool TargetsMatch(string configured, string bundled)
+        {
+            if (PathsEqual(configured, bundled))
+            {
+                return true;
+            }
+
+            string configuredPath = configured?.Trim().Trim('"');
+            return !string.IsNullOrWhiteSpace(configuredPath) &&
+                   File.Exists(configuredPath) &&
+                   File.Exists(bundled) &&
+                   string.Equals(
+                       Hash(configuredPath),
+                       Hash(bundled),
+                       StringComparison.Ordinal);
         }
 
         private static string Hash(string path)
@@ -290,17 +610,28 @@ namespace FixWorld.Preloader
             using (SHA256 sha256 = SHA256.Create())
             using (FileStream stream = File.OpenRead(path))
             {
-                return BitConverter.ToString(sha256.ComputeHash(stream)).Replace("-", "");
+                return BitConverter.ToString(sha256.ComputeHash(stream))
+                    .Replace("-", string.Empty);
             }
         }
 
-        private static void CopyAtomic(string source, string destination)
+        private static void CopyAtomic(
+            string source,
+            string destination,
+            bool replace)
         {
             string temporaryPath = TemporaryPath(destination);
             File.Copy(source, temporaryPath, false);
             try
             {
-                File.Move(temporaryPath, destination);
+                if (replace)
+                {
+                    File.Replace(temporaryPath, destination, null);
+                }
+                else
+                {
+                    File.Move(temporaryPath, destination);
+                }
             }
             finally
             {
@@ -308,13 +639,13 @@ namespace FixWorld.Preloader
             }
         }
 
-        private static void WriteAtomic(string path, string content, bool replace)
+        private static void WriteAtomic(string path, string content)
         {
             string temporaryPath = TemporaryPath(path);
             File.WriteAllText(temporaryPath, content, new UTF8Encoding(false));
             try
             {
-                if (replace)
+                if (File.Exists(path))
                 {
                     File.Replace(temporaryPath, path, null);
                 }
@@ -331,20 +662,33 @@ namespace FixWorld.Preloader
 
         private static string TemporaryPath(string destination)
         {
-            return destination + ".fixworld-" + Guid.NewGuid().ToString("N") + ".tmp";
+            return destination + ".fixworld-" +
+                   Guid.NewGuid().ToString("N") + ".tmp";
         }
 
         private static PreloaderState State(
             PreloaderStatus status,
             string message,
-            bool active)
+            bool active,
+            bool restartPending)
         {
-            return new PreloaderState(status, message, active);
+            return new PreloaderState(
+                status,
+                message,
+                active,
+                restartPending);
         }
 
-        private static PreloaderState Conflict(string message, bool active)
+        private static PreloaderState Conflict(
+            string message,
+            bool active,
+            bool restartPending)
         {
-            return State(PreloaderStatus.Conflict, message, active);
+            return State(
+                PreloaderStatus.Conflict,
+                message,
+                active,
+                restartPending);
         }
 
         private static void TryDelete(string path)
