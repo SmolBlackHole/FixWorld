@@ -1,109 +1,75 @@
-# DDS-Cache
+# DDS texture cache
 
-## Ziel
+Parent: [Documentation index](README.md)
 
-FixWorld überspringt bei geeigneten Mod-Texturen die wiederholte PNG-/JPG-Dekodierung,
-Mipmap-Erzeugung und BC3-Kompression. Der Cache darf weder Spielinhalte verändern noch
-unkontrolliert Speicherplatz belegen.
+FixWorld caches eligible mod textures as DDS so later launches can skip repeated
+PNG or JPEG decoding, mipmap generation, and BC3 compression. A cache failure
+must never change game content or prevent the original texture from loading.
 
-## Gemessener Stand
+## Measured pilot baseline
 
-- 10.460 wiederverwendete DDS bei 88 aktiven Mods
-- Texturpfad ohne Cache: 21,16 s
-- Texturpfad mit warmem Vollcache: 2,24 bis 2,51 s
-- warmer Gesamtstart mit Stage-Runner und JSON-Index: 27,5 s im aktuellen Referenzlauf
-- Vollcache: rund 1,59 GiB
+The current 88-mod reference list contains 10,460 reusable DDS entries. Earlier
+measured runs reduced the texture path from about 21.16 seconds without DDS to
+2.24 through 2.51 seconds with a complete warm cache. The cache occupied about
+1.59 GiB
 
-Der erstmalige Cache-Build ist mit rund 91 s bewusst teurer. Der Gewinn entsteht bei
-allen folgenden Starts.
+These numbers describe one machine, one mod list, and one cache identity. They
+are not a general performance guarantee. Raw runs and comparison rules belong
+to the benchmark data, not this document
 
-## Gültigkeit und Plattenbudget
+## Validity
 
-`index.json` ordnet jeder Quelle ihre DDS-Datei, Dateigröße, Änderungszeit,
-Inhalts-Hash, Konverter-Identität und letzte Verwendung zu. Größe und Änderungszeit
-bilden den schnellen Startpfad. Ändert sich eine dieser Angaben, vergleicht FixWorld
-den SHA-256-Inhalts-Hash und konvertiert nur bei einer tatsächlichen Änderung neu.
+`index.json` records the source path, source size and modification time, content
+hash, converter identity, output artifact, and last use. Size and modification
+time provide the fast startup path. A changed source is hashed before FixWorld
+decides whether conversion is actually required
 
-Der Index wird über eine temporäre Datei mit Flush und atomarem Austausch geschrieben.
-Der vorherige Stand bleibt als `index.backup.json` erhalten. Ein fehlender oder
-beschädigter Index wird aus vorhandenen DDS-Dateien rekonstruiert, statt den Cache
-pauschal zu löschen.
+Index publication uses a temporary file, flush, and atomic replacement. The
+previous index remains available as `index.backup.json`. Missing, corrupt, or
+incompatible entries are cache misses and fall back to the original texture
 
-PNG- und JPG-Quellen werden beim DirectXTex-Export vertikal gespiegelt, damit RimWorlds
-direkter DDS-Raw-Load dieselbe Ausrichtung wie Unitys normaler Bildpfad erhält. Die
-Cacheformat-Version invalidiert ältere, falsch ausgerichtete Einträge automatisch.
+The cache identity includes every option that can affect pixels. The current
+identity also distinguishes sRGB handling so older DDS files that could render
+too dark are rebuilt rather than reused
 
-- Standardlimit: 6 GiB, in den FixWorld-Einstellungen zwischen 1 und 64 GiB wählbar
-- mindestens verbleibender freier Plattenplatz: 10 GiB
-- optionaler Override über `FIXWORLD_DDS_CACHE_MAX_GIB`
-- Cacheeintrag erst nach erfolgreicher Konvertierung atomar bereitstellen
-- bei fehlendem Konverter oder ausgeschöpftem Plattenbudget wird die Originaltextur geladen
-- entfernte Texturen und deaktivierte Mods werden bereinigt
-- bei Überschreitung des Limits werden die am längsten ungenutzten Einträge zuerst entfernt
+## Build and maintenance
 
-Index laden, Cache prüfen, DDS erzeugen, veraltete Einträge entfernen und Index speichern
-werden über die Stage-Mailbox veröffentlicht. UI und Benchmark sehen damit denselben
-typisierten Zustand, ohne den DDS-Code direkt zu kennen.
+Cache validation occurs during loading. Missing DDS files are built later as
+low-priority background jobs after the menu is usable. Workers may perform file
+and conversion work, but publication remains ordered and atomic
 
-Der Cache lässt sich ohne Python aus dem FixWorld-Modordner prüfen oder entfernen:
+The default disk limit is 6 GiB and can be changed between 1 and 64 GiB in the
+FixWorld settings. FixWorld also keeps at least 10 GiB of free disk space.
+`FIXWORLD_DDS_CACHE_MAX_GIB` provides an explicit test override
+
+When space is insufficient or `texconv` is unavailable, FixWorld loads the
+original texture. Removed sources and disabled mods become cleanup candidates.
+Least-recently-used entries are evicted when the configured limit is exceeded
+
+Inspect or remove the cache without Python:
 
 ```powershell
 .\Tools\Windows-x64\FixWorld.Tool.exe dds-cache status
 .\Tools\Windows-x64\FixWorld.Tool.exe dds-cache clean
 ```
 
-Der erste Aufruf ist nur ein Dry-Run. `clean` löscht ausschließlich erkannte
-FixWorld-DDS- und Staging-Dateien und verweigert die Ausführung, solange RimWorld läuft.
+`status` is read-only. `clean` removes only recognized FixWorld DDS, index,
+backup, and staging artifacts and refuses to run while RimWorld is active
 
-## Geplantes Packformat
+## Converter boundary
 
-Jeder Mod erhält eine große `.fwp`-Datendatei und einen kleinen `.fwi`-Index. Der Index
-ordnet den Quelltexturen Offset und Länge ihrer DDS-Daten zu.
+Windows builds bundle `texconv.exe` from DirectXTex. Only the typed tool wrapper
+knows its command-line arguments. Runtime code passes paths and conversion
+requirements rather than starting the process directly
 
-- unveränderte Einträge bleiben im Pack
-- neue oder geänderte DDS werden angehängt
-- entfernte Texturen verschwinden aus dem nächsten Index
-- der Index wird über eine temporäre Datei atomar ersetzt
-- alte Daten werden ab 25 % Verschnitt kompaktiert, sofern das Plattenbudget reicht
+The bundled DirectXTex build and license are documented in
+[third-party notices](../THIRD_PARTY_NOTICES.md). Linux conversion is not yet
+implemented. Existing DDS files may be platform-neutral, but cache creation
+still requires an explicitly supported converter backend
 
-Der separate Index verhindert, dass bei jeder kleinen Mod-Aktualisierung die gesamte
-Packdatei neu geschrieben werden muss.
+## Measurement rules
 
-## Plattformen
-
-Das Packformat und der Cache-Leser sollen plattformneutral bleiben. Nur die Erzeugung
-der DDS benötigt ein plattformspezifisches Backend.
-
-- Windows: gebündeltes `texconv.exe` aus DirectXTex unter `Tools/Windows-x64/`
-- Linux: eigener kleiner DirectXTex-Wrapper oder CompressonatorCLI
-- ohne passendes Backend: bestehende Cacheeinträge lesen, Cache-Misses unverändert laden
-
-Eine Windows-EXE ist keine Linux-Lösung. AMD und NVIDIA sind dagegen keine Trennlinie:
-BC3/DXT5 ist das gespeicherte Texturformat und nicht an einen der beiden Hersteller
-gebunden.
-
-DirectXTex selbst lässt sich unter Linux bauen und kann PNG/JPEG über libpng und
-libjpeg verarbeiten. Das offizielle `texconv`-Programm wird im DirectXTex-CMake-Projekt
-jedoch nur für Windows erzeugt. Für FixWorld sind deshalb zwei Linux-Kandidaten offen:
-
-1. ein kleiner eigener CLI-Wrapper um DirectXTex, libpng und libjpeg
-2. AMD CompressonatorCLI, das Windows und Linux unterstützt
-
-Vor dem Pilot-Test vergleichen wir Ausgabe, Laufzeit, Paketgröße und Lizenzaufwand.
-Der eigene Wrapper ist voraussichtlich kleiner und hält Windows und Linux näher
-beieinander; Compressonator ist die fertige Referenzlösung.
-
-Quellen: [DirectXTex-CMake](https://github.com/microsoft/DirectXTex/blob/main/CMakeLists.txt),
-[DirectXTex PNG/JPEG](https://github.com/microsoft/DirectXTex/wiki/Using-JPEG-PNG-OSS),
-[Compressonator](https://github.com/GPUOpen-Tools/compressonator)
-
-Der aktuelle Windows-Build ist DirectXTex `2026.5.8.1`, 966.480 Bytes,
-SHA-256 `DCFDEC10244E02CF5037FBA089C55FB7E1326B1C8181742D77D15FA5CB5EEF06`.
-Die zugehörige MIT-Lizenz liegt direkt im `Tools`-Ordner.
-
-## Messregeln
-
-Cold Start, warmer Anwendungscache und warmer Betriebssystem-Dateicache sind getrennte
-Zustände. A/B-Läufe verwenden dieselbe Modliste, dieselbe Cachevariante und denselben
-Ausgangszustand. Ein Cache-Build zählt nicht als kalter Folgelauf, weil er den
-Betriebssystem-Cache bereits erwärmt.
+Cold application cache, warm application cache, and warm operating-system file
+cache are different states. A cache build warms the OS cache and therefore does
+not count as an independent cold follow-up run. A/B comparisons must use the
+same RimWorld build, mod list, source fixture, cache identity, and worker policy

@@ -1,40 +1,44 @@
-# Roadmap
+# FixWorld roadmap
 
-## Ziel
+Parent: [Project README](README.md)
 
-RimWorld mit großen Modlisten und komplexen Kolonien messbar beschleunigen,
-ohne Spielverhalten oder Saves zu beschädigen.
+FixWorld aims to reduce RimWorld startup and simulation cost without changing
+gameplay behavior, mod order, or save data. Measurements decide the order of
+work. The [TODO](TODO.md) owns concrete tasks.
 
-## 1. Grundlage
+## 1. Stabilize the owned loader
 
-Der Zielbuild ist dekompiliert, FixWorld baut, ein komplexer Save ist
-eingefroren und Dubs Performance Analyzer ist installiert.
+- Reduce the current DDS subsystem without changing its cache identity or output.
+- Publish one cheap runtime diagnostics snapshot for logs, benchmarks, and UI.
+- Attribute deferred main-thread work to producers and mods before optimizing it.
+- Keep one deterministic play-data path with explicit RimWorld fallbacks.
 
-## 2. Mod-Loading
+## 2. Own expensive loading stages
 
-Den Vanilla-Start in `Bootstrap`, `XML & Patches`, `Definitions`, `Content` und
-`Finalize` messen. Danach den größten reproduzierbaren Anteil mit genau einer
-kleinen Änderung per A/B-Test bewerten. Die optimierte Content-Pipeline bekommt
-eigene Stages und behält die ursprüngliche Mod-Reihenfolge bei.
+- Split assembly discovery, assembly loading, mod construction, and Harmony work.
+- Measure XML reading, patching, definition import, reference resolution, and
+  finalization independently.
+- Replace one measured RimWorld-owned operation at a time while preserving
+  produced data and ordering.
 
-## 3. Ingame-Performance
+## 3. Prepare work off the main thread
 
-TPS des festen Saves messen, mit Dubs einen dominanten Methodenpfad bestimmen
-und genau eine verhaltensneutrale Optimierung per A/B-Test bewerten.
+- Move only independent file, hash, cache, and byte preparation to workers.
+- Commit immutable results in original order on the main thread.
+- Set CPU, I/O, and memory budgets from measurements on NVMe, SATA SSD, and HDD.
+- Evaluate Unity Jobs only through an isolated prototype against RimWorld 1.6.
 
-## 4. Wiederholen
+## 4. Runtime performance
 
-Nur nach einem klaren, reproduzierbaren Erfolg folgt der nächste Engpass.
-Unklare oder unwirksame Änderungen werden vollständig zurückgebaut.
+- Capture a repeatable late-game save baseline.
+- Separate tick, frame, Unity Job, FixWorld worker, and main-thread time.
+- Start with the dominant measured hotpath.
+- Investigate pathfinding requests, invalidation, reachability, and safe path
+  reuse only after instrumentation exists.
 
-## Später
+## Compatibility boundary
 
-DDS-Packs, OBST als mögliches Packformat und der Linux-Konverter folgen erst,
-wenn der Staged Loader eine direkte Byte-/Stream-Ladegrenze besitzt.
-
-## Grenzen
-
-- keine Änderungen an RimWorld-DLLs
-- kein breites Multithreading als erster Eingriff
-- keine Veröffentlichung oder Kompatibilitätsarbeit vor einem bewiesenen Effekt
-- keine Dokumentation pro Experiment, Messwerte gehören in die CSV-Dateien
+FixWorld currently supports one exact RimWorld build on Windows x64. Broader
+version compatibility, Linux conversion support, new texture formats, DDS packs,
+and alternative detour backends remain future work until the current pipeline is
+stable and measured.

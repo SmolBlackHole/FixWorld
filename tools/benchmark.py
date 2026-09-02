@@ -15,11 +15,15 @@ from typing import Mapping, Sequence, TypedDict, cast
 import xml.etree.ElementTree as ET
 
 from build import build_mod
-from rimworld_process import is_rimworld_running, launch, select_monitor
+from rimworld_process import (
+    is_rimworld_running,
+    launch,
+    resolve_game_root,
+    select_monitor,
+)
 
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_GAME_ROOT = Path(r"D:\SteamLibrary\steamapps\common\RimWorld")
 FIXTURE_ID = "spoon-spring-v1-fixworld"
 FIXTURE_CONFIG = (
     ROOT / "data" / "benchmarks" / "saves" / "spoon-spring-v1-ModsConfig.xml"
@@ -334,7 +338,7 @@ def append_result(record: ResultRecord) -> None:
 
 
 def run_once(args: argparse.Namespace, run_number: int) -> None:
-    game_root = args.game_root.resolve()
+    game_root = resolve_game_root(args.game_root)
     game_executable = game_root / "RimWorldWin64.exe"
     if not game_executable.is_file():
         raise RuntimeError(f"RimWorld does not exist: {game_executable}")
@@ -491,11 +495,15 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Benchmark the FixWorld loader.")
-    parser.add_argument("--game-root", type=Path, default=DEFAULT_GAME_ROOT)
+    parser.add_argument(
+        "--game-root",
+        type=Path,
+        help="RimWorld directory. Defaults to RIMWORLD_ROOT.",
+    )
     parser.add_argument("--runs", type=bounded_int(1, 10), default=1)
     parser.add_argument("--variant", default="staged-loader")
-    parser.add_argument("--monitor-name", default="G276HL")
-    parser.add_argument("--monitor", type=bounded_int(1, 8), default=2)
+    parser.add_argument("--monitor-name")
+    parser.add_argument("--monitor", type=bounded_int(1, 8), default=1)
     parser.add_argument("--timeout", type=bounded_int(30, 600), default=180)
     parser.add_argument("--wait-for-dds-background", action="store_true")
     parser.add_argument("--background-timeout", type=bounded_int(30, 1200), default=300)

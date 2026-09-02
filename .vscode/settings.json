@@ -1,11 +1,11 @@
 {
-  "dotnet.defaultSolution": "FixWorld.slnx",
-  "files.readonlyInclude": {
-    "decompiled/Assembly-CSharp/**": true,
-    "mod/**/Assemblies/**": true,
-    "mod/**/bin/**": true,
-    "mod/**/obj/**": true,
-    "profiling/fixworld-userdata/**": true,
-    "tools/ilspycmd/**": true
-  }
+	"dotnet.defaultSolution": "FixWorld.slnx",
+	"files.readonlyInclude": {
+		"decompiled/Assembly-CSharp/**": true,
+		"mod/**/Assemblies/**": true,
+		"mod/**/bin/**": true,
+		"mod/**/obj/**": true,
+		"data/profiling/**": true,
+		"tools/ilspycmd/**": true
+	}
 }

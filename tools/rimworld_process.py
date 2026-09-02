@@ -144,23 +144,34 @@ USER32.PostMessageW.argtypes = (
 USER32.PostMessageW.restype = wintypes.BOOL
 
 
-def select_monitor(friendly_name: str, fallback_index: int) -> Monitor:
+def resolve_game_root(value: Path | None) -> Path:
+    if value is not None:
+        return value.resolve()
+    configured = os.environ.get("RIMWORLD_ROOT")
+    if configured:
+        return Path(configured).resolve()
+    raise RuntimeError("Set RIMWORLD_ROOT or pass --game-root <RimWorldRoot>.")
+
+
+def select_monitor(friendly_name: str | None, fallback_index: int) -> Monitor:
     monitors = _enumerate_monitors()
-    requested = friendly_name.casefold()
-    for monitor in monitors:
-        if monitor.friendly_name.casefold() == requested:
-            return monitor
+    if friendly_name:
+        requested = friendly_name.casefold()
+        for monitor in monitors:
+            if monitor.friendly_name.casefold() == requested:
+                return monitor
 
     fallback_device = rf"\\.\DISPLAY{fallback_index}".casefold()
     fallback = next(
         (item for item in monitors if item.device_name.casefold() == fallback_device),
         next((item for item in monitors if item.primary), monitors[0]),
     )
-    print(
-        f"Warning: monitor {friendly_name!r} is not active; using "
-        f"{fallback.device_name}."
-    )
-    return replace(fallback, used_fallback=True)
+    if friendly_name:
+        print(
+            f"Warning: monitor {friendly_name!r} is not active; using "
+            f"{fallback.device_name}."
+        )
+    return replace(fallback, used_fallback=bool(friendly_name))
 
 
 def is_rimworld_running() -> bool:
@@ -337,17 +348,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--game-root",
         type=Path,
-        default=Path(r"D:\SteamLibrary\steamapps\common\RimWorld"),
+        help="RimWorld directory. Defaults to RIMWORLD_ROOT.",
     )
-    parser.add_argument("--monitor-name", default="G276HL")
-    parser.add_argument("--monitor", type=int, choices=range(1, 17), default=2)
+    parser.add_argument("--monitor-name")
+    parser.add_argument("--monitor", type=int, choices=range(1, 17), default=1)
     parser.add_argument("--minimized", action="store_true")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    game_root = args.game_root.resolve()
+    game_root = resolve_game_root(args.game_root)
     executable = game_root / "RimWorldWin64.exe"
     if not executable.is_file():
         raise RuntimeError(f"RimWorld does not exist: {executable}")

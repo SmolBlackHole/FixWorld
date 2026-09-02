@@ -1,35 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ModMetaData>
-  <name>FixWorld</name>
-  <author>SmolBlackHole</author>
-  <packageId>smolblackhole.fixworld</packageId>
-  <supportedVersions>
-    <li>1.6</li>
-  </supportedVersions>
-  <modDependencies>
-    <li>
-      <packageId>brrainz.harmony</packageId>
-      <displayName>Harmony</displayName>
-      <steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl>
-    </li>
-  </modDependencies>
-  <loadAfter>
-    <li>brrainz.harmony</li>
-  </loadAfter>
-  <description>
-    FixWorld is a performance optimization mod for RimWorld focused on making the game faster
-    without changing how it plays.
+    <name>FixWorld</name>
+    <author>SmolBlackHole</author>
+    <packageId>smolblackhole.fixworld</packageId>
+    <url>https://github.com/SmolBlackHole/FixWorld</url>
+    <supportedVersions>
+        <li>1.6</li>
+    </supportedVersions>
+    <modDependencies>
+        <li>
+            <packageId>brrainz.harmony</packageId>
+            <displayName>Harmony</displayName>
+            <steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl>
+        </li>
+    </modDependencies>
+    <loadAfter>
+        <li>brrainz.harmony</li>
+    </loadAfter>
+    <description>
+        FixWorld is an experimental Windows x64 performance mod for RimWorld 1.6.4871 rev591.
 
-    It improves selected parts of RimWorld's loading and runtime systems through caching, staged
-    initialization, reduced redundant work, and targeted optimizations.
+        It enters the process through an early loader, validates the exact RimWorld build, and owns
+        a
+        staged play-data pipeline. Its persistent DDS cache avoids repeated texture decoding and
+        compression on later launches.
 
-    Current work includes faster mod loading, persistent texture caching, improved initialization,
-    loading diagnostics, and runtime performance improvements.
+        The first enabled launch installs UnityDoorstop next to RimWorldWin64.exe and restarts
+        RimWorld
+        once. FixWorld refuses to overwrite an unknown proxy DLL and includes a removal tool.
 
-    Future updates may target map generation, pathfinding, simulation performance, and other
-    expensive systems.
-
-    FixWorld aims to preserve vanilla behavior while reducing unnecessary CPU time, loading delays,
-    and repeated work.
-  </description>
+        This is a pilot build, not a stable release. It requires Harmony and disables its early
+        runtime
+        when the supported RimWorld contract cannot be proven.
+    </description>
 </ModMetaData>

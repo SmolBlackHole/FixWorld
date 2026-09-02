@@ -1,0 +1,10 @@
+{
+	"recommendations": [
+		"DavidAnson.vscode-markdownlint",
+		"EditorConfig.EditorConfig",
+		"ms-dotnettools.csdevkit",
+		"ms-python.python",
+		"ms-python.vscode-pylance",
+		"redhat.vscode-xml"
+	]
+}

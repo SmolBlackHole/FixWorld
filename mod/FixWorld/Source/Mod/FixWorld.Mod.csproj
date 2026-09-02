@@ -62,6 +62,16 @@
             <FixWorldPackageZip>$(FixWorldDistDir)\FixWorld-pilot-win-x64.zip</FixWorldPackageZip>
         </PropertyGroup>
         <ItemGroup>
+            <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\..\..\..\README.md">
+                <PackagePath>README.md</PackagePath>
+            </FixWorldPackageFile>
+            <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\..\..\..\LICENSE">
+                <PackagePath>LICENSE</PackagePath>
+            </FixWorldPackageFile>
+            <FixWorldPackageFile
+                Include="$(MSBuildProjectDirectory)\..\..\..\..\THIRD_PARTY_NOTICES.md">
+                <PackagePath>THIRD_PARTY_NOTICES.md</PackagePath>
+            </FixWorldPackageFile>
             <FixWorldPackageFile Include="$(MSBuildProjectDirectory)\..\..\About\About.xml">
                 <PackagePath>About\About.xml</PackagePath>
             </FixWorldPackageFile>

@@ -1,18 +1,33 @@
-# Copyrighted/generated game artifacts
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+/mod/FixWorld/Local.Build.props
+*.user
+*.suo
+
+# Editors and operating systems
+.idea/
+.vs/
+.vscode/*.local.json
+.DS_Store
+Thumbs.db
+
+# Copyrighted or generated game artifacts
 /decompiled/Assembly-CSharp/
 /decompiled/third-party/
 /decompiled/*.dll
 /tools/ilspycmd/
 /tools/dubs-performance-analyzer/
 
-# Profiler captures and benchmark result data
+# Profiles, saves, logs, and generated benchmark reports
 /data/profiling/
-/dist/
 /data/benchmarks/results/
 /data/benchmarks/saves/
+*.log
 
-# Local machine configuration and build output
-/mod/FixWorld/Local.Build.props
+# Build and package output
+/dist/
 /mod/**/Assemblies/
 /mod/**/bin/
 /mod/**/obj/
@@ -27,7 +42,14 @@
 /mod/FixWorld/Tools/Windows-x64/FixWorld.Tool.exe
 /mod/FixWorld/Tools/Windows-x64/FixWorld.Tool.exe.config
 /mod/FixWorld/Tools/Windows-x64/FixWorld.Tool.pdb
-*.user
-*.suo
+TestResults/
+
+# Python
 __pycache__/
 *.py[cod]
+.coverage
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.egg-info/

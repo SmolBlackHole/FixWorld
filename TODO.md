@@ -1,167 +1,181 @@
-# TODO
+# FixWorld TODO
 
-Aktuell gilt **Feature Freeze**. FixWorld besitzt den frühen Runtime-Start und die
-Orchestrierung von `PlayDataLoader.DoPlayLoad()`. Neue Optimierungen beginnen erst,
-wenn der betroffene Bereich gemessen und sein bestehender Code auf eine eindeutige
-Ownership reduziert wurde.
+Parent: [Project README](README.md)
 
-Diese Datei enthält nur offene Arbeit. Erledigte Migrationen gehören in Git,
-Benchmarks und Logs.
+FixWorld is under a **feature freeze**. It owns early runtime startup and the
+orchestration of `PlayDataLoader.DoPlayLoad()`. New optimizations begin only
+after the affected area is measured and its existing code has one clear owner.
 
-## Arbeitsregeln
+This file contains only open work. Completed migrations belong in Git history,
+benchmarks, and logs.
 
-- immer genau einen aktiven Ladepfad behalten und den dadurch ersetzten Altcode im selben Schnitt entfernen
-- RimWorld-, Harmony-, Unity- und Tool-Aufrufe hinter einem eindeutigen Owner halten
-- Shared-Code nur für echte assemblyübergreifende Verträge verwenden
-- Worker bereiten reine Daten vor; Unity- und Verse-Zustand bleibt geordnet im Main Thread
-- jede Verhaltensänderung mit vollständiger Modliste und typisiertem Benchmark prüfen
+## Working rules
 
-## Verifizierter Stand
+- Keep exactly one active loading path and remove replaced code in the same cutover.
+- Put RimWorld, Harmony, Unity, and external tool calls behind one explicit owner.
+- Put code in Shared only when it is an actual cross-assembly contract.
+- Workers prepare pure data; Unity and Verse state is committed on the main thread.
+- Verify every behavioral change with the full mod list and a typed benchmark.
 
-- Doorstop, Loader, Runtime und Mod haben getrennte Boot- und Attachment-Verantwortung
-- FixWorld orchestriert alle 15 Play-Data-Stages und besitzt Lifecycle, Scheduling und Telemetrie
-- der Python-Benchmark startet RimWorld, wartet, validiert und aggregiert die von der Runtime geschriebene JSON
-- Shared stellt isolierte Caching-, Scheduling-, Profiling- und Event-Primitiven bereit; DDS läuft deferred und startet `texconv` nur über den Tool-Wrapper
+## Verified baseline
 
-## Aktive Reihenfolge
+- Doorstop, Loader, Runtime, and Mod have separate boot and attachment ownership.
+- FixWorld orchestrates all 15 play-data stages and owns lifecycle, scheduling,
+  and telemetry.
+- Python starts RimWorld, waits, validates, and aggregates JSON written by the Runtime.
+- Shared provides isolated caching, scheduling, profiling, and event primitives.
+- DDS creation runs deferred and starts `texconv` only through the tool wrapper.
 
-1. DDS-Subsystem verhaltensgleich verkleinern und seine Ownership schärfen
-2. DDS-Cache nach der sRGB-Identitätsänderung neu aufbauen und warmen 88-Mod-Baseline-Lauf erfassen
-3. einen Runtime-Diagnosesnapshot und ein kompaktes Startup-Summary bereitstellen
-4. dominantes Deferred Work analysieren und erst danach gezielt zerlegen
-5. ein kleines read-only Diagnosefenster auf denselben Snapshot setzen
-6. verbleibende RimWorld-Operationen Stage für Stage tiefer übernehmen
-7. erst danach neue Worker- oder Format-Experimente aktivieren
+## Active order
 
-## DDS und Texture Cache
+1. Reduce the DDS subsystem without changing behavior and sharpen its ownership.
+2. Rebuild DDS after the sRGB identity change and capture a warm 88-mod baseline.
+3. Publish a runtime diagnostics snapshot and one compact startup summary.
+4. Analyze dominant deferred work before splitting or parallelizing it.
+5. Add a small read-only diagnostics window over the same snapshot.
+6. Take deeper ownership of remaining RimWorld operations one stage at a time.
+7. Only then activate new worker or texture-format experiments.
 
-Ziel: Ein Runtime-Dienst steuert den Ablauf. Planner, Builder und Store besitzen
-jeweils genau eine fachliche Aufgabe. Der Schnitt soll Code entfernen und keine
-neue generische Cache-Plattform erfinden.
+## DDS texture cache
 
-### Verhaltensgleicher Reduktionsschnitt
+Goal: one runtime service controls the workflow. Planner, Builder, and Store each
+own one domain responsibility. This cut should remove code, not invent a generic
+cache platform.
 
-- [ ] `TextureDdsCache` und `TextureDdsCacheRuntime` zu einem RuntimeContext-eigenen Dienst zusammenführen
-- [ ] Planner auf einen unveränderlichen `TextureCachePlan` reduzieren und doppelte Übergabemodelle entfernen
-- [ ] Builder nur konvertieren lassen; Store allein Index, Packs, atomare Veröffentlichung und Recovery besitzen lassen
-- [ ] `TextureDdsCacheBackground` auf Scheduler-Jobs, Abbruch und geordnete Veröffentlichung eines Plans begrenzen
-- [ ] verwaiste `.staging-*`-Verzeichnisse bereinigen und Hash-Staging-Kopien nur kollisionssicher entfernen
-- [ ] Konfiguration, Metriken und Report-Snapshot jeweils nur an einer Stelle modellieren
+### Behavior-identical reduction
 
-Akzeptanz:
+- [ ] Merge `TextureDdsCache` and `TextureDdsCacheRuntime` into one RuntimeContext-owned service.
+- [ ] Reduce the planner to one immutable `TextureCachePlan` and remove duplicate transfer models.
+- [ ] Let the builder convert only; let the store alone own index, packs, atomic publication, and recovery.
+- [ ] Limit `TextureDdsCacheBackground` to scheduler jobs, cancellation, and ordered publication of one plan.
+- [ ] Remove orphaned `.staging-*` directories and delete hash staging copies only through collision-safe logic.
+- [ ] Model configuration, metrics, and report snapshot in exactly one place each.
 
-- [ ] keine statische globale Cache-Instanz und keine reine Durchreiche-Ebene
-- [ ] Cache-Identität und Ergebnisse bleiben identisch; Neuaufbau, Warmstart, Abbruch und Neustart funktionieren bei benutzbarem Menü
+Acceptance:
 
-### Cache-Policy und Experimente
+- [ ] No static global cache instance and no pass-through-only layer remain.
+- [ ] Cache identity and results remain identical; rebuild, warm start, cancellation,
+      and restart work while the main menu stays usable.
 
-- [ ] Cache-Misses als deduplizierbare Producer-Jobs an den Scheduler übergeben
-- [ ] Background-Arbeit anhand von CPU-, I/O-, RAM- und TPS-Budget drosseln oder pausieren
-- [ ] Background-Fortschritt und verbleibende Assets für UI, Logs und Benchmarks bereitstellen
-- [ ] In-Memory- und generischen Cache-Core nur bei einem zweiten gemessenen Anwendungsfall erweitern
-- [ ] BC3, unkomprimierte DDS und BC7-GPU-Kompression getrennt nach Qualität, Größe, Erstellzeit und Unity-Kompatibilität vergleichen
-- [ ] DDS-Pack erst nach einer direkten Byte- oder Stream-Ladegrenze erneut bewerten
-- [ ] OBST als mögliches Packformat mit Sidecar-Index prüfen
+### Cache policy and experiments
 
-## Deferred Main-Thread Work
+- [ ] Submit cache misses as deduplicated producer jobs to the scheduler.
+- [ ] Throttle or pause background work from CPU, I/O, RAM, and TPS budgets.
+- [ ] Expose background progress and remaining assets to UI, logs, and benchmarks.
+- [ ] Extend the in-memory or generic cache core only after a second measured use case exists.
+- [ ] Compare BC3, uncompressed DDS, and BC7 GPU compression for quality, size,
+      build time, and Unity compatibility.
+- [ ] Reconsider a DDS pack only after a direct byte or stream loading boundary exists.
+- [ ] Evaluate OBST as a possible pack format with a sidecar index.
 
-Der aktuelle 88-Mod-Lauf verbringt rund 37,9 Sekunden in
-`DeferredMainThreadWork`. Die Queue wird bereits beim Einreihen erfasst. Als
-nächstes fehlt die fachliche Aufteilung, nicht noch eine zweite Queue.
+## Deferred main-thread work
 
-- [ ] pro Action Producer, Mod-/Assembly-Owner, Enqueue-, Warte- und Laufzeit erfassen
-- [ ] Abhängigkeiten und echte Main-Thread-Pflicht jeder teuren Action bestimmen
-- [ ] Top-Actions und nicht zuordenbare globale Arbeit im Benchmark-Report ausgeben
-- [ ] reine Datenarbeit vorbereiten lassen und Ergebnisse in Originalreihenfolge im Main Thread übernehmen
-- [ ] Fehler kontrolliert auf den originalen sequenziellen Pfad zurückführen oder den Load eindeutig abbrechen
-- [ ] deterministische Reihenfolge und identisches Ergebnis wiederholt prüfen
+The current 88-mod run spends about 37.9 seconds in `DeferredMainThreadWork`.
+The queue is already captured when work is enqueued. The next requirement is
+domain attribution, not a second queue.
 
-## Verbleibende Play-Data-Ownership
+- [ ] Record producer, mod or assembly owner, enqueue time, wait time, and runtime for every action.
+- [ ] Determine dependencies and actual main-thread requirements for every expensive action.
+- [ ] Report top actions and unattributed global work in the benchmark report.
+- [ ] Prepare pure data off-thread and commit results on the main thread in original order.
+- [ ] Fall back to the original sequential path safely or terminate the load explicitly on failure.
+- [ ] Verify deterministic order and identical results across repeated runs.
 
-FixWorld besitzt bereits die Reihenfolge. In diesen Bereichen delegieren die
-Stage-Adapter die eigentliche Arbeit noch weitgehend an RimWorld.
+## Remaining play-data ownership
 
-### Mod- und Assembly-Boot
+FixWorld owns the order. In the following areas, stage adapters still delegate
+most of the work to RimWorld.
 
-- [ ] `LoadModContent()` in Assembly-Discovery, Assembly-Load und nur eingereihte Asset-Arbeit zerlegen
-- [ ] `GetAllFilesForModPreserveOrder()` und Assembly-Discovery pro Mod erfassen
-- [ ] `CreateModClasses()` vollständig übernehmen und Konstruktor- sowie Harmony-Zeiten messen
-- [ ] Mod-Reihenfolge und Harmony-Erwartungen bei jedem Cutover unverändert erhalten
+### Mod and assembly boot
 
-### XML und Definitionen
+- [ ] Split `LoadModContent()` into assembly discovery, assembly load, and enqueued asset work.
+- [ ] Measure `GetAllFilesForModPreserveOrder()` and assembly discovery per mod.
+- [ ] Fully own `CreateModClasses()` and measure constructor and Harmony time.
+- [ ] Preserve mod order and Harmony expectations at every cutover.
 
-- [ ] XML-Lesen, Patch-Anwendung und Def-Import getrennt messen
-- [ ] Cross-References, Reference-Resolution und beide Implied-Phasen getrennt analysieren
-- [ ] vorhandene RimWorld-Parallelisierung im Def-Aufbau erfassen, bevor FixWorld Worker hinzufügt
-- [ ] Reflection, statische Resolver und globale Registry-Mutationen als Main-Thread-Grenzen dokumentieren
+### XML and definitions
 
-### Finalisierung und Lifecycle
+- [ ] Measure XML reading, patch application, and definition import separately.
+- [ ] Analyze cross-references, reference resolution, and both implied-definition stages separately.
+- [ ] Measure existing RimWorld parallelism during definition construction before adding FixWorld workers.
+- [ ] Document reflection, static resolvers, and global registry mutation as main-thread boundaries.
 
-- [ ] statische Konstruktoren, Atlas-Build, Asset-Unload und erzwungene GC getrennt messen
-- [ ] LongEvent-Thread, synchrone Events, Szenenwechsel und Exception-Lebenszyklus als Runtime-Vertrag erfassen
-- [ ] `MainMenuReady` nach `Menü -> Spiel -> Menü` in einem realen Save-Lauf erneut auslösen und verifizieren
-- [ ] RimWorld- und Harmony-Aufrufe weiter auf dünne Adapter in typisierte FixWorld-Arbeit reduzieren
+### Finalization and lifecycle
 
-Akzeptanz für jeden Stage-Cutover:
+- [ ] Measure static constructors, atlas building, asset unload, and forced GC separately.
+- [ ] Define the LongEvent thread, synchronous events, scene changes, and exception lifecycle as a Runtime contract.
+- [ ] Re-emit and verify `MainMenuReady` across menu, game, menu, and second-game transitions.
+- [ ] Continue reducing RimWorld and Harmony calls to thin adapters over typed FixWorld work.
 
-- [ ] Modliste und Reihenfolge bleiben identisch; Hauptmenü, Quarry-Save, UI, Telemetrie und Benchmark funktionieren ohne relevante Fehler
+Acceptance for every stage cutover:
 
-## Scheduling und Worker
+- [ ] Mod list and order remain identical; main menu, Quarry save, UI, telemetry,
+      and benchmark work without relevant errors.
 
-- [ ] Parallelität, Ressourcenklasse und Worker-Anzahl pro Stage anhand von CPU, Speicher und Datenträger messen
-- [ ] RAM-, VRAM-, Queue-, GC-, Renderpausen- und Wall-Time pro Stage erfassen
-- [ ] RimWorlds Unity Job System mit einem isolierten `IJob`-/`NativeArray`-Prototyp prüfen
-- [ ] danach entscheiden, welche Arbeit Unity Jobs, FixWorld-Worker oder der Main Thread ausführen
+## Scheduling and workers
 
-## Benchmark und Pilotbetrieb
+- [ ] Measure stage-specific parallelism, resource class, and worker count against CPU, memory, and storage.
+- [ ] Capture RAM, VRAM, queue, GC, render-pause, and wall time per stage.
+- [ ] Test RimWorld's Unity Job System with an isolated `IJob` and `NativeArray` prototype.
+- [ ] Then decide which work belongs to Unity Jobs, FixWorld workers, or the main thread.
 
-- [ ] Preloader für Benchmarks explizit schaltbar machen, statt den Installationszustand zu erben
-- [ ] PNG/JPG, DDS und DDS-Build mit kaltem/warmem OS-Cache sowie zwei, vier und acht Workern vergleichen
-- [ ] Read-ahead auf NVMe und HDD mit abgestuften Budgets messen, Suchzeit und Durchsatz getrennt
-- [ ] Mod-Dateien und Assemblies budgetiert mit DDS vorladen und gegen keinen Read-ahead samt RAM-/I/O-Spitzen messen
+## Benchmarks and pilot operation
 
-## Diagnose, Logging und Ingame-UI
+- [ ] Make preloader state explicit per benchmark instead of inheriting the installed state.
+- [ ] Compare PNG/JPG, DDS, and DDS build with cold and warm OS caches and two,
+      four, and eight workers.
+- [ ] Measure read-ahead on NVMe and HDD with tiered budgets, separating seek time and throughput.
+- [ ] Preload mod files and assemblies with DDS under a byte budget and measure RAM and I/O peaks.
 
-Ziel: Die Runtime besitzt genau eine günstige Diagnosequelle. Loader und Mod
-stellen diese Daten nur an ihren jeweiligen Grenzen bereit. Ein geöffnetes UI
-darf weder neue Patches installieren noch erst dann Profiling aktivieren.
+## Diagnostics, logging, and in-game UI
 
-- [ ] einen unveränderlichen, versionierten Runtime-Snapshot aus bestehender Early-Timeline, Stage-Telemetrie, Deferred-Arbeit, Scheduler-, DDS- und Speicherdaten zusammensetzen
-- [ ] Benchmark-JSON, kompaktes Log-Summary und UI aus diesem Snapshot speisen, statt drei Messpfade zu pflegen
-- [ ] immer aktive günstige Zähler von einer explizit aktivierbaren Detailaufzeichnung trennen
-- [ ] Detailereignisse in einem begrenzten Ringpuffer halten und wiederholte Probleme nach Owner, Pfad und Fingerprint aggregieren
-- [ ] im Loader nur Boot-Meilensteine, Contract-Fehler und Fallbacks loggen
-- [ ] Early-Timeline-Felder eindeutig benennen; früh beobachtete Mod-Assemblies sind keine aktive Modanzahl
-- [ ] bei `MainMenuReady` genau ein kompaktes Runtime-Summary mit Stage-Hotpaths, Deferred-Hotpaths, DDS-Zustand und Worker-Auslastung schreiben
-- [ ] fehlende Texturen und NPOT-Warnungen nach Mod und Pfad zusammenfassen; ohne belastbare Zuordnung keinen FixWorld-Fehler behaupten
-- [ ] über die normale Mod einen `MainButtonDef` und ein skalierbares Diagnosefenster anbieten; Runtime und Shared bleiben frei von Verse-UI
-- [ ] Ansichten für Startup/Stages, Deferred/Mods, DDS/Worker und aggregierte Probleme bereitstellen
-- [ ] das Fenster höchstens alle 250 bis 500 ms und nur bei neuer Snapshot-Version aktualisieren
-- [ ] einen typisierten Diagnose-Export aus RimWorld anbieten, der denselben Vertrag wie der Benchmark verwendet
+Goal: the Runtime owns one cheap diagnostics source. Loader and Mod expose the
+data only at their boundaries. Opening the UI must not install patches or enable
+profiling that was previously inactive.
 
-Akzeptanz:
+- [ ] Compose one immutable, versioned runtime snapshot from the early timeline,
+      stage telemetry, deferred work, scheduler, DDS, and memory snapshots.
+- [ ] Feed benchmark JSON, compact log summary, and UI from that snapshot instead
+      of maintaining three measurement paths.
+- [ ] Separate always-on cheap counters from explicitly enabled detailed capture.
+- [ ] Keep detail events in a bounded ring buffer and aggregate repeated issues by owner, path, and fingerprint.
+- [ ] Log only boot milestones, contract errors, and fallbacks from the Loader.
+- [ ] Name early-timeline fields precisely; observed early mod assemblies are not the active mod count.
+- [ ] Write one compact Runtime summary at `MainMenuReady` with stage hotpaths,
+      deferred hotpaths, DDS state, and worker utilization.
+- [ ] Aggregate missing textures and NPOT warnings by mod and path; do not call
+      them FixWorld errors without reliable attribution.
+- [ ] Provide a normal-mod `MainButtonDef` and resizable diagnostics window while
+      keeping Runtime and Shared free of Verse UI.
+- [ ] Add Startup/Stages, Deferred/Mods, DDS/Workers, and Issues views.
+- [ ] Refresh the window at most every 250 to 500 ms and only for a new snapshot version.
+- [ ] Export a typed diagnostic report from RimWorld using the benchmark contract.
 
-- [ ] letzter abgeschlossener Start bleibt bis zum nächsten Start im UI sichtbar
-- [ ] geschlossenes UI und Standard-Logging erzeugen keinen Log-Spam und keinen messbaren Hotpath
-- [ ] Diagnosefenster funktioniert im Hauptmenü und im Spiel, ohne den Loader- oder Profiling-Zustand zu verändern
+Acceptance:
 
-## Ingame, später
+- [ ] The last completed startup remains visible until the next run.
+- [ ] Closed UI and default logging create no log flood and no measurable hotpath.
+- [ ] The diagnostics window works in the main menu and in-game without changing loader or profiler state.
 
-- [ ] eingefrorenen komplexen Save zweimal messen und den dominanten Tick-Pfad bestimmen
-- [ ] `TickManager`, `MapPreTick`, `MapPostTick`, Unity-Jobs, FixWorld-Worker und Main-Thread-Zeit trennen
-- [ ] Background-Jobs anhand von TPS, Framezeit, CPU- und I/O-Druck drosseln
-- [ ] RimThreadeds Muster nur auf nachgewiesene RimWorld-1.6-Hotpaths übertragen
+## In-game performance, later
+
+- [ ] Measure the frozen complex save twice and identify the dominant tick path.
+- [ ] Separate `TickManager`, `MapPreTick`, `MapPostTick`, Unity Jobs, FixWorld
+      workers, and main-thread time.
+- [ ] Throttle background jobs from TPS, frame time, CPU pressure, and I/O pressure.
+- [ ] Transfer RimThreaded patterns only to measured RimWorld 1.6 hotpaths.
 
 ### Pathfinding
 
-- [ ] vorhandene RimWorld-1.6-Path-Jobs instrumentieren, nicht vorschnell ersetzen
-- [ ] `PushRequest`, `FindPathNow`, Queue-Latenz, Requests pro Tick, Batchgröße und `MapGridRequest`-Wiederverwendung erfassen
-- [ ] `PathFinderMapData`, Request-Kontext, Traversal-Kosten und Invalidierungen getrennt erfassen
-- [ ] Reachability und `ReachabilityCache` getrennt vom PathFinder profilieren
-- [ ] erst danach Path-Reuse und gestufte Path-Caches mit präziser Invalidierung testen
-- [ ] Zeit, expandierte Nodes, Pfadlänge, Worst Case, Hit-Rate und Invalidierungen berichten
+- [ ] Instrument existing RimWorld 1.6 path jobs before replacing anything.
+- [ ] Record `PushRequest`, `FindPathNow`, queue latency, requests per tick, batch
+      size, and `MapGridRequest` reuse.
+- [ ] Separate `PathFinderMapData`, request context, traversal cost, and invalidation.
+- [ ] Profile reachability and `ReachabilityCache` separately from pathfinding.
+- [ ] Only then test path reuse and tiered path caches with precise invalidation.
+- [ ] Report time, expanded nodes, path length, worst case, hit rate, and invalidations.
 
-## Plattform, später
+## Platform work, later
 
-- [ ] GPU-Dekodierung, Mipmaps und Uploads erst nach sauberer CPU-Aufteilung bewerten
-- [ ] Linux-Konverter und Plattform-Fallback bauen
+- [ ] Evaluate GPU decode, mipmaps, and uploads only after CPU ownership is clean.
+- [ ] Build a Linux converter and explicit platform fallback.
