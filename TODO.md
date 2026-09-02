@@ -9,7 +9,7 @@ Der abgeschlossene Stand gehört in Git, Benchmarks und Logs. Diese Datei enthä
 - [x] `texconv` ausschließlich über einen kleinen typisierten Wrapper aufrufen; Aufrufer übergeben nur Eingabepfade, Ausgabeverzeichnis und DDS-Anforderungen
 - [x] Eingabedaten an der Tool-Grenze nur als Pfade beziehungsweise `--file-list` übergeben; der Wrapper kopiert keine Assetdaten
 - [x] DDS-Cache-Cleanup in das C#-Tool übernehmen und das PowerShell-Skript entfernen
-- [x] generische Caching-, Scheduling- und Profiling-Primitiven in `FixWorld.Shared` isoliert bereitstellen und mit Contract-Tests absichern
+- [x] generische Caching-, Scheduling-, Profiling- und Event-Primitiven in `FixWorld.Shared` isoliert bereitstellen und mit Contract-Tests absichern
 - [ ] die Hash-Staging-Kopien des DDS-Builders nur mit einer kollisionssicheren direkten Ausgabestrategie entfernen; der Tool-Wrapper selbst ist bereits kopierfrei
 - [ ] festlegen, welche Verträge wirklich assemblyübergreifend in `Shared` leben; zentrale Runtime-Dienste sind nicht automatisch Shared-Code
 - [ ] bestehende Runtime-Dienste erst beim jeweiligen Pipeline-Cutover durch Shared-Primitiven ersetzen; Altcode vorher nicht separat modernisieren
@@ -65,10 +65,10 @@ Phase 1, behavior-identischer Pipeline-Root:
 
 Phase 2, bestehenden Mod-Boot eingliedern:
 
-- [ ] die bestehende `ModBootPipeline` als Stage der neuen Root-Pipeline ausführen
-- [ ] danach den separaten `LoadAllActiveMods()`-Hook entfernen
-- [ ] verschachtelte Content-Profilerlabels während `PrepareModContent` nicht mehr als vorgezogene Root-Stage veröffentlichen; die sichtbare Stage-Reihenfolge darf nicht rückwärts springen
-- [ ] vollständige Modliste erneut laden und identische aktive Mods sowie Mod-Reihenfolge prüfen
+- [x] die bestehende `ModBootPipeline` als Stage der neuen Root-Pipeline ausführen
+- [x] danach den separaten `LoadAllActiveMods()`-Hook entfernen
+- [x] verschachtelte Content-Profilerlabels während `PrepareModContent` nicht mehr als vorgezogene Root-Stage veröffentlichen; die sichtbare Stage-Reihenfolge darf nicht rückwärts springen
+- [x] vollständige Modliste erneut laden und identische aktive Mods sowie Mod-Reihenfolge prüfen
 
 Phase 3, Deferred Work übernehmen:
 

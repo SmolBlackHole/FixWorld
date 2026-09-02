@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using FixWorld.Caching;
+using FixWorld.Events;
 using FixWorld.Profiling;
 using FixWorld.Scheduling;
 
@@ -17,6 +18,10 @@ internal static class Program
             ProfilingAggregatesImmutableSnapshots();
             ProfileScopesCompleteExactlyOnce();
             ProfilingIsThreadSafe();
+            EventBusKeepsChannelsTypedAndBounded();
+            EventBusCoalescesLatestValues();
+            EventBusAcceptsConcurrentPublishers();
+            EventBusIsolatesSubscribersAndStopsTerminally();
             SchedulerDeduplicatesAndReusesKeys();
             SchedulerHonorsDependencies();
             FailedDependenciesCancelChildren();
@@ -460,6 +465,120 @@ internal static class Program
                 errors.Count == 1 && errors[0] == "failure",
                 "Main-thread action failure was not isolated.");
             Assert(queue.PendingCount == 0, "Pumped actions remained queued.");
+        }
+    }
+
+    private static void EventBusKeepsChannelsTypedAndBounded()
+    {
+        List<int> numbers = new List<int>();
+        List<string> messages = new List<string>();
+        using (EventBus bus = new EventBus())
+        {
+            bus.Register<int>(2);
+            bus.Register<string>(2);
+            bus.Subscribe<int>(numbers.Add);
+            bus.Subscribe<string>(messages.Add);
+
+            bus.Publish(1);
+            bus.Publish("message");
+            bus.Publish(2);
+            bus.Publish(3);
+
+            Assert(bus.Pump() == 3, "Event pump count is incorrect.");
+            Assert(
+                numbers.Count == 2 && numbers[0] == 1 && numbers[1] == 2,
+                "An event channel did not preserve FIFO order or its limit.");
+            Assert(
+                messages.Count == 1 && messages[0] == "message",
+                "Typed event channels leaked or omitted an event.");
+            Assert(
+                bus.Pump() == 1 && numbers.Count == 3 && numbers[2] == 3,
+                "A bounded event remained unavailable on the next pump.");
+        }
+    }
+
+    private static void EventBusCoalescesLatestValues()
+    {
+        List<int> values = new List<int>();
+        using (EventBus bus = new EventBus())
+        {
+            bus.Register<int>(4);
+            bus.Subscribe<int>(values.Add);
+
+            bus.PublishLatest("first", 1);
+            bus.PublishLatest("second", 2);
+            bus.PublishLatest("first", 3);
+
+            Assert(bus.Pump() == 2, "Coalesced event count is incorrect.");
+            Assert(
+                values.Count == 2 && values[0] == 3 && values[1] == 2,
+                "Latest events lost their value or stable key order.");
+            Assert(bus.Pump() == 0, "Coalesced events were delivered twice.");
+        }
+    }
+
+    private static void EventBusIsolatesSubscribersAndStopsTerminally()
+    {
+        int errors = 0;
+        int observed = 0;
+        EventBus bus = new EventBus();
+        bus.Register<int>(4, _ => errors++);
+        IDisposable failing = bus.Subscribe<int>(_ =>
+            throw new InvalidOperationException("expected"));
+        bus.Subscribe<int>(value => observed += value);
+
+        bus.Publish(2);
+        Assert(bus.Pump() == 1, "A subscriber failure stopped delivery.");
+        Assert(errors == 1, "A subscriber failure was not reported.");
+        Assert(observed == 2, "A healthy subscriber did not receive an event.");
+
+        failing.Dispose();
+        bus.Publish(3);
+        bus.Pump();
+        Assert(errors == 1, "A disposed subscription received an event.");
+        Assert(observed == 5, "Subscription disposal removed another observer.");
+
+        bus.Dispose();
+        AssertThrows<ObjectDisposedException>(() => bus.Pump());
+        AssertThrows<ObjectDisposedException>(() => bus.Publish(4));
+    }
+
+    private static void EventBusAcceptsConcurrentPublishers()
+    {
+        int observed = 0;
+        int sum = 0;
+        using (EventBus bus = new EventBus())
+        {
+            bus.Register<int>(512);
+            bus.Subscribe<int>(value =>
+            {
+                observed++;
+                sum += value;
+            });
+
+            Thread[] publishers = new Thread[4];
+            for (int publisher = 0; publisher < publishers.Length; publisher++)
+            {
+                int first = publisher * 100;
+                publishers[publisher] = new Thread(() =>
+                {
+                    for (int offset = 0; offset < 100; offset++)
+                    {
+                        bus.Publish(first + offset);
+                    }
+                });
+                publishers[publisher].Start();
+            }
+
+            foreach (Thread publisher in publishers)
+            {
+                publisher.Join();
+            }
+
+            Assert(bus.Pump() == 400, "Concurrent events were lost.");
+            Assert(
+                observed == 400 && sum == 79800,
+                "Concurrent publishers produced an invalid event set.");
         }
     }
 

@@ -35,10 +35,10 @@ namespace FixWorld.Runtime
                 FixWorldEvents.Initialize();
                 try
                 {
-                    if (!RimWorldHooks.InstallModBoot())
+                    if (!RimWorldHooks.InstallPlayData())
                     {
                         throw new InvalidOperationException(
-                            "FixWorld.Runtime could not install its mod-boot hook.");
+                            "FixWorld.Runtime could not install its play-data hook.");
                     }
                 }
                 catch

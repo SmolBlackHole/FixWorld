@@ -4,6 +4,9 @@ using System;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
+using FixWorld.Loading;
+using FixWorld.Preloader;
+using FixWorld.Runtime;
 using RimWorld;
 using Verse;
 using SharedProfiling = FixWorldShared::FixWorld.Profiling;
@@ -39,7 +42,7 @@ namespace FixWorld.PlayData
                 PlayDataLoadStage.ModBoot,
                 () => Profile(
                     "Load all active mods.",
-                    () => LoadedModManager.LoadAllActiveMods()));
+                    LoadActiveMods));
 
             context.Run(PlayDataLoadStage.LanguageMetadata, () =>
             {
@@ -205,6 +208,18 @@ namespace FixWorld.PlayData
             {
                 DeepProfiler.End();
             }
+        }
+
+        private static void LoadActiveMods()
+        {
+            if (!RuntimeHost.BeginModBoot())
+            {
+                LoadedModManager.LoadAllActiveMods();
+                return;
+            }
+
+            PreloaderTimelineContract.PublishRuntimeOwnsModBoot();
+            ModBootPipeline.Run(hotReload: false);
         }
 
         private static void EnqueueDeferredInitialization()

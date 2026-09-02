@@ -98,16 +98,25 @@ namespace FixWorld.Loading
         internal static LoadingOperation Begin(LoadingStageEventDescriptor descriptor)
         {
             long operationId = Interlocked.Increment(ref nextOperationId);
+            long startedAt = Stopwatch.GetTimestamp();
+            bool mainThread = UnityData.IsInMainThread;
             LoadingOperation operation = new LoadingOperation(
                 operationId,
                 descriptor,
-                Stopwatch.GetTimestamp(),
-                UnityData.IsInMainThread);
+                startedAt,
+                mainThread);
             FixWorldEvents.Publish(
                 operation.CreateEvent(LoadingStageEventKind.Started, 0L));
-            TrackOperation(operationId, descriptor.Operation);
+            TrackOperation(
+                operationId,
+                descriptor,
+                startedAt,
+                mainThread);
             return operation;
         }
+
+        internal static bool HasActiveOperation =>
+            activeOperations != null && activeOperations.Count > 0;
 
         internal static bool IsOperationActive(LoadingStep operation)
         {
@@ -118,13 +127,40 @@ namespace FixWorld.Loading
 
             for (int index = activeOperations.Count - 1; index >= 0; index--)
             {
-                if (activeOperations[index].Operation == operation)
+                if (activeOperations[index].Descriptor.Operation == operation)
                 {
                     return true;
                 }
             }
 
             return false;
+        }
+
+        internal static bool ReportActiveOperation()
+        {
+            if (!HasActiveOperation)
+            {
+                return false;
+            }
+
+            ActiveOperation operation =
+                activeOperations[activeOperations.Count - 1];
+            LoadingStageEventDescriptor descriptor = operation.Descriptor;
+            FixWorldEvents.PublishLatest(
+                ProgressEventKey,
+                new LoadingStageEvent(
+                    operation.Id,
+                    LoadingStageEventKind.Progress,
+                    descriptor.Source,
+                    descriptor.Stage,
+                    descriptor.Operation,
+                    descriptor.DisplayName,
+                    descriptor.Activity,
+                    descriptor.Attribution,
+                    operation.MainThread,
+                    Stopwatch.GetTimestamp() - operation.StartedAt,
+                    descriptor.RecordModTime));
+            return true;
         }
 
         internal static LoadingOperation Begin(LoadingPipelineStage stage)
@@ -236,25 +272,39 @@ namespace FixWorld.Loading
 
         private static void TrackOperation(
             long operationId,
-            LoadingStep operation)
+            LoadingStageEventDescriptor descriptor,
+            long startedAt,
+            bool mainThread)
         {
             if (activeOperations == null)
             {
                 activeOperations = new List<ActiveOperation>(8);
             }
 
-            activeOperations.Add(new ActiveOperation(operationId, operation));
+            activeOperations.Add(new ActiveOperation(
+                operationId,
+                descriptor,
+                startedAt,
+                mainThread));
         }
 
         private readonly struct ActiveOperation
         {
             internal readonly long Id;
-            internal readonly LoadingStep Operation;
+            internal readonly LoadingStageEventDescriptor Descriptor;
+            internal readonly long StartedAt;
+            internal readonly bool MainThread;
 
-            internal ActiveOperation(long id, LoadingStep operation)
+            internal ActiveOperation(
+                long id,
+                LoadingStageEventDescriptor descriptor,
+                long startedAt,
+                bool mainThread)
             {
                 Id = id;
-                Operation = operation;
+                Descriptor = descriptor;
+                StartedAt = startedAt;
+                MainThread = mainThread;
             }
         }
 

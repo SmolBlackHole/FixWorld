@@ -104,6 +104,7 @@ namespace FixWorld.Loading
                 DescriptorMatch match = MatchProfilerLabel(label);
                 bool recognized = match.Recognized;
                 StepDescriptor descriptor = match.Descriptor;
+                bool typedOperationActive = LoadingEvents.HasActiveOperation;
                 bool suppressed = recognized &&
                                   LoadingEvents.IsOperationActive(descriptor.Step);
                 if (suppressed)
@@ -118,7 +119,7 @@ namespace FixWorld.Loading
                     descriptor,
                     mainThread));
 
-                if (recognized)
+                if (recognized && !typedOperationActive)
                 {
                     LoadingEvents.ReportProfilerStep(descriptor, mainThread);
                 }
@@ -187,7 +188,13 @@ namespace FixWorld.Loading
                     }
                 }
 
-                bool hasParent = TryFindParentDescriptor(out StepDescriptor parentDescriptor);
+                if (LoadingEvents.ReportActiveOperation())
+                {
+                    return;
+                }
+
+                bool hasParent = TryFindParentDescriptor(
+                    out StepDescriptor parentDescriptor);
                 if (hasParent)
                 {
                     LoadingEvents.ReportProfilerStep(parentDescriptor, scope.MainThread);
