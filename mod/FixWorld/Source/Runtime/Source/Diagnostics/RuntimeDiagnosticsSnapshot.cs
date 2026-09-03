@@ -10,18 +10,16 @@ namespace FixWorld.Diagnostics
     [DataContract]
     internal sealed class RuntimeDiagnosticsSnapshot
     {
-        internal const int CurrentSchemaVersion = 18;
+        internal const int CurrentSchemaVersion = 19;
 
         internal RuntimeDiagnosticsSnapshot(
             string completionSource,
             PreloaderTimelineSnapshot preloader,
             DdsReadAheadSnapshot ddsReadAhead,
             PlayDataTelemetrySnapshot loading,
-            TextureProbeSnapshot textures,
             TextureDdsCacheSnapshot ddsCache,
             RuntimeSchedulerSnapshot scheduler,
-            SystemMemorySnapshot memory,
-            bool detailedCaptureEnabled)
+            SystemMemorySnapshot memory)
         {
             SchemaVersion = CurrentSchemaVersion;
             CompletedUtc = DateTime.UtcNow.ToString(
@@ -33,12 +31,10 @@ namespace FixWorld.Diagnostics
             Preloader = preloader;
             DdsReadAhead = ddsReadAhead;
             Loading = loading ?? throw new ArgumentNullException(nameof(loading));
-            Textures = textures;
             DdsCache = ddsCache ??
                 throw new ArgumentNullException(nameof(ddsCache));
             Scheduler = scheduler;
             Memory = memory;
-            DetailedCaptureEnabled = detailedCaptureEnabled;
         }
 
         [DataMember(Name = "schemaVersion", Order = 1)]
@@ -59,20 +55,14 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "loader", Order = 6)]
         internal PlayDataTelemetrySnapshot Loading { get; private set; }
 
-        [DataMember(Name = "textures", Order = 7)]
-        internal TextureProbeSnapshot Textures { get; private set; }
-
-        [DataMember(Name = "ddsCache", Order = 8)]
+        [DataMember(Name = "ddsCache", Order = 7)]
         internal TextureDdsCacheSnapshot DdsCache { get; private set; }
 
-        [DataMember(Name = "scheduler", Order = 9)]
+        [DataMember(Name = "scheduler", Order = 8)]
         internal RuntimeSchedulerSnapshot Scheduler { get; private set; }
 
-        [DataMember(Name = "memory", Order = 10)]
+        [DataMember(Name = "memory", Order = 9)]
         internal SystemMemorySnapshot Memory { get; private set; }
-
-        [DataMember(Name = "detailedCaptureEnabled", Order = 11)]
-        internal bool DetailedCaptureEnabled { get; private set; }
     }
 
     [DataContract]

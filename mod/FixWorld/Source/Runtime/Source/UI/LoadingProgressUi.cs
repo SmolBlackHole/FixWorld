@@ -107,19 +107,7 @@ namespace FixWorld.UI
             Text.Anchor = TextAnchor.UpperLeft;
             Widgets.LabelEllipses(
                 new Rect(content.x, content.y + 62f, content.width, 24f),
-                snapshot.Activity ?? stageName);
-
-            if (!string.IsNullOrEmpty(snapshot.Activity) &&
-                !string.Equals(
-                    snapshot.Activity,
-                    stageName,
-                    StringComparison.Ordinal))
-            {
-                Text.Font = GameFont.Tiny;
-                Widgets.LabelEllipses(
-                    new Rect(content.x, content.y + 86f, content.width, 20f),
-                    stageName);
-            }
+                stageName);
         }
 
         private static void DrawProgressBars(

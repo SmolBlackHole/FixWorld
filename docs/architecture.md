@@ -24,7 +24,8 @@ RimWorldWin64.exe
      -> install passive play-data stage hooks
      -> install the DDS texture-load detour
   -> RimWorld PlayDataLoader.DoPlayLoad()
-     -> execute the original loader and deferred queue
+     -> execute the original loader and deferred actions
+     -> FixWorld yields RimWorld's deferred list across frames
   -> FixWorld.Mod.dll
      -> attach settings and ModContentPack to the running runtime
 ```
@@ -53,9 +54,10 @@ boundaries and do not reproduce RimWorld's loader.
 FixWorld does not replace `PlayDataLoader.DoPlayLoad()` or
 `LongEventHandler.ExecuteWhenFinished()`. It records transitions at selected
 RimWorld method boundaries and presents them as 17 technical stages grouped into
-Boot, Content, Definitions, and Finalize. This preserves the useful loading UI
-and stage timings without owning mod order, XML processing, Def construction, or
-deferred execution.
+Boot, Content, Definitions, and Finalize. RimWorld retains the deferred action
+list and its ordering; FixWorld exposes that same list as an enumerator so Unity
+can render between batches. FixWorld does not own mod order, XML processing, Def
+construction, or deferred action contents.
 
 The authoritative stage list and measurement boundary are documented in the
 [play-data pipeline](play-data-pipeline.md).
@@ -67,9 +69,11 @@ are used by the DDS cache for file, hash, conversion, and pack preparation.
 Unity texture creation remains on the thread that requested the texture, and
 background results are committed through the main-thread queue where required.
 
-The event bus carries stage and lifecycle observations. The telemetry store
-creates one startup snapshot consumed by logs, benchmarks, and the read-only
-diagnostics UI. See [runtime diagnostics](diagnostics.md).
+The telemetry store owns the active startup measurement and uses reusable slots
+from the shared profiler for timing aggregation. The event bus carries typed
+lifecycle notifications but owns no telemetry state. The completed snapshot is
+consumed by logs, benchmarks, and the read-only diagnostics UI. See
+[runtime diagnostics](diagnostics.md).
 
 ## Failure boundary
 

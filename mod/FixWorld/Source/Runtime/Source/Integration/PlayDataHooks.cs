@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
+using System.Reflection.Emit;
 using FixWorld.PlayData;
 using FixWorld.Runtime;
 using HarmonyLib;
@@ -24,6 +26,7 @@ namespace FixWorld.Integration
             typeof(PostResolveImpliedPatch),
             typeof(FinalizeDefinitionsPatch),
             typeof(InitializeRuntimePatch),
+            typeof(DeferredFramePumpPatch),
             typeof(DeferredWorkPatch)
         };
 
@@ -149,6 +152,75 @@ namespace FixWorld.Integration
             {
                 RuntimeHost.TransitionStage(
                     PlayDataLoadStage.PreResolveImpliedDefinitions);
+            }
+        }
+
+        [HarmonyPatch]
+        private static class DeferredFramePumpPatch
+        {
+            private static MethodBase TargetMethod()
+            {
+                return AccessTools.Method(
+                           typeof(LongEventHandler),
+                           "UpdateCurrentAsynchronousEvent") ??
+                       throw new MissingMethodException(
+                           typeof(LongEventHandler).FullName,
+                           "UpdateCurrentAsynchronousEvent");
+            }
+
+            [HarmonyTranspiler]
+            private static IEnumerable<CodeInstruction> Transpiler(
+                IEnumerable<CodeInstruction> instructions,
+                ILGenerator generator)
+            {
+                MethodInfo execute = AccessTools.Method(
+                    typeof(LongEventHandler),
+                    "ExecuteToExecuteWhenFinished") ??
+                    throw new MissingMethodException(
+                        typeof(LongEventHandler).FullName,
+                        "ExecuteToExecuteWhenFinished");
+                FieldInfo currentEvent = AccessTools.Field(
+                    typeof(LongEventHandler),
+                    "currentEvent") ??
+                    throw new MissingFieldException(
+                        typeof(LongEventHandler).FullName,
+                        "currentEvent");
+                MethodInfo begin = AccessTools.Method(
+                    typeof(DeferredWorkPump),
+                    nameof(DeferredWorkPump.TryBegin)) ??
+                    throw new MissingMethodException(
+                        typeof(DeferredWorkPump).FullName,
+                        nameof(DeferredWorkPump.TryBegin));
+
+                List<CodeInstruction> rewritten =
+                    new List<CodeInstruction>(instructions);
+                int executeIndex = rewritten.FindIndex(
+                    instruction => instruction.Calls(execute));
+                if (executeIndex < 0)
+                {
+                    throw new InvalidOperationException(
+                        "Could not find RimWorld's deferred-work call site.");
+                }
+
+                Label continueOriginal = generator.DefineLabel();
+                CodeInstruction original = rewritten[executeIndex];
+                CodeInstruction loadCurrent =
+                    new CodeInstruction(OpCodes.Ldsfld, currentEvent);
+                loadCurrent.labels.AddRange(original.labels);
+                original.labels.Clear();
+                original.labels.Add(continueOriginal);
+                rewritten.InsertRange(
+                    executeIndex,
+                    new[]
+                    {
+                        loadCurrent,
+                        new CodeInstruction(OpCodes.Call, begin),
+                        new CodeInstruction(
+                            OpCodes.Brfalse,
+                            continueOriginal),
+                        new CodeInstruction(OpCodes.Ret)
+                    });
+                return rewritten;
             }
         }
 

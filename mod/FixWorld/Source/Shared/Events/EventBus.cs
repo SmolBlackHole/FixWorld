@@ -10,8 +10,7 @@ namespace FixWorld.Events
         private readonly object sync = new object();
         private readonly Dictionary<Type, IEventChannel> channelsByType =
             new Dictionary<Type, IEventChannel>();
-        private readonly List<IEventChannel> channels =
-            new List<IEventChannel>();
+        private IEventChannel[] channelSnapshot = Array.Empty<IEventChannel>();
 
         private bool disposed;
 
@@ -34,7 +33,12 @@ namespace FixWorld.Events
                     maximumQueuedEventsPerPump,
                     reportSubscriberError);
                 channelsByType.Add(eventType, channel);
-                channels.Add(channel);
+                IEventChannel[] current = channelSnapshot;
+                IEventChannel[] updated =
+                    new IEventChannel[current.Length + 1];
+                Array.Copy(current, updated, current.Length);
+                updated[current.Length] = channel;
+                channelSnapshot = updated;
             }
         }
 
@@ -59,7 +63,7 @@ namespace FixWorld.Events
             lock (sync)
             {
                 ThrowIfDisposed();
-                snapshot = channels.ToArray();
+                snapshot = channelSnapshot;
             }
 
             int delivered = 0;
@@ -82,8 +86,8 @@ namespace FixWorld.Events
                 }
 
                 disposed = true;
-                snapshot = channels.ToArray();
-                channels.Clear();
+                snapshot = channelSnapshot;
+                channelSnapshot = Array.Empty<IEventChannel>();
                 channelsByType.Clear();
             }
 
@@ -133,6 +137,7 @@ namespace FixWorld.Events
             private readonly Dictionary<string, TEvent> latest =
                 new Dictionary<string, TEvent>(StringComparer.Ordinal);
             private readonly List<string> latestOrder = new List<string>();
+            private readonly List<TEvent> coalesced = new List<TEvent>();
             private readonly List<Action<TEvent>> subscribers =
                 new List<Action<TEvent>>();
             private readonly int maximumQueuedEventsPerPump;
@@ -218,22 +223,15 @@ namespace FixWorld.Events
                     delivered++;
                 }
 
-                TEvent[] coalesced;
                 lock (latestSync)
                 {
-                    coalesced = new TEvent[latestOrder.Count];
-                    int count = 0;
+                    coalesced.Clear();
                     foreach (string key in latestOrder)
                     {
                         if (latest.TryGetValue(key, out TEvent item))
                         {
-                            coalesced[count++] = item;
+                            coalesced.Add(item);
                         }
-                    }
-
-                    if (count != coalesced.Length)
-                    {
-                        Array.Resize(ref coalesced, count);
                     }
 
                     latest.Clear();
@@ -245,6 +243,7 @@ namespace FixWorld.Events
                     Notify(currentSubscribers, item);
                     delivered++;
                 }
+                coalesced.Clear();
 
                 return delivered;
             }
@@ -264,6 +263,7 @@ namespace FixWorld.Events
                 {
                     latest.Clear();
                     latestOrder.Clear();
+                    coalesced.Clear();
                 }
 
                 lock (subscriberSync)

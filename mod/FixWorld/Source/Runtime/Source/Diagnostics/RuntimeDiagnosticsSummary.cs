@@ -69,11 +69,11 @@ namespace FixWorld.Diagnostics
                     "  " + stage.Number.ToString("00", CultureInfo.InvariantCulture) +
                     "  " + stage.Name + ": " +
                     Milliseconds(stage.ElapsedMilliseconds) +
-                    " (" + FormatStageExecution(stage) + ")");
+                    FormatStageResult(stage));
             }
 
             text.AppendLine();
-            text.AppendLine("DDS and textures");
+            text.AppendLine("DDS cache");
             AppendDdsDetails(text, snapshot);
 
             text.AppendLine();
@@ -83,9 +83,6 @@ namespace FixWorld.Diagnostics
                 " workers, " + snapshot.Scheduler.PendingMainThreadActions +
                 " main-thread actions queued");
             text.AppendLine("  Memory: " + FormatMemory(snapshot.Memory));
-            text.AppendLine(
-                "  Detailed texture capture: " +
-                snapshot.DetailedCaptureEnabled);
 
             text.AppendLine();
             text.AppendLine("Issues");
@@ -143,18 +140,6 @@ namespace FixWorld.Diagnostics
                 Mebibytes(readAhead.BytesRead) + " MiB, " +
                 Milliseconds(readAhead.ElapsedMilliseconds));
 
-            if (snapshot.DetailedCaptureEnabled)
-            {
-                TextureProbeSnapshot textures = snapshot.Textures;
-                text.AppendLine(
-                    "  Texture probe: " + textures.Files + " files, " +
-                    Mebibytes(textures.Bytes) + " MiB, " +
-                    Milliseconds(textures.TotalMilliseconds));
-                text.AppendLine(
-                    "  DDS reads: " + textures.DdsFiles + " files, " +
-                    Mebibytes(textures.DdsBytes) + " MiB, " +
-                    Milliseconds(textures.DdsMilliseconds));
-            }
         }
 
         private static string FormatStageHotpaths(
@@ -170,36 +155,18 @@ namespace FixWorld.Diagnostics
                                     Milliseconds(item.ElapsedMilliseconds)));
         }
 
-        private static string FormatStageExecution(
+        private static string FormatStageResult(
             PlayDataStageMeasurement stage)
         {
-            string thread = stage.Thread + " #" +
-                            stage.ManagedThreadId.ToString(
-                                CultureInfo.InvariantCulture);
-            if (!stage.ResourceMetricsAvailable)
+            if (stage.Calls == 1L && stage.Failures == 0L)
             {
-                return thread + ", resources unavailable";
+                return string.Empty;
             }
 
-            return thread +
-                   ", CPU " + stage.CpuCoreEquivalent.ToString(
-                       "0.00",
-                       CultureInfo.InvariantCulture) + "x" +
-                   ", heap " + SignedMebibytes(
-                       stage.ManagedHeapDeltaBytes) +
-                   ", working set " + SignedMebibytes(
-                       stage.WorkingSetDeltaBytes) +
-                   ", GC " + stage.GenerationZeroCollections + "/" +
-                   stage.GenerationOneCollections + "/" +
-                   stage.GenerationTwoCollections;
-        }
-
-        private static string SignedMebibytes(long bytes)
-        {
-            double mebibytes = bytes / (1024.0 * 1024.0);
-            return (mebibytes > 0.0 ? "+" : string.Empty) +
-                   mebibytes.ToString("0.0", CultureInfo.InvariantCulture) +
-                   " MiB";
+            return ", " + stage.Calls.ToString(CultureInfo.InvariantCulture) +
+                   " calls, " +
+                   stage.Failures.ToString(CultureInfo.InvariantCulture) +
+                   " failures";
         }
 
         private static string FormatDds(RuntimeDiagnosticsSnapshot snapshot)
@@ -211,10 +178,7 @@ namespace FixWorld.Diagnostics
 
             string summary = snapshot.DdsCache.Hits + " hits/" +
                              snapshot.DdsCache.Misses + " misses";
-            return snapshot.DetailedCaptureEnabled
-                ? summary + "/" +
-                  Milliseconds(snapshot.Textures.DdsMilliseconds) + " read"
-                : summary;
+            return summary;
         }
 
         private static string FormatMemory(SystemMemorySnapshot memory)

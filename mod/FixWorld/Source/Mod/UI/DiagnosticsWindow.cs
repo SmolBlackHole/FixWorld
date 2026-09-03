@@ -182,7 +182,7 @@ namespace FixWorld.UI
                 GUI.color = selected ? Color.white : MutedText;
                 Widgets.Label(
                     new Rect(item.x + 11f, item.y, item.width - 15f, item.height),
-                    NavigationLabel(document.Sections[index].Title));
+                    document.Sections[index].Title);
                 if (Widgets.ButtonInvisible(item))
                 {
                     selectedSection = index;
@@ -367,17 +367,6 @@ namespace FixWorld.UI
             document = DiagnosticsDocument.Parse(current);
             selectedSection = document.FindSection(selectedTitle);
             scrollPosition = Vector2.zero;
-        }
-
-        private static string NavigationLabel(string title)
-        {
-            switch (title)
-            {
-                case "DDS and textures":
-                    return "DDS / Textures";
-                default:
-                    return title;
-            }
         }
 
         private static Color ToColor(UiColor color)

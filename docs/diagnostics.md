@@ -8,13 +8,13 @@ profiling systems.
 
 ## Data flow
 
-Passive RimWorld hooks publish typed stage events. The Runtime telemetry store
-consumes those events and creates one immutable schema 18 snapshot containing:
+The Runtime telemetry store records passive RimWorld stage boundaries directly.
+It uses one pre-registered shared profiler slot per stage and creates one
+immutable schema 19 snapshot containing:
 
 - the preloader timeline and DDS read-ahead result;
-- all 17 loading-stage timings;
-- process CPU, managed-heap, working-set, and GC deltas per stage;
-- texture and DDS cache counters;
+- all 17 loading-stage timings, call counts, and failure counts;
+- DDS cache counters;
 - configured scheduler workers, pending main-thread actions, and system memory.
 
 The snapshot is the source for all three outputs:
@@ -29,7 +29,7 @@ log.
 
 ## In-game UI
 
-The normal Mod presents Startup, Preloader, Stages, DDS and textures, Runtime,
+The normal Mod presents Startup, Preloader, Stages, DDS cache, Runtime,
 and Issues sections in a resizable window. Dense stage rows scroll independently.
 The Runtime formats the retained snapshot once; an open window polls the stable
 text contract at most every 500 ms. A closed window does no polling or formatting
@@ -39,13 +39,18 @@ The UI is observational. Opening it does not install Harmony patches, activate
 additional profilers, change scheduler behavior, or mutate the completed
 snapshot.
 
+The event bus is reserved for typed runtime notifications such as lifecycle
+changes. It is not a second telemetry store. Channel and subscriber snapshots
+are rebuilt only when their registrations change, so an idle frame pump does not
+allocate.
+
 ## Current limits
 
 Stage timings show where startup time is spent, but they do not attribute nested
 work to individual mods or methods. The scheduler snapshot reports configured
-workers and queued main-thread work, not measured utilization. Detailed texture
-capture is enabled for benchmark runs and is identified explicitly in the
-snapshot.
+workers and queued main-thread work, not measured utilization. Expensive texture
+method transpilers and per-stage process sampling are intentionally outside the
+always-on telemetry path.
 
 Open diagnostics work is tracked in the [TODO](../TODO.md). Benchmark operation
 and reproducibility rules are documented in

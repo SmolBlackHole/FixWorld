@@ -1,96 +1,222 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Runtime.Serialization;
-using FixWorld.Events;
+using FixWorld.Loading;
 using FixWorld.PlayData;
 using FixWorld.Preloader;
+using FixWorld.Profiling;
 using FixWorld.Textures;
 
 namespace FixWorld.Diagnostics
 {
-    internal sealed class RuntimeTelemetryStore : IDisposable
+    internal sealed class RuntimeTelemetryStore
     {
-        private readonly IDisposable stageSubscription;
-        private readonly List<PlayDataStageMeasurement> stages =
-            new List<PlayDataStageMeasurement>();
-        private int generation;
+        private readonly object sync = new object();
+
+        private bool active;
+        private double estimatedDurationMilliseconds;
+        private ProfileSlot<PlayDataLoadStage>[] stageSlots;
+        private PlayDataLoadStage stage;
+        private long stageStartedAt;
         private long startedAt;
+        private bool stagesComplete;
 
-        internal RuntimeTelemetryStore(EventBus events)
+        internal bool Start()
         {
-            if (events == null)
+            lock (sync)
             {
-                throw new ArgumentNullException(nameof(events));
+                if (active)
+                {
+                    return false;
+                }
+
+                active = true;
+                stagesComplete = false;
+                Profiler<PlayDataLoadStage> profiler =
+                    new Profiler<PlayDataLoadStage>();
+                stageSlots = CreateStageSlots(profiler);
+                startedAt = Stopwatch.GetTimestamp();
+                estimatedDurationMilliseconds = LoadingEstimateStore.Read();
+                StartStage(PlayDataLoadStage.Reset, startedAt);
+                return true;
             }
-
-            stageSubscription = events.Subscribe<PlayDataLoadStageEvent>(
-                ObserveStage);
         }
 
-        internal RuntimeDiagnosticsSnapshot Snapshot { get; private set; }
-
-        internal void Start(int runGeneration)
+        internal bool Transition(PlayDataLoadStage next)
         {
-            stages.Clear();
-            generation = runGeneration;
-            startedAt = Stopwatch.GetTimestamp();
+            lock (sync)
+            {
+                if (!active || stagesComplete ||
+                    (int)next != (int)stage + 1)
+                {
+                    return false;
+                }
+
+                long now = Stopwatch.GetTimestamp();
+                FinishStage(now, succeeded: true);
+                StartStage(next, now);
+                return true;
+            }
         }
 
-        internal void Abort()
+        internal bool CompletePlayData()
         {
-            stages.Clear();
-            startedAt = 0L;
+            lock (sync)
+            {
+                if (!active || stagesComplete)
+                {
+                    return false;
+                }
+
+                long now = Stopwatch.GetTimestamp();
+                FinishStage(now, succeeded: true);
+                StartStage(PlayDataLoadStage.Complete, now);
+                FinishStage(Stopwatch.GetTimestamp(), succeeded: true);
+                stagesComplete = true;
+                return true;
+            }
+        }
+
+        internal bool Abort()
+        {
+            lock (sync)
+            {
+                if (!active)
+                {
+                    return false;
+                }
+
+                if (active && !stagesComplete)
+                {
+                    FinishStage(Stopwatch.GetTimestamp(), succeeded: false);
+                }
+
+                active = false;
+                stagesComplete = false;
+                stageSlots = null;
+                startedAt = 0L;
+                stageStartedAt = 0L;
+                return true;
+            }
+        }
+
+        internal bool TryGetLoadingSnapshot(
+            out PlayDataLoadingSnapshot snapshot)
+        {
+            lock (sync)
+            {
+                if (!active)
+                {
+                    snapshot = default;
+                    return false;
+                }
+
+                double elapsed = ToMilliseconds(
+                    Stopwatch.GetTimestamp() - startedAt);
+                bool hasEstimate = estimatedDurationMilliseconds > 0.0;
+                float stageProgress = Math.Max(
+                    0.02f,
+                    Math.Min(
+                        0.98f,
+                        ((int)stage - 0.5f) /
+                        PlayDataLoadStageCatalog.Count));
+                float progress = hasEstimate
+                    ? Math.Max(
+                        stageProgress,
+                        (float)Math.Min(
+                            0.98,
+                            elapsed / estimatedDurationMilliseconds))
+                    : stageProgress;
+                snapshot = new PlayDataLoadingSnapshot(
+                    stage,
+                    elapsed,
+                    progress,
+                    hasEstimate,
+                    estimatedDurationMilliseconds);
+                return true;
+            }
         }
 
         internal RuntimeDiagnosticsSnapshot Complete(
             string source,
-            TextureProbeSnapshot textures,
             TextureDdsCacheSnapshot ddsCache,
             RuntimeSchedulerSnapshot scheduler,
-            SystemMemorySnapshot memory,
-            bool detailedCaptureEnabled)
+            SystemMemorySnapshot memory)
         {
-            long completedAt = Stopwatch.GetTimestamp();
-            Snapshot = new RuntimeDiagnosticsSnapshot(
+            PlayDataTelemetrySnapshot loading;
+            double observedMilliseconds;
+            lock (sync)
+            {
+                if (!active)
+                {
+                    return null;
+                }
+
+                long completedAt = Stopwatch.GetTimestamp();
+                observedMilliseconds = ToMilliseconds(
+                    Math.Max(0L, completedAt - startedAt));
+                loading = new PlayDataTelemetrySnapshot(
+                    observedMilliseconds,
+                    CaptureStages());
+                active = false;
+                stagesComplete = false;
+                stageSlots = null;
+                startedAt = 0L;
+                stageStartedAt = 0L;
+            }
+
+            LoadingEstimateStore.Write(observedMilliseconds);
+            return new RuntimeDiagnosticsSnapshot(
                 source,
                 PreloaderTimelineState.GetSnapshot(),
                 DdsCacheContract.CaptureReadAhead(),
-                CaptureStages(completedAt),
-                textures,
+                loading,
                 ddsCache,
                 scheduler,
-                memory,
-                detailedCaptureEnabled);
-            return Snapshot;
+                memory);
         }
 
-        public void Dispose()
+        private List<PlayDataStageMeasurement> CaptureStages()
         {
-            stageSubscription.Dispose();
-        }
-
-        private PlayDataTelemetrySnapshot CaptureStages(long completedAt)
-        {
-            double observedMilliseconds = startedAt == 0L
-                ? 0.0
-                : ToMilliseconds(Math.Max(0L, completedAt - startedAt));
-            return new PlayDataTelemetrySnapshot(
-                observedMilliseconds,
-                stages.OrderBy(item => item.Number).ToList());
-        }
-
-        private void ObserveStage(PlayDataLoadStageEvent stageEvent)
-        {
-            if (stageEvent.Generation == generation &&
-                stageEvent.Kind == PlayDataLoadStageEventKind.Completed)
+            List<PlayDataStageMeasurement> measurements =
+                new List<PlayDataStageMeasurement>(stageSlots.Length);
+            foreach (ProfileSlot<PlayDataLoadStage> slot in stageSlots)
             {
-                stages.Add(new PlayDataStageMeasurement(
-                    stageEvent.Stage,
-                    stageEvent.Elapsed.TotalMilliseconds,
-                    stageEvent.Diagnostics));
+                measurements.Add(
+                    new PlayDataStageMeasurement(slot.Snapshot()));
             }
+
+            return measurements;
+        }
+
+        private void StartStage(PlayDataLoadStage next, long now)
+        {
+            stage = next;
+            stageStartedAt = now;
+        }
+
+        private void FinishStage(long now, bool succeeded)
+        {
+            TimeSpan elapsed = TimeSpan.FromSeconds(
+                (double)Math.Max(0L, now - stageStartedAt) /
+                Stopwatch.Frequency);
+            stageSlots[(int)stage - 1].Observe(elapsed, succeeded);
+        }
+
+        private static ProfileSlot<PlayDataLoadStage>[] CreateStageSlots(
+            Profiler<PlayDataLoadStage> profiler)
+        {
+            ProfileSlot<PlayDataLoadStage>[] slots =
+                new ProfileSlot<PlayDataLoadStage>[
+                    PlayDataLoadStageCatalog.Count];
+            for (int number = 1; number <= slots.Length; number++)
+            {
+                PlayDataLoadStage stage = (PlayDataLoadStage)number;
+                slots[number - 1] = profiler.GetSlot(stage);
+            }
+
+            return slots;
         }
 
         private static double ToMilliseconds(long ticks)
@@ -104,11 +230,10 @@ namespace FixWorld.Diagnostics
     {
         internal PlayDataTelemetrySnapshot(
             double observedMilliseconds,
-            IReadOnlyList<PlayDataStageMeasurement> stages)
+            List<PlayDataStageMeasurement> stages)
         {
             ObservedMilliseconds = observedMilliseconds;
-            Stages = new List<PlayDataStageMeasurement>(
-                stages ?? throw new ArgumentNullException(nameof(stages)));
+            Stages = stages ?? throw new ArgumentNullException(nameof(stages));
         }
 
         [DataMember(Name = "observedMs", Order = 1)]
@@ -122,27 +247,15 @@ namespace FixWorld.Diagnostics
     internal sealed class PlayDataStageMeasurement
     {
         internal PlayDataStageMeasurement(
-            PlayDataLoadStage stage,
-            double elapsedMilliseconds,
-            PlayDataStageDiagnostics diagnostics)
+            ProfileMeasurement<PlayDataLoadStage> measurement)
         {
+            PlayDataLoadStage stage = measurement.Key;
             Id = stage.ToString();
             Number = (int)stage;
             Name = PlayDataLoadStageCatalog.GetName(stage);
-            ElapsedMilliseconds = elapsedMilliseconds;
-            Thread = diagnostics.MainThread ? "main" : "worker";
-            ManagedThreadId = diagnostics.ManagedThreadId;
-            ResourceMetricsAvailable = diagnostics.ResourceMetricsAvailable;
-            ProcessCpuMilliseconds =
-                diagnostics.ProcessCpuTime.TotalMilliseconds;
-            CpuCoreEquivalent = elapsedMilliseconds <= 0.0
-                ? 0.0
-                : ProcessCpuMilliseconds / elapsedMilliseconds;
-            ManagedHeapDeltaBytes = diagnostics.ManagedHeapDeltaBytes;
-            WorkingSetDeltaBytes = diagnostics.WorkingSetDeltaBytes;
-            GenerationZeroCollections = diagnostics.GenerationZeroCollections;
-            GenerationOneCollections = diagnostics.GenerationOneCollections;
-            GenerationTwoCollections = diagnostics.GenerationTwoCollections;
+            ElapsedMilliseconds = measurement.TotalTime.TotalMilliseconds;
+            Calls = measurement.Calls;
+            Failures = measurement.Failures;
         }
 
         [DataMember(Name = "id", Order = 1)]
@@ -157,34 +270,10 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "elapsedMs", Order = 4)]
         internal double ElapsedMilliseconds { get; private set; }
 
-        [DataMember(Name = "thread", Order = 5)]
-        internal string Thread { get; private set; }
+        [DataMember(Name = "calls", Order = 5)]
+        internal long Calls { get; private set; }
 
-        [DataMember(Name = "threadId", Order = 6)]
-        internal int ManagedThreadId { get; private set; }
-
-        [DataMember(Name = "resourceMetricsAvailable", Order = 7)]
-        internal bool ResourceMetricsAvailable { get; private set; }
-
-        [DataMember(Name = "processCpuMs", Order = 8)]
-        internal double ProcessCpuMilliseconds { get; private set; }
-
-        [DataMember(Name = "cpuCoreEquivalent", Order = 9)]
-        internal double CpuCoreEquivalent { get; private set; }
-
-        [DataMember(Name = "managedHeapDeltaBytes", Order = 10)]
-        internal long ManagedHeapDeltaBytes { get; private set; }
-
-        [DataMember(Name = "workingSetDeltaBytes", Order = 11)]
-        internal long WorkingSetDeltaBytes { get; private set; }
-
-        [DataMember(Name = "gen0Collections", Order = 12)]
-        internal int GenerationZeroCollections { get; private set; }
-
-        [DataMember(Name = "gen1Collections", Order = 13)]
-        internal int GenerationOneCollections { get; private set; }
-
-        [DataMember(Name = "gen2Collections", Order = 14)]
-        internal int GenerationTwoCollections { get; private set; }
+        [DataMember(Name = "failures", Order = 6)]
+        internal long Failures { get; private set; }
     }
 }

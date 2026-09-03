@@ -80,26 +80,13 @@ class PlayDataStageData(TypedDict):
     number: int
     name: str
     elapsedMs: float
-    thread: str
-    threadId: int
-    resourceMetricsAvailable: bool
-    processCpuMs: float
-    cpuCoreEquivalent: float
-    managedHeapDeltaBytes: int
-    workingSetDeltaBytes: int
-    gen0Collections: int
-    gen1Collections: int
-    gen2Collections: int
+    calls: int
+    failures: int
 
 
 class LoaderData(TypedDict):
     observedMs: float
     stages: list[PlayDataStageData]
-
-
-class TextureData(TypedDict):
-    totalMs: float
-    ddsMs: float
 
 
 class DdsCacheData(TypedDict):
@@ -129,11 +116,9 @@ class BenchmarkReport(TypedDict):
     preloader: PreloaderData
     ddsReadAhead: DdsReadAheadData
     loader: LoaderData
-    textures: TextureData
     ddsCache: DdsCacheData
     scheduler: RuntimeSchedulerData
     memory: RuntimeMemoryData
-    detailedCaptureEnabled: bool
 
 
 class ResultRecord(TypedDict):
@@ -235,7 +220,7 @@ def wait_for_json_file(
 
 def validate_report(raw: object) -> BenchmarkReport:
     report = _string_dict(raw, "benchmark report")
-    if report.get("schemaVersion") != 18:
+    if report.get("schemaVersion") != 19:
         raise RuntimeError(
             f"Unsupported benchmark schema: {report.get('schemaVersion')!r}"
         )
@@ -251,30 +236,16 @@ def validate_report(raw: object) -> BenchmarkReport:
         raise RuntimeError("Benchmark report contains incomplete loader measurements.")
     for index, stage_value in enumerate(stages):
         stage = _string_dict(stage_value, f"loader stage {index + 1}")
-        if not isinstance(stage.get("resourceMetricsAvailable"), bool):
-            raise RuntimeError("Benchmark report contains invalid stage diagnostics.")
-        for key in (
-            "threadId",
-            "processCpuMs",
-            "cpuCoreEquivalent",
-            "managedHeapDeltaBytes",
-            "workingSetDeltaBytes",
-            "gen0Collections",
-            "gen1Collections",
-            "gen2Collections",
-        ):
+        for key in ("number", "elapsedMs", "calls", "failures"):
             if not isinstance(stage.get(key), (int, float)):
-                raise RuntimeError(f"Benchmark report stage diagnostics omit {key}.")
+                raise RuntimeError(f"Benchmark report stage measurement omits {key}.")
     for section in (
         "ddsReadAhead",
-        "textures",
         "ddsCache",
         "scheduler",
         "memory",
     ):
         _string_dict(report.get(section), section)
-    if report.get("detailedCaptureEnabled") is not True:
-        raise RuntimeError("Benchmark diagnostics capture was not enabled.")
     return cast(BenchmarkReport, report)
 
 
@@ -306,16 +277,8 @@ def write_loader_csv(run_root: Path, report: BenchmarkReport) -> None:
             "number",
             "name",
             "elapsedMs",
-            "thread",
-            "threadId",
-            "resourceMetricsAvailable",
-            "processCpuMs",
-            "cpuCoreEquivalent",
-            "managedHeapDeltaBytes",
-            "workingSetDeltaBytes",
-            "gen0Collections",
-            "gen1Collections",
-            "gen2Collections",
+            "calls",
+            "failures",
         ),
         loader["stages"],
     )
@@ -434,7 +397,6 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
 
         error_count = relevant_error_count(log_path)
         loader = report["loader"]
-        textures = report["textures"]
         cache = report["ddsCache"]
         preloader = report["preloader"]
         read_ahead = report["ddsReadAhead"]
@@ -469,8 +431,6 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                 f"ddsReadAheadMs={float(read_ahead['elapsedMs']):.3f}",
                 f"ddsIndexPrefetched={read_ahead['indexPrefetched']}",
                 f"observedLoaderMs={float(loader['observedMs']):.3f}",
-                f"textureLoadMs={float(textures['totalMs']):.3f}",
-                f"ddsLoadMs={float(textures['ddsMs']):.3f}",
                 f"ddsCacheHits={cache['hits']}",
                 f"ddsCacheMisses={cache['misses']}",
                 f"ddsWorkerPreparedMods={cache['workerPreparedMods']}",
@@ -488,11 +448,6 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                 "topLoaderStages="
                 + "|".join(
                     f"{stage['id']}={float(stage['elapsedMs']):.3f}ms"
-                    for stage in top_stages
-                ),
-                "topStageCpu="
-                + "|".join(
-                    f"{stage['id']}={float(stage['cpuCoreEquivalent']):.2f}x"
                     for stage in top_stages
                 ),
             )

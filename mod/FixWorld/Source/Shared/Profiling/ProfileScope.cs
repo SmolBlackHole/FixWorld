@@ -6,15 +6,13 @@ namespace FixWorld.Profiling
 {
     public sealed class ProfileScope<TKey> : IDisposable
     {
-        private readonly TKey key;
-        private readonly Profiler<TKey> profiler;
+        private readonly ProfileSlot<TKey> slot;
         private readonly long startedAt;
         private int completed;
 
-        internal ProfileScope(Profiler<TKey> profiler, TKey key)
+        internal ProfileScope(ProfileSlot<TKey> slot)
         {
-            this.profiler = profiler;
-            this.key = key;
+            this.slot = slot;
             startedAt = Stopwatch.GetTimestamp();
         }
 
@@ -43,8 +41,7 @@ namespace FixWorld.Profiling
             long elapsedTicks = Math.Max(
                 0L,
                 Stopwatch.GetTimestamp() - startedAt);
-            profiler.Observe(
-                key,
+            slot.Observe(
                 TimeSpan.FromSeconds(
                     (double)elapsedTicks / Stopwatch.Frequency),
                 succeeded);

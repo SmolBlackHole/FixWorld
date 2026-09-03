@@ -3,8 +3,9 @@
 Parent: [Documentation index](README.md)
 
 RimWorld owns and executes `PlayDataLoader.DoPlayLoad()`, including its original
-mod ordering, XML and Def processing, and deferred main-thread queue. FixWorld
-observes method boundaries without skipping or replacing those operations.
+mod ordering, XML and Def processing, and deferred main-thread work list.
+FixWorld observes method boundaries without skipping or reordering those
+operations.
 
 ## Stage model
 
@@ -40,8 +41,11 @@ Finalize
 Stages 03 and 04 are the only FixWorld-owned work in this sequence. They open
 the DDS pack cache and index effective texture sources after RimWorld has
 initialized the active mod list. All other stages measure elapsed time between
-stable RimWorld calls. Stage 16 starts when RimWorld begins executing its own
-`ExecuteWhenFinished()` queue and ends when that queue returns.
+stable RimWorld calls. Stage 16 starts when RimWorld's
+`ExecuteWhenFinished()` list becomes ready. FixWorld iterates that same list in
+RimWorld's original order through its existing long-event enumerator path. This
+allows a frame at least every 100 ms between actions without copying delegates or
+reconstructing closures. A single long-running action can still block one frame.
 
 The boundaries intentionally describe useful phases rather than individual
 method timings. For example, `Load and patch XML` includes RimWorld's discovery,
@@ -50,15 +54,16 @@ XML or finished Def objects.
 
 ## Measurement behavior
 
-Each transition records wall time, process CPU time, managed-heap and working-set
-deltas, GC counts, thread identity, and whether the transition ran on the main
-thread. The loading UI groups the stages visually while the diagnostics window
-retains all 17 rows.
+The Runtime telemetry store uses pre-registered shared profiler slots to retain
+wall time, call count, and failure count for every stage. The loading UI reads
+the current state directly while the diagnostics window retains all 17 completed
+rows.
 
-The hooks do not call `SetCurrentEventText()`, alter mod order, capture delegates,
-or reconstruct closures. An exception remains under RimWorld's normal recovery
-logic. FixWorld aborts only its current telemetry session and starts a fresh one
-if RimWorld retries the load.
+The hooks do not call `SetCurrentEventText()`, alter mod order, copy delegates, or
+reconstruct closures. Per-action exceptions retain RimWorld's log-and-continue
+behavior. Other exceptions remain under RimWorld's normal recovery logic.
+FixWorld aborts only its current telemetry session and starts a fresh one if
+RimWorld retries the load.
 
 Open measurement and DDS work is tracked in the [TODO](../TODO.md). Raw selected
-benchmarks remain in `data/benchmarks`, while detailed captures are ignored.
+benchmarks remain in `data/benchmarks`.

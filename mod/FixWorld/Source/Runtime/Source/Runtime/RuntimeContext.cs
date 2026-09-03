@@ -1,5 +1,4 @@
 using System;
-using System.Threading;
 using FixWorld.Diagnostics;
 using FixWorld.Events;
 using FixWorld.Lifecycle;
@@ -14,7 +13,6 @@ namespace FixWorld.Runtime
     {
         private const string FixWorldPackageId = "smolblackhole.fixworld";
         private const float DefaultDdsCacheMaxGiB = 6.0f;
-        private const int MaximumStageEventsPerPump = 1024;
         private const int MaximumLifecycleEventsPerPump = 64;
 
         private readonly object attachmentSync = new object();
@@ -23,10 +21,7 @@ namespace FixWorld.Runtime
         private readonly JobScheduler scheduler;
         private readonly IDisposable lifecycleSubscription;
         private readonly RuntimeTelemetryStore telemetry;
-        private readonly PlayDataStageTracker stages;
         private object attachedMod;
-        private int playDataActive;
-        private int playDataGeneration;
         private string diagnosticsText =
             "No completed startup diagnostics are available yet.";
         private bool disposed;
@@ -34,10 +29,6 @@ namespace FixWorld.Runtime
         internal RuntimeContext()
         {
             events = new EventBus();
-            events.Register<PlayDataLoadStageEvent>(
-                MaximumStageEventsPerPump,
-                error => Log.Error(
-                    "[FixWorld] Play-data event subscriber failed: " + error));
             events.Register<RimWorldLifecycleEvent>(
                 MaximumLifecycleEventsPerPump,
                 error => Log.Error(
@@ -50,18 +41,14 @@ namespace FixWorld.Runtime
                 (name, error) => Log.Error(
                     "[FixWorld] Main-thread action failed (" + name + "): " +
                     error));
-            Loading = new PlayDataLoadingState(events);
-            telemetry = new RuntimeTelemetryStore(events);
+            telemetry = new RuntimeTelemetryStore();
             Lifecycle = new RimWorldLifecycle(events);
             Textures = new TextureDdsCache(scheduler, mainThread);
-            stages = new PlayDataStageTracker(events);
             lifecycleSubscription = events.Subscribe<RimWorldLifecycleEvent>(
                 ConsumeLifecycleEvent);
         }
 
         internal RimWorldLifecycle Lifecycle { get; }
-
-        internal PlayDataLoadingState Loading { get; }
 
         internal TextureDdsCache Textures { get; }
 
@@ -99,26 +86,22 @@ namespace FixWorld.Runtime
 
         internal void BeginPlayData()
         {
-            if (Interlocked.CompareExchange(ref playDataActive, 1, 0) != 0)
+            if (!telemetry.Start())
             {
                 return;
             }
 
-            int generation = Interlocked.Increment(ref playDataGeneration);
-            Loading.Start(generation);
-            telemetry.Start(generation);
             Textures.BeginIndex();
-            stages.Start(generation);
         }
 
         internal bool TransitionStage(PlayDataLoadStage stage)
         {
-            return stages.Transition(stage);
+            return telemetry.Transition(stage);
         }
 
         internal void PrepareTextures()
         {
-            stages.Transition(PlayDataLoadStage.InitializeTextureCache);
+            telemetry.Transition(PlayDataLoadStage.InitializeTextureCache);
             ModContentPack fixWorld = null;
             try
             {
@@ -153,7 +136,7 @@ namespace FixWorld.Runtime
                     "load source textures normally: " + exception);
             }
 
-            stages.Transition(PlayDataLoadStage.IndexTextureSources);
+            telemetry.Transition(PlayDataLoadStage.IndexTextureSources);
             try
             {
                 Textures.Prepare();
@@ -168,27 +151,23 @@ namespace FixWorld.Runtime
 
         internal void CompletePlayData()
         {
-            if (Interlocked.Exchange(ref playDataActive, 0) == 0)
+            if (!telemetry.CompletePlayData())
             {
                 return;
             }
 
-            stages.Complete();
             Textures.CompleteLoading();
             Lifecycle.NotifyPlayDataReady("rimworld-play-data");
         }
 
         internal void FailPlayData(Exception exception)
         {
-            if (Interlocked.Exchange(ref playDataActive, 0) == 0)
+            if (!telemetry.Abort())
             {
                 return;
             }
 
-            stages.Fail();
             Textures.CompleteLoading();
-            Loading.Abort();
-            telemetry.Abort();
             Log.Error("[FixWorld.Runtime] Play-data load failed: " + exception);
         }
 
@@ -198,6 +177,12 @@ namespace FixWorld.Runtime
             mainThread.Pump(64, TimeSpan.FromMilliseconds(4));
             Lifecycle.ObserveFrame();
             events.Pump();
+        }
+
+        internal bool TryGetLoadingSnapshot(
+            out PlayDataLoadingSnapshot snapshot)
+        {
+            return telemetry.TryGetLoadingSnapshot(out snapshot);
         }
 
         public void Dispose()
@@ -220,8 +205,6 @@ namespace FixWorld.Runtime
             }
 
             lifecycleSubscription.Dispose();
-            Loading.Dispose();
-            telemetry.Dispose();
             Textures.Shutdown();
             if (!scheduler.Shutdown(TimeSpan.FromSeconds(2)))
             {
@@ -261,20 +244,18 @@ namespace FixWorld.Runtime
 
         private bool CompleteStartup(string source)
         {
-            if (!Loading.Complete())
-            {
-                return false;
-            }
-
             RuntimeDiagnosticsSnapshot diagnostics = telemetry.Complete(
                 source,
-                TextureProbe.GetSnapshot(),
                 Textures.GetSnapshot(),
                 new RuntimeSchedulerSnapshot(
                     scheduler.WorkerCount,
                     mainThread.PendingCount),
-                SystemMemoryMetrics.Read(),
-                BenchmarkExporter.Enabled);
+                SystemMemoryMetrics.Read());
+            if (diagnostics == null)
+            {
+                return false;
+            }
+
             diagnosticsText = RuntimeDiagnosticsSummary.FormatDetails(diagnostics);
             Log.Message(RuntimeDiagnosticsSummary.Format(diagnostics));
             BenchmarkExporter.Write(diagnostics);

@@ -23,94 +23,12 @@ namespace FixWorld.PlayData
         Complete = 17
     }
 
-    internal enum PlayDataLoadStageEventKind
-    {
-        Started,
-        Progress,
-        Completed,
-        Failed
-    }
-
     internal enum PlayDataLoadStageGroup
     {
         Boot = 1,
         Content = 2,
         Definitions = 3,
         Finalize = 4
-    }
-
-    internal sealed class PlayDataLoadStageEvent
-    {
-        internal PlayDataLoadStageEvent(
-            int generation,
-            PlayDataLoadStage stage,
-            PlayDataLoadStageEventKind kind,
-            TimeSpan elapsed,
-            string activity,
-            PlayDataStageDiagnostics diagnostics)
-        {
-            Generation = generation;
-            Stage = stage;
-            Kind = kind;
-            Elapsed = elapsed;
-            Activity = activity;
-            Diagnostics = diagnostics;
-        }
-
-        internal int Generation { get; }
-
-        internal PlayDataLoadStage Stage { get; }
-
-        internal PlayDataLoadStageEventKind Kind { get; }
-
-        internal TimeSpan Elapsed { get; }
-
-        internal string Activity { get; }
-
-        internal PlayDataStageDiagnostics Diagnostics { get; }
-    }
-
-    internal readonly struct PlayDataStageDiagnostics
-    {
-        internal PlayDataStageDiagnostics(
-            bool resourceMetricsAvailable,
-            bool mainThread,
-            int managedThreadId,
-            TimeSpan processCpuTime,
-            long managedHeapDeltaBytes,
-            long workingSetDeltaBytes,
-            int generationZeroCollections,
-            int generationOneCollections,
-            int generationTwoCollections)
-        {
-            ResourceMetricsAvailable = resourceMetricsAvailable;
-            MainThread = mainThread;
-            ManagedThreadId = managedThreadId;
-            ProcessCpuTime = processCpuTime;
-            ManagedHeapDeltaBytes = managedHeapDeltaBytes;
-            WorkingSetDeltaBytes = workingSetDeltaBytes;
-            GenerationZeroCollections = generationZeroCollections;
-            GenerationOneCollections = generationOneCollections;
-            GenerationTwoCollections = generationTwoCollections;
-        }
-
-        internal bool ResourceMetricsAvailable { get; }
-
-        internal bool MainThread { get; }
-
-        internal int ManagedThreadId { get; }
-
-        internal TimeSpan ProcessCpuTime { get; }
-
-        internal long ManagedHeapDeltaBytes { get; }
-
-        internal long WorkingSetDeltaBytes { get; }
-
-        internal int GenerationZeroCollections { get; }
-
-        internal int GenerationOneCollections { get; }
-
-        internal int GenerationTwoCollections { get; }
     }
 
     internal static class PlayDataLoadStageCatalog
@@ -296,5 +214,32 @@ namespace FixWorld.PlayData
                     throw new ArgumentOutOfRangeException(nameof(stage), stage, null);
             }
         }
+    }
+
+    internal readonly struct PlayDataLoadingSnapshot
+    {
+        internal PlayDataLoadingSnapshot(
+            PlayDataLoadStage stage,
+            double elapsedMilliseconds,
+            float progress,
+            bool hasDurationEstimate,
+            double estimatedTotalMilliseconds)
+        {
+            Stage = stage;
+            ElapsedMilliseconds = elapsedMilliseconds;
+            Progress = progress;
+            HasDurationEstimate = hasDurationEstimate;
+            EstimatedTotalMilliseconds = estimatedTotalMilliseconds;
+        }
+
+        internal PlayDataLoadStage Stage { get; }
+
+        internal double ElapsedMilliseconds { get; }
+
+        internal float Progress { get; }
+
+        internal bool HasDurationEstimate { get; }
+
+        internal double EstimatedTotalMilliseconds { get; }
     }
 }

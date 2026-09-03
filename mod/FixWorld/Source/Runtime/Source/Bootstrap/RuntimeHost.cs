@@ -1,6 +1,5 @@
 using System;
 using System.Threading;
-using FixWorld.Diagnostics;
 using FixWorld.Integration;
 using FixWorld.PlayData;
 using FixWorld.Preloader;
@@ -40,8 +39,7 @@ namespace FixWorld.Runtime
                 try
                 {
                     Volatile.Write(ref current, created);
-                    if (!RimWorldHooks.InstallBootstrap(
-                            BenchmarkExporter.Enabled))
+                    if (!RimWorldHooks.InstallBootstrap())
                     {
                         throw new InvalidOperationException(
                             "FixWorld.Runtime could not install its hooks.");
@@ -121,7 +119,7 @@ namespace FixWorld.Runtime
                 return false;
             }
 
-            return context.Loading.TryGetSnapshot(out snapshot);
+            return context.TryGetLoadingSnapshot(out snapshot);
         }
 
         internal static string GetDiagnosticsText()

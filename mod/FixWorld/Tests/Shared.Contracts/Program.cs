@@ -23,6 +23,7 @@ internal static class Program
             MigrationCleanupIsSafeAndIdempotent();
             PreloaderInstallationIsVersionedAndRepairable();
             ProfilingAggregatesImmutableSnapshots();
+            ProfilingSlotsAreReusable();
             ProfileScopesCompleteExactlyOnce();
             ProfilingIsThreadSafe();
             EventBusKeepsChannelsTypedAndBounded();
@@ -408,6 +409,23 @@ internal static class Program
                 out ProfileMeasurement<string> explicitCompletion) &&
             explicitCompletion.Calls == 1,
             "An explicitly completed profile scope was recorded more than once.");
+    }
+
+    private static void ProfilingSlotsAreReusable()
+    {
+        Profiler<string> profiler = new Profiler<string>(StringComparer.Ordinal);
+        ProfileSlot<string> first = profiler.GetSlot("load");
+        ProfileSlot<string> second = profiler.GetSlot("load");
+        Assert(
+            ReferenceEquals(first, second),
+            "Equivalent profile slots were registered more than once.");
+
+        first.Observe(TimeSpan.FromMilliseconds(12));
+        ProfileMeasurement<string> measurement = second.Snapshot();
+        Assert(
+            measurement.Calls == 1 &&
+            measurement.TotalTime == TimeSpan.FromMilliseconds(12),
+            "A direct profile slot did not retain its observation.");
     }
 
     private static void ProfilingIsThreadSafe()

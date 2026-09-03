@@ -28,17 +28,10 @@ namespace FixWorld.Integration
             "lifecycle",
             OwnerPrefix + ".lifecycle",
             LifecycleHooks.PatchTypes);
-        private static readonly HookGroup DiagnosticHookGroup = new HookGroup(
-            "diagnostics",
-            OwnerPrefix + ".diagnostics",
-            DiagnosticHooks.PatchTypes);
-        private static bool diagnosticsEnabled;
-
-        internal static bool InstallBootstrap(bool enableDiagnostics)
+        internal static bool InstallBootstrap()
         {
             lock (Sync)
             {
-                diagnosticsEnabled = enableDiagnostics;
                 return BootstrapHookGroup.Install();
             }
         }
@@ -73,15 +66,6 @@ namespace FixWorld.Integration
                     return false;
                 }
 
-                if (diagnosticsEnabled && !DiagnosticHookGroup.Install())
-                {
-                    LifecycleHookGroup.Uninstall();
-                    LoadingUiHookGroup.Uninstall();
-                    TextureHookGroup.Uninstall();
-                    PlayDataHookGroup.Uninstall();
-                    return false;
-                }
-
                 return true;
             }
         }
@@ -98,7 +82,6 @@ namespace FixWorld.Integration
         {
             lock (Sync)
             {
-                DiagnosticHookGroup.Uninstall();
                 LifecycleHookGroup.Uninstall();
                 LoadingUiHookGroup.Uninstall();
                 TextureHookGroup.Uninstall();

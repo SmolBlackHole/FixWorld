@@ -43,32 +43,44 @@ namespace FixWorld.Profiling
     public sealed class ProfileSnapshot<TKey> :
         IEnumerable<ProfileMeasurement<TKey>>
     {
-        private readonly Dictionary<TKey, ProfileMeasurement<TKey>> measurements;
+        private readonly Dictionary<TKey, int> indices;
+        private readonly ProfileMeasurement<TKey>[] measurements;
 
         internal ProfileSnapshot(
-            IEnumerable<ProfileMeasurement<TKey>> measurements,
+            ProfileMeasurement<TKey>[] measurements,
             IEqualityComparer<TKey> keyComparer)
         {
-            this.measurements = new Dictionary<TKey, ProfileMeasurement<TKey>>(
+            this.measurements = measurements ??
+                throw new ArgumentNullException(nameof(measurements));
+            indices = new Dictionary<TKey, int>(
+                measurements.Length,
                 keyComparer);
-            foreach (ProfileMeasurement<TKey> measurement in measurements)
+            for (int index = 0; index < measurements.Length; index++)
             {
-                this.measurements.Add(measurement.Key, measurement);
+                indices.Add(measurements[index].Key, index);
             }
         }
 
-        public int Count => measurements.Count;
+        public int Count => measurements.Length;
 
         public bool TryGet(
             TKey key,
             out ProfileMeasurement<TKey> measurement)
         {
-            return measurements.TryGetValue(key, out measurement);
+            if (indices.TryGetValue(key, out int index))
+            {
+                measurement = measurements[index];
+                return true;
+            }
+
+            measurement = null;
+            return false;
         }
 
         public IEnumerator<ProfileMeasurement<TKey>> GetEnumerator()
         {
-            return measurements.Values.GetEnumerator();
+            return ((IEnumerable<ProfileMeasurement<TKey>>)measurements)
+                .GetEnumerator();
         }
 
         IEnumerator IEnumerable.GetEnumerator()
