@@ -16,10 +16,6 @@ namespace FixWorld.Integration
             "play-data",
             OwnerPrefix + ".playdata",
             PlayDataHooks.PatchTypes);
-        private static readonly HookGroup ContentHookGroup = new HookGroup(
-            "content",
-            OwnerPrefix + ".content",
-            ContentHooks.PatchTypes);
         private static readonly HookGroup TextureHookGroup = new HookGroup(
             "textures",
             OwnerPrefix + ".textures",
@@ -56,15 +52,8 @@ namespace FixWorld.Integration
                     return false;
                 }
 
-                if (!ContentHookGroup.Install())
-                {
-                    PlayDataHookGroup.Uninstall();
-                    return false;
-                }
-
                 if (!TextureHookGroup.Install())
                 {
-                    ContentHookGroup.Uninstall();
                     PlayDataHookGroup.Uninstall();
                     return false;
                 }
@@ -72,7 +61,6 @@ namespace FixWorld.Integration
                 if (!LoadingUiHookGroup.Install())
                 {
                     TextureHookGroup.Uninstall();
-                    ContentHookGroup.Uninstall();
                     PlayDataHookGroup.Uninstall();
                     return false;
                 }
@@ -81,7 +69,6 @@ namespace FixWorld.Integration
                 {
                     LoadingUiHookGroup.Uninstall();
                     TextureHookGroup.Uninstall();
-                    ContentHookGroup.Uninstall();
                     PlayDataHookGroup.Uninstall();
                     return false;
                 }
@@ -91,7 +78,6 @@ namespace FixWorld.Integration
                     LifecycleHookGroup.Uninstall();
                     LoadingUiHookGroup.Uninstall();
                     TextureHookGroup.Uninstall();
-                    ContentHookGroup.Uninstall();
                     PlayDataHookGroup.Uninstall();
                     return false;
                 }
@@ -116,7 +102,6 @@ namespace FixWorld.Integration
                 LifecycleHookGroup.Uninstall();
                 LoadingUiHookGroup.Uninstall();
                 TextureHookGroup.Uninstall();
-                ContentHookGroup.Uninstall();
                 PlayDataHookGroup.Uninstall();
                 BootstrapHookGroup.Uninstall();
             }

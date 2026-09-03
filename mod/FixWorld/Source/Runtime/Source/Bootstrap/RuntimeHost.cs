@@ -73,21 +73,42 @@ namespace FixWorld.Runtime
                 "workers=" + Current.WorkerCount + ".");
         }
 
-        internal static void RunPlayData()
+        internal static void BeginPlayData()
         {
-            Current.PlayData.Load();
+            Current.BeginPlayData();
+        }
+
+        internal static bool TransitionStage(PlayDataLoadStage stage)
+        {
+            RuntimeContext context = Volatile.Read(ref current);
+            return context != null && context.TransitionStage(stage);
+        }
+
+        internal static void PrepareTextures()
+        {
+            Volatile.Read(ref current)?.PrepareTextures();
+        }
+
+        internal static void CompletePlayData()
+        {
+            Volatile.Read(ref current)?.CompletePlayData();
+        }
+
+        internal static void FailPlayData(System.Exception exception)
+        {
+            Volatile.Read(ref current)?.FailPlayData(exception);
         }
 
         internal static bool ActivateRuntimeHooks()
         {
-            return Volatile.Read(ref current) != null &&
-                   RimWorldHooks.InstallRuntime();
-        }
+            if (Volatile.Read(ref current) == null ||
+                !RimWorldHooks.InstallRuntime())
+            {
+                return false;
+            }
 
-        internal static bool TryCaptureDeferred(Action action)
-        {
-            RuntimeContext context = Volatile.Read(ref current);
-            return context != null && context.DeferredWork.TryCapture(action);
+            PreloaderTimelineContract.PublishRuntimeReady();
+            return true;
         }
 
         internal static bool TryGetLoadingSnapshot(

@@ -7,7 +7,6 @@ using System.Linq;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Threading;
-using FixWorld.Content;
 using FixWorld.ExternalTools;
 using FixWorld.Migrations;
 using FixWorld.Runtime;
@@ -150,13 +149,8 @@ namespace FixWorld.Textures
             }
         }
 
-        internal void Prepare(ModFileIndex files)
+        internal void Prepare()
         {
-            if (files == null)
-            {
-                throw new ArgumentNullException(nameof(files));
-            }
-
             lock (sync)
             {
                 if (!IsRunning)
@@ -176,7 +170,7 @@ namespace FixWorld.Textures
                 foreach (ModContentPack mod in
                          LoadedModManager.RunningModsListForReading)
                 {
-                    DdsModPlan plan = CreatePlan(mod, files, snapshot);
+                    DdsModPlan plan = CreatePlan(mod, snapshot);
                     plans[plan.PackageId] = plan;
                     foreach (DdsPackItem item in plan.Items)
                     {
@@ -391,7 +385,6 @@ namespace FixWorld.Textures
 
         private DdsModPlan CreatePlan(
             ModContentPack mod,
-            ModFileIndex files,
             DdsPackSnapshot snapshot)
         {
             string packageId = DdsCacheKey.Normalize(mod.PackageId);
@@ -399,7 +392,8 @@ namespace FixWorld.Textures
                                  Path.DirectorySeparatorChar,
                                  Path.AltDirectorySeparatorChar) +
                              Path.DirectorySeparatorChar;
-            Dictionary<string, FileInfo> discovered = files.GetFiles(
+            Dictionary<string, FileInfo> discovered =
+                ModContentPack.GetAllFilesForMod(
                 mod,
                 GenFilePaths.ContentPath<Texture2D>(),
                 ModContentLoader<Texture2D>.IsAcceptableExtension);

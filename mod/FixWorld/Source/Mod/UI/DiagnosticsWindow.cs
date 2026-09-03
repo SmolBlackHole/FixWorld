@@ -217,14 +217,6 @@ namespace FixWorld.UI
                 string.Equals(
                     section.Title,
                     "Stages",
-                    StringComparison.Ordinal) ||
-                string.Equals(
-                    section.Title,
-                    "Stage details",
-                    StringComparison.Ordinal) ||
-                string.Equals(
-                    section.Title,
-                    "Deferred work",
                     StringComparison.Ordinal);
             float rowHeight = stackedRows ? DetailedRowHeight : RowHeight;
             float contentHeight = Math.Max(
@@ -381,10 +373,6 @@ namespace FixWorld.UI
         {
             switch (title)
             {
-                case "Deferred work":
-                    return "Deferred";
-                case "Stage details":
-                    return "Details";
                 case "DDS and textures":
                     return "DDS / Textures";
                 default:

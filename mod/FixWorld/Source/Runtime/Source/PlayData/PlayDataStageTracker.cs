@@ -6,60 +6,85 @@ using Verse;
 
 namespace FixWorld.PlayData
 {
-    internal sealed class PlayDataStageRunner
+    internal sealed class PlayDataStageTracker
     {
+        private readonly object sync = new object();
         private readonly EventBus events;
+        private PlayDataStageOperation current;
+        private bool active;
+        private int generation;
 
-        internal PlayDataStageRunner(EventBus events)
+        internal PlayDataStageTracker(EventBus events)
         {
             this.events = events ?? throw new ArgumentNullException(nameof(events));
         }
 
-        internal void Run(PlayDataLoadStage stage, Action execute)
+        internal void Start(int runGeneration)
         {
-            Run(
-                stage,
-                () =>
+            lock (sync)
+            {
+                if (active)
                 {
-                    execute();
+                    return;
+                }
+
+                active = true;
+                generation = runGeneration;
+                current = new PlayDataStageOperation(
+                    events,
+                    generation,
+                    PlayDataLoadStage.Reset);
+            }
+        }
+
+        internal bool Transition(PlayDataLoadStage stage)
+        {
+            lock (sync)
+            {
+                if (!active || current == null ||
+                    (int)stage != (int)current.Stage + 1)
+                {
                     return false;
-                });
-        }
-
-        internal TResult Run<TResult>(
-            PlayDataLoadStage stage,
-            Func<TResult> execute)
-        {
-            if (execute == null)
-            {
-                throw new ArgumentNullException(nameof(execute));
-            }
-
-            using (PlayDataStageOperation operation = Begin(stage))
-            {
-                try
-                {
-                    TResult result = execute();
-                    operation.Complete();
-                    return result;
                 }
-                catch
-                {
-                    operation.Fail();
-                    throw;
-                }
+
+                current?.Complete();
+                current = new PlayDataStageOperation(events, generation, stage);
+                return true;
             }
         }
 
-        internal PlayDataStageOperation Begin(PlayDataLoadStage stage)
+        internal void Complete()
         {
-            LongEventHandler.SetCurrentEventText(
-                "FixWorld: " + PlayDataLoadStageCatalog.GetName(stage));
-            return new PlayDataStageOperation(events, stage);
+            lock (sync)
+            {
+                if (!active)
+                {
+                    return;
+                }
+
+                current?.Complete();
+                current = new PlayDataStageOperation(
+                    events,
+                    generation,
+                    PlayDataLoadStage.Complete);
+                current.Complete();
+                current = null;
+                active = false;
+            }
+        }
+
+        internal void Fail()
+        {
+            lock (sync)
+            {
+                current?.Fail();
+                current = null;
+                active = false;
+            }
         }
     }
 
-    internal sealed class PlayDataStageOperation : IDisposable
+    internal sealed class PlayDataStageOperation
     {
         private readonly EventBus events;
         private readonly bool mainThread;
@@ -70,28 +95,22 @@ namespace FixWorld.PlayData
 
         internal PlayDataStageOperation(
             EventBus events,
+            int generation,
             PlayDataLoadStage stage)
         {
             this.events = events;
+            Generation = generation;
             Stage = stage;
             mainThread = UnityData.IsInMainThread;
             managedThreadId = Thread.CurrentThread.ManagedThreadId;
             resourcesAtStart = StageResourceSample.Capture();
             stopwatch = Stopwatch.StartNew();
-            Publish(PlayDataLoadStageEventKind.Started, null);
+            Publish(PlayDataLoadStageEventKind.Started);
         }
 
         internal PlayDataLoadStage Stage { get; }
 
-        internal void Report(string activity)
-        {
-            if (Volatile.Read(ref terminal) == 0)
-            {
-                events.PublishLatest(
-                    "play-data-progress",
-                    Create(PlayDataLoadStageEventKind.Progress, activity));
-            }
-        }
+        private int Generation { get; }
 
         internal void Complete()
         {
@@ -103,11 +122,6 @@ namespace FixWorld.PlayData
             Finish(PlayDataLoadStageEventKind.Failed);
         }
 
-        public void Dispose()
-        {
-            Complete();
-        }
-
         private void Finish(PlayDataLoadStageEventKind kind)
         {
             if (Interlocked.Exchange(ref terminal, 1) != 0)
@@ -116,19 +130,10 @@ namespace FixWorld.PlayData
             }
 
             stopwatch.Stop();
-            Publish(kind, null);
+            Publish(kind);
         }
 
-        private void Publish(
-            PlayDataLoadStageEventKind kind,
-            string activity)
-        {
-            events.Publish(Create(kind, activity));
-        }
-
-        private PlayDataLoadStageEvent Create(
-            PlayDataLoadStageEventKind kind,
-            string activity)
+        private void Publish(PlayDataLoadStageEventKind kind)
         {
             PlayDataStageDiagnostics diagnostics =
                 new PlayDataStageDiagnostics(
@@ -150,12 +155,13 @@ namespace FixWorld.PlayData
                     StageResourceSample.Capture());
             }
 
-            return new PlayDataLoadStageEvent(
+            events.Publish(new PlayDataLoadStageEvent(
+                Generation,
                 Stage,
                 kind,
                 stopwatch.Elapsed,
-                activity,
-                diagnostics);
+                activity: null,
+                diagnostics));
         }
 
         private readonly struct StageResourceSample

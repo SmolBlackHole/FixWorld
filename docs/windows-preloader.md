@@ -45,39 +45,29 @@ RimWorldWin64.exe
   -> FixWorld.Runtime.StartEarly()
      -> install the safe LoadAllPlayData bootstrap hook
      -> activate runtime hooks at the play-data boundary
-     -> own DoPlayLoad through the FixWorld play-data pipeline
+     -> observe RimWorld's original loader and route DDS cache hits
   -> CreateModClasses
      -> FixWorld.Mod attaches settings and its ModContentPack
 ```
 
-The delayed hook activation is intentional. Patching `DoPlayLoad()` at the
+The delayed hook activation is intentional. Installing runtime hooks at the
 Doorstop entry caused Unity resource initialization while the engine was not ready.
-The bootstrap hook enters early but installs the actual play-data detour only at
+The bootstrap hook enters early but installs stage and texture hooks only at
 `PlayDataLoader.LoadAllPlayData()`
 
 The normal `FixWorld.Mod.dll` is not a second runtime. It remains the RimWorld-facing
 installer, settings UI, and `ModContentPack` adapter for the already running
 `FixWorld.Runtime`
 
-After the runtime has claimed the play-data pipeline, the mod confirms the
-installation and clears `restartPending`. If Doorstop is active but the runtime did
-not claim the pipeline, FixWorld disables itself for that launch and leaves the
-original RimWorld loader intact
+After the runtime hooks are active, the mod confirms the installation and clears
+`restartPending`. If Doorstop is active but the runtime did not activate, FixWorld
+disables itself for that launch and leaves the original RimWorld loader intact
 
 ## DDS read-ahead
 
 DDS read-ahead is optional best-effort preloader work. Its failure cannot disable
 the loader bridge. The default budget is the smaller of 256 MiB and one eighth of
 available physical memory. `FIXWORLD_DDS_READ_AHEAD_MIB=0` disables read-ahead only
-
-The preloader also parses a validated combined-XML cache candidate in the
-background. The Runtime accepts the same in-memory `XmlDocument` only after mod
-order, load folders, effective Def files, sizes, and modification times match.
-It never waits for an unfinished candidate. A miss uses RimWorld's normal XML
-loader and atomically refreshes the artifact. Harmony patches on the replaced
-XML discovery or merge path disable reuse for compatibility.
-`FIXWORLD_COMBINED_XML_PRELOAD=0` disables this cache, and
-`FIXWORLD_COMBINED_XML_CACHE_ROOT` overrides its storage directory.
 
 ## Status, repair, and removal
 

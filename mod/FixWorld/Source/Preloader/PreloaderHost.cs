@@ -40,10 +40,6 @@ namespace FixWorld.Preloader
 
             StartJob(
                 log,
-                "combined XML cache preload",
-                () => CombinedXmlPreload.Start(log));
-            StartJob(
-                log,
                 "bounded DDS read-ahead",
                 () =>
                 {

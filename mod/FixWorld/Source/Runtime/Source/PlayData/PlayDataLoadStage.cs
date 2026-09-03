@@ -6,8 +6,8 @@ namespace FixWorld.PlayData
     {
         Reset = 1,
         InitializeMods = 2,
-        IndexModContent = 3,
-        PrepareTextureCache = 4,
+        InitializeTextureCache = 3,
+        IndexTextureSources = 4,
         PrepareModContent = 5,
         CreateModClasses = 6,
         LoadAndPatchXml = 7,
@@ -42,18 +42,22 @@ namespace FixWorld.PlayData
     internal sealed class PlayDataLoadStageEvent
     {
         internal PlayDataLoadStageEvent(
+            int generation,
             PlayDataLoadStage stage,
             PlayDataLoadStageEventKind kind,
             TimeSpan elapsed,
             string activity,
             PlayDataStageDiagnostics diagnostics)
         {
+            Generation = generation;
             Stage = stage;
             Kind = kind;
             Elapsed = elapsed;
             Activity = activity;
             Diagnostics = diagnostics;
         }
+
+        internal int Generation { get; }
 
         internal PlayDataLoadStage Stage { get; }
 
@@ -163,7 +167,7 @@ namespace FixWorld.PlayData
                 case PlayDataLoadStageGroup.Boot:
                     return PlayDataLoadStage.Reset;
                 case PlayDataLoadStageGroup.Content:
-                    return PlayDataLoadStage.IndexModContent;
+                    return PlayDataLoadStage.InitializeTextureCache;
                 case PlayDataLoadStageGroup.Definitions:
                     return PlayDataLoadStage.LoadAndPatchXml;
                 case PlayDataLoadStageGroup.Finalize:
@@ -219,10 +223,10 @@ namespace FixWorld.PlayData
                     return "Prepare mod content";
                 case PlayDataLoadStage.CreateModClasses:
                     return "Create mod classes";
-                case PlayDataLoadStage.IndexModContent:
-                    return "Index mod content";
-                case PlayDataLoadStage.PrepareTextureCache:
-                    return "Prepare texture cache";
+                case PlayDataLoadStage.InitializeTextureCache:
+                    return "Initialize texture cache";
+                case PlayDataLoadStage.IndexTextureSources:
+                    return "Index texture sources";
                 case PlayDataLoadStage.LoadAndPatchXml:
                     return "Load and patch XML";
                 case PlayDataLoadStage.ImportDefinitions:
@@ -262,10 +266,10 @@ namespace FixWorld.PlayData
                     return "Content";
                 case PlayDataLoadStage.CreateModClasses:
                     return "Classes";
-                case PlayDataLoadStage.IndexModContent:
-                    return "Index";
-                case PlayDataLoadStage.PrepareTextureCache:
-                    return "DDS";
+                case PlayDataLoadStage.InitializeTextureCache:
+                    return "DDS init";
+                case PlayDataLoadStage.IndexTextureSources:
+                    return "DDS index";
                 case PlayDataLoadStage.LoadAndPatchXml:
                     return "XML";
                 case PlayDataLoadStage.ImportDefinitions:

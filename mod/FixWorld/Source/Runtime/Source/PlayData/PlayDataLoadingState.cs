@@ -12,6 +12,7 @@ namespace FixWorld.PlayData
 
         private bool active;
         private long startedAt;
+        private int generation;
         private PlayDataLoadStage stage;
         private string activity;
         private double estimatedDurationMilliseconds;
@@ -26,7 +27,7 @@ namespace FixWorld.PlayData
             subscription = events.Subscribe<PlayDataLoadStageEvent>(Observe);
         }
 
-        internal void Start()
+        internal void Start(int runGeneration)
         {
             lock (sync)
             {
@@ -37,6 +38,7 @@ namespace FixWorld.PlayData
                 }
 
                 active = true;
+                generation = runGeneration;
                 startedAt = Stopwatch.GetTimestamp();
                 stage = PlayDataLoadStage.Reset;
                 activity = null;
@@ -120,7 +122,7 @@ namespace FixWorld.PlayData
         {
             lock (sync)
             {
-                if (!active)
+                if (!active || stageEvent.Generation != generation)
                 {
                     return;
                 }

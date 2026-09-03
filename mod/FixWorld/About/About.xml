@@ -20,10 +20,9 @@
     <description>
         FixWorld is an experimental Windows x64 performance mod for RimWorld 1.6.4871 rev591.
 
-        It enters the process through an early loader, validates the exact RimWorld build, and owns
-        a
-        staged play-data pipeline. Its persistent DDS cache avoids repeated texture decoding and
-        compression on later launches.
+        It enters the process through an early loader, validates the exact RimWorld build, and
+        observes RimWorld's loading stages. Its persistent DDS cache avoids repeated texture
+        decoding and compression on later launches.
 
         The first enabled launch installs UnityDoorstop next to RimWorldWin64.exe and restarts
         RimWorld

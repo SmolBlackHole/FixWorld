@@ -2,15 +2,13 @@
 
 FixWorld is an experimental performance mod for RimWorld 1.6 on Windows x64.
 It enters the process through UnityDoorstop, validates the exact RimWorld build,
-and then owns the play-data loading pipeline through a small early runtime.
+and starts a small runtime before RimWorld loads active mods.
 
-The current pilot focuses on three measured bottlenecks:
+The current pilot focuses on two measured concerns:
 
-- deterministic orchestration and diagnostics for RimWorld's mod-loading stages;
+- passive stage diagnostics for RimWorld's original play-data loader;
 - a persistent DDS texture cache that avoids repeated image decoding, mipmap
-  generation, and BC3 compression on later launches;
-- a validated combined-XML cache parsed before the Runtime needs it, avoiding
-  repeated Def-file parsing and merging on unchanged warm starts.
+  generation, and BC3 compression on later launches.
 
 FixWorld is not a stable release yet. It currently targets RimWorld
 `1.6.4871 rev591`, requires Harmony, and deliberately disables its early runtime
@@ -73,7 +71,7 @@ Start at the [documentation index](docs/README.md):
 - [Architecture](docs/architecture.md) explains the preloader, loader, runtime,
   mod bridge, ownership, and failure boundaries
 - [Play-data pipeline](docs/play-data-pipeline.md) documents the 17 loading
-  stages, combined-XML cache, and deferred work
+  stages observed around RimWorld's original loader
 - [Runtime diagnostics](docs/diagnostics.md) documents telemetry, benchmark
   output, and the in-game diagnostics window
 - [Development and verification](docs/development.md) owns local setup, builds,
@@ -84,8 +82,8 @@ Start at the [documentation index](docs/README.md):
 
 ## Project status
 
-FixWorld is under an explicit feature freeze while the existing DDS subsystem,
-runtime diagnostics, and deferred loading work are reduced and measured. Public
+FixWorld is under an explicit feature freeze while the existing DDS subsystem
+and runtime diagnostics are reduced and measured. Public
 issues and pull requests should not assume compatibility beyond the supported
 RimWorld build
 

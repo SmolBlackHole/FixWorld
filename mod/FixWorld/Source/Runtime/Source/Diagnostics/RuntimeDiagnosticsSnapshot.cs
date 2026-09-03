@@ -10,7 +10,7 @@ namespace FixWorld.Diagnostics
     [DataContract]
     internal sealed class RuntimeDiagnosticsSnapshot
     {
-        internal const int CurrentSchemaVersion = 17;
+        internal const int CurrentSchemaVersion = 18;
 
         internal RuntimeDiagnosticsSnapshot(
             string completionSource,
@@ -19,7 +19,6 @@ namespace FixWorld.Diagnostics
             PlayDataTelemetrySnapshot loading,
             TextureProbeSnapshot textures,
             TextureDdsCacheSnapshot ddsCache,
-            DeferredWorkSnapshot deferredWork,
             RuntimeSchedulerSnapshot scheduler,
             SystemMemorySnapshot memory,
             bool detailedCaptureEnabled)
@@ -37,8 +36,6 @@ namespace FixWorld.Diagnostics
             Textures = textures;
             DdsCache = ddsCache ??
                 throw new ArgumentNullException(nameof(ddsCache));
-            DeferredWork = deferredWork ??
-                throw new ArgumentNullException(nameof(deferredWork));
             Scheduler = scheduler;
             Memory = memory;
             DetailedCaptureEnabled = detailedCaptureEnabled;
@@ -68,16 +65,13 @@ namespace FixWorld.Diagnostics
         [DataMember(Name = "ddsCache", Order = 8)]
         internal TextureDdsCacheSnapshot DdsCache { get; private set; }
 
-        [DataMember(Name = "deferred", Order = 9)]
-        internal DeferredWorkSnapshot DeferredWork { get; private set; }
-
-        [DataMember(Name = "scheduler", Order = 10)]
+        [DataMember(Name = "scheduler", Order = 9)]
         internal RuntimeSchedulerSnapshot Scheduler { get; private set; }
 
-        [DataMember(Name = "memory", Order = 11)]
+        [DataMember(Name = "memory", Order = 10)]
         internal SystemMemorySnapshot Memory { get; private set; }
 
-        [DataMember(Name = "detailedCaptureEnabled", Order = 12)]
+        [DataMember(Name = "detailedCaptureEnabled", Order = 11)]
         internal bool DetailedCaptureEnabled { get; private set; }
     }
 

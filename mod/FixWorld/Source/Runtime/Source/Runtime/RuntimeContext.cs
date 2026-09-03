@@ -1,9 +1,8 @@
 using System;
+using System.Threading;
 using FixWorld.Diagnostics;
-using FixWorld.Content;
 using FixWorld.Events;
 using FixWorld.Lifecycle;
-using FixWorld.Loading;
 using FixWorld.PlayData;
 using FixWorld.Scheduling;
 using FixWorld.Textures;
@@ -13,8 +12,9 @@ namespace FixWorld.Runtime
 {
     internal sealed class RuntimeContext : IDisposable
     {
+        private const string FixWorldPackageId = "smolblackhole.fixworld";
+        private const float DefaultDdsCacheMaxGiB = 6.0f;
         private const int MaximumStageEventsPerPump = 1024;
-        private const int MaximumOperationEventsPerPump = 256;
         private const int MaximumLifecycleEventsPerPump = 64;
 
         private readonly object attachmentSync = new object();
@@ -23,7 +23,10 @@ namespace FixWorld.Runtime
         private readonly JobScheduler scheduler;
         private readonly IDisposable lifecycleSubscription;
         private readonly RuntimeTelemetryStore telemetry;
+        private readonly PlayDataStageTracker stages;
         private object attachedMod;
+        private int playDataActive;
+        private int playDataGeneration;
         private string diagnosticsText =
             "No completed startup diagnostics are available yet.";
         private bool disposed;
@@ -35,11 +38,6 @@ namespace FixWorld.Runtime
                 MaximumStageEventsPerPump,
                 error => Log.Error(
                     "[FixWorld] Play-data event subscriber failed: " + error));
-            events.Register<PlayDataOperationEvent>(
-                MaximumOperationEventsPerPump,
-                error => Log.Error(
-                    "[FixWorld] Play-data operation subscriber failed: " +
-                    error));
             events.Register<RimWorldLifecycleEvent>(
                 MaximumLifecycleEventsPerPump,
                 error => Log.Error(
@@ -55,25 +53,8 @@ namespace FixWorld.Runtime
             Loading = new PlayDataLoadingState(events);
             telemetry = new RuntimeTelemetryStore(events);
             Lifecycle = new RimWorldLifecycle(events);
-            ModFiles = new ModFileIndex();
-            CombinedXmlCache combinedXml = new CombinedXmlCache();
             Textures = new TextureDdsCache(scheduler, mainThread);
-
-            PlayDataStageRunner stageRunner = new PlayDataStageRunner(events);
-            DeferredWorkQueue deferredWork = new DeferredWorkQueue(telemetry);
-            DeferredWork = deferredWork;
-            PlayData = new PlayDataLoadPipeline(
-                stageRunner,
-                new ModLoadingPipeline(
-                    events,
-                    combinedXml,
-                    ModFiles,
-                    Textures),
-                new RimWorldPlayData(),
-                deferredWork,
-                BeginPlayData,
-                CompletePlayData,
-                FailPlayData);
+            stages = new PlayDataStageTracker(events);
             lifecycleSubscription = events.Subscribe<RimWorldLifecycleEvent>(
                 ConsumeLifecycleEvent);
         }
@@ -82,13 +63,7 @@ namespace FixWorld.Runtime
 
         internal PlayDataLoadingState Loading { get; }
 
-        internal PlayDataLoadPipeline PlayData { get; }
-
-        internal DeferredWorkQueue DeferredWork { get; }
-
         internal TextureDdsCache Textures { get; }
-
-        internal ModFileIndex ModFiles { get; }
 
         internal int WorkerCount => scheduler.WorkerCount;
 
@@ -120,6 +95,101 @@ namespace FixWorld.Runtime
                     attachment.Settings.DdsCacheMaxGiB);
                 attachedMod = attachment.Mod;
             }
+        }
+
+        internal void BeginPlayData()
+        {
+            if (Interlocked.CompareExchange(ref playDataActive, 1, 0) != 0)
+            {
+                return;
+            }
+
+            int generation = Interlocked.Increment(ref playDataGeneration);
+            Loading.Start(generation);
+            telemetry.Start(generation);
+            Textures.BeginIndex();
+            stages.Start(generation);
+        }
+
+        internal bool TransitionStage(PlayDataLoadStage stage)
+        {
+            return stages.Transition(stage);
+        }
+
+        internal void PrepareTextures()
+        {
+            stages.Transition(PlayDataLoadStage.InitializeTextureCache);
+            ModContentPack fixWorld = null;
+            try
+            {
+                foreach (ModContentPack mod in
+                         LoadedModManager.RunningModsListForReading)
+                {
+                    if (string.Equals(
+                            mod.PackageId,
+                            FixWorldPackageId,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        fixWorld = mod;
+                        break;
+                    }
+                }
+
+                if (fixWorld == null)
+                {
+                    Log.Warning(
+                        "[FixWorld] DDS cache was not prepared because the " +
+                        "FixWorld content pack is not active.");
+                }
+                else
+                {
+                    Textures.Attach(fixWorld.RootDir, DefaultDdsCacheMaxGiB);
+                }
+            }
+            catch (Exception exception)
+            {
+                Log.Warning(
+                    "[FixWorld] DDS cache initialization failed; RimWorld will " +
+                    "load source textures normally: " + exception);
+            }
+
+            stages.Transition(PlayDataLoadStage.IndexTextureSources);
+            try
+            {
+                Textures.Prepare();
+            }
+            catch (Exception exception)
+            {
+                Log.Warning(
+                    "[FixWorld] DDS texture indexing failed; RimWorld will " +
+                    "load source textures normally: " + exception);
+            }
+        }
+
+        internal void CompletePlayData()
+        {
+            if (Interlocked.Exchange(ref playDataActive, 0) == 0)
+            {
+                return;
+            }
+
+            stages.Complete();
+            Textures.CompleteLoading();
+            Lifecycle.NotifyPlayDataReady("rimworld-play-data");
+        }
+
+        internal void FailPlayData(Exception exception)
+        {
+            if (Interlocked.Exchange(ref playDataActive, 0) == 0)
+            {
+                return;
+            }
+
+            stages.Fail();
+            Textures.CompleteLoading();
+            Loading.Abort();
+            telemetry.Abort();
+            Log.Error("[FixWorld.Runtime] Play-data load failed: " + exception);
         }
 
         internal void Pump()
@@ -162,25 +232,6 @@ namespace FixWorld.Runtime
 
             mainThread.Dispose();
             events.Dispose();
-        }
-
-        private void BeginPlayData()
-        {
-            Loading.Start();
-            telemetry.Start();
-        }
-
-        private void CompletePlayData()
-        {
-            Textures.CompleteLoading();
-            Lifecycle.NotifyPlayDataReady("fixworld-play-data-pipeline");
-        }
-
-        private void FailPlayData(Exception exception)
-        {
-            Loading.Abort();
-            telemetry.Abort();
-            Log.Error("[FixWorld.Runtime] Play-data load failed: " + exception);
         }
 
         private void ConsumeLifecycleEvent(

@@ -101,7 +101,7 @@ namespace FixWorld.UI
             Text.Anchor = TextAnchor.UpperRight;
             Widgets.Label(
                 new Rect(content.x + 440f, content.y + 40f, content.width - 440f, 20f),
-                "FixWorld-owned play-data pipeline");
+                "Observed RimWorld play-data load");
 
             Text.Font = GameFont.Small;
             Text.Anchor = TextAnchor.UpperLeft;

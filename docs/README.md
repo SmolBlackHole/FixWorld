@@ -10,7 +10,7 @@ support boundary
 | Goal | Start here |
 | --- | --- |
 | Understand process entry and runtime ownership | [Architecture](architecture.md) |
-| Understand the owned loading stages and XML cache | [Play-data pipeline](play-data-pipeline.md) |
+| Understand the observed loading stages | [Play-data stages](play-data-pipeline.md) |
 | Understand telemetry, benchmark data, and the in-game UI | [Runtime diagnostics](diagnostics.md) |
 | Build, test, benchmark, or package FixWorld | [Development and verification](development.md) |
 | Understand or remove the Windows early loader | [Windows loader](windows-preloader.md) |

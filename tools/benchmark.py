@@ -92,18 +92,9 @@ class PlayDataStageData(TypedDict):
     gen2Collections: int
 
 
-class PlayDataOperationData(TypedDict):
-    stageId: str
-    stageNumber: int
-    name: str
-    elapsedMs: float
-    succeeded: bool
-
-
 class LoaderData(TypedDict):
     observedMs: float
     stages: list[PlayDataStageData]
-    operations: list[PlayDataOperationData]
 
 
 class TextureData(TypedDict):
@@ -118,25 +109,6 @@ class DdsCacheData(TypedDict):
     workerPreparedMods: int
     workerAppliedMods: int
     workerFallbackMods: int
-
-
-class DeferredWorkItemData(TypedDict):
-    owner: str
-    name: str
-    calls: int
-    failures: int
-    totalMs: float
-    maxMs: float
-    averageWaitMs: float
-    maxWaitMs: float
-
-
-class DeferredWorkData(TypedDict):
-    calls: int
-    failures: int
-    runtimeMs: float
-    maxQueueDelayMs: float
-    top: list[DeferredWorkItemData]
 
 
 class RuntimeSchedulerData(TypedDict):
@@ -159,7 +131,6 @@ class BenchmarkReport(TypedDict):
     loader: LoaderData
     textures: TextureData
     ddsCache: DdsCacheData
-    deferred: DeferredWorkData
     scheduler: RuntimeSchedulerData
     memory: RuntimeMemoryData
     detailedCaptureEnabled: bool
@@ -264,7 +235,7 @@ def wait_for_json_file(
 
 def validate_report(raw: object) -> BenchmarkReport:
     report = _string_dict(raw, "benchmark report")
-    if report.get("schemaVersion") != 17:
+    if report.get("schemaVersion") != 18:
         raise RuntimeError(
             f"Unsupported benchmark schema: {report.get('schemaVersion')!r}"
         )
@@ -273,7 +244,7 @@ def validate_report(raw: object) -> BenchmarkReport:
         raise RuntimeError("Benchmark report contains invalid preloader measurements.")
     loader = _string_dict(report.get("loader"), "loader")
     completion_source = report.get("completionSource")
-    if completion_source != "fixworld-play-data-pipeline+main-menu-draw":
+    if completion_source != "rimworld-play-data+main-menu-draw":
         raise RuntimeError(f"Unexpected completion source: {completion_source!r}")
     stages = _object_list(loader.get("stages"))
     if stages is None or len(stages) != 17:
@@ -294,58 +265,10 @@ def validate_report(raw: object) -> BenchmarkReport:
         ):
             if not isinstance(stage.get(key), (int, float)):
                 raise RuntimeError(f"Benchmark report stage diagnostics omit {key}.")
-    operations = _object_list(loader.get("operations"))
-    if operations is None:
-        raise RuntimeError("Benchmark report contains no loader operations.")
-    observed_operations: set[tuple[str, str]] = set()
-    for index, operation_value in enumerate(operations):
-        operation = _string_dict(operation_value, f"loader operation {index + 1}")
-        stage_id = operation.get("stageId")
-        if not isinstance(stage_id, str):
-            raise RuntimeError("Benchmark loader operation omits stageId.")
-        name = operation.get("name")
-        if not isinstance(name, str):
-            raise RuntimeError("Benchmark loader operation omits name.")
-        if not isinstance(operation.get("stageNumber"), int):
-            raise RuntimeError("Benchmark loader operation omits stageNumber.")
-        if not isinstance(operation.get("elapsedMs"), (int, float)):
-            raise RuntimeError("Benchmark loader operation omits elapsedMs.")
-        if not isinstance(operation.get("succeeded"), bool):
-            raise RuntimeError("Benchmark loader operation omits succeeded.")
-        observed_operations.add((stage_id, name))
-    required_operations: set[tuple[str, str]] = {
-        ("LoadAndPatchXml", "TKeySystem.Parse()"),
-        ("LoadAndPatchXml", "ErrorCheckPatches()"),
-        ("LoadAndPatchXml", "ApplyPatches()"),
-        ("ImportDefinitions", "ParseAndProcessXML()"),
-    }
-    missing_operations = required_operations - observed_operations
-    if missing_operations:
-        raise RuntimeError(
-            "Benchmark report omits required loader operations: "
-            + ", ".join(f"{stage}:{name}" for stage, name in sorted(missing_operations))
-        )
-    vanilla_xml_operations = {
-        ("LoadAndPatchXml", "LoadModXML()"),
-        ("LoadAndPatchXml", "CombineIntoUnifiedXML()"),
-    }
-    preloaded_xml_operation = (
-        "LoadAndPatchXml",
-        "AcceptPreloadedCombinedXML()",
-    )
-    if not (
-        vanilla_xml_operations <= observed_operations
-        or preloaded_xml_operation in observed_operations
-    ):
-        raise RuntimeError(
-            "Benchmark report contains neither RimWorld XML loading nor the "
-            "combined XML preload operation."
-        )
     for section in (
         "ddsReadAhead",
         "textures",
         "ddsCache",
-        "deferred",
         "scheduler",
         "memory",
     ):
@@ -395,17 +318,6 @@ def write_loader_csv(run_root: Path, report: BenchmarkReport) -> None:
             "gen2Collections",
         ),
         loader["stages"],
-    )
-    _write_csv(
-        run_root / "loader-operations.csv",
-        (
-            "stageId",
-            "stageNumber",
-            "name",
-            "elapsedMs",
-            "succeeded",
-        ),
-        loader["operations"],
     )
 
 
@@ -524,16 +436,10 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
         loader = report["loader"]
         textures = report["textures"]
         cache = report["ddsCache"]
-        deferred = report["deferred"]
         preloader = report["preloader"]
         read_ahead = report["ddsReadAhead"]
         top_stages = sorted(
             loader["stages"], key=lambda item: float(item["elapsedMs"]), reverse=True
-        )[:5]
-        top_operations = sorted(
-            loader["operations"],
-            key=lambda item: float(item["elapsedMs"]),
-            reverse=True,
         )[:5]
         notes = "; ".join(
             (
@@ -589,16 +495,6 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
                     f"{stage['id']}={float(stage['cpuCoreEquivalent']):.2f}x"
                     for stage in top_stages
                 ),
-                "topLoaderOperations="
-                + "|".join(
-                    f"{item['stageId']}:{item['name']}={float(item['elapsedMs']):.3f}ms"
-                    for item in top_operations
-                ),
-                "topDeferred="
-                + "|".join(
-                    f"{item['owner']}:{item['name']}={float(item['totalMs']):.3f}ms"
-                    for item in deferred["top"][:5]
-                ),
             )
         )
         record: ResultRecord = {
@@ -630,7 +526,7 @@ def parse_args() -> argparse.Namespace:
         help="RimWorld directory. Defaults to RIMWORLD_ROOT.",
     )
     parser.add_argument("--runs", type=bounded_int(1, 10), default=1)
-    parser.add_argument("--variant", default="staged-loader")
+    parser.add_argument("--variant", default="vanilla-loader-dds")
     parser.add_argument("--monitor-name")
     parser.add_argument("--monitor", type=bounded_int(1, 8), default=2)
     parser.add_argument("--timeout", type=bounded_int(30, 600), default=180)

@@ -19,20 +19,12 @@ namespace FixWorld.Diagnostics
                 throw new ArgumentNullException(nameof(snapshot));
             }
 
-            DeferredWorkSnapshot deferred = snapshot.DeferredWork;
-
             return "[FixWorld.Runtime] Startup diagnostics v" +
                    snapshot.SchemaVersion +
                    "; source=" + CompactLabel(snapshot.CompletionSource) +
                    "; playData=" + Milliseconds(
                        snapshot.Loading.ObservedMilliseconds) +
                    "; stages=" + FormatStageHotpaths(snapshot.Loading.Stages) +
-                   "; operations=" + FormatOperationHotpaths(
-                       snapshot.Loading.Operations) +
-                   "; deferred=" + deferred.Calls + " calls/" +
-                   Milliseconds(deferred.RuntimeMilliseconds) + "/" +
-                   deferred.Failures + " failed, top=" +
-                   FormatDeferredHotpaths(deferred.Top) +
                    "; dds=" + FormatDds(snapshot) +
                    "; scheduler=" + snapshot.Scheduler.WorkerCount +
                    " workers/" + snapshot.Scheduler.PendingMainThreadActions +
@@ -81,38 +73,6 @@ namespace FixWorld.Diagnostics
             }
 
             text.AppendLine();
-            text.AppendLine("Stage details");
-            foreach (PlayDataOperationMeasurement operation in
-                     snapshot.Loading.Operations)
-            {
-                text.AppendLine(
-                    "  " + operation.StageNumber.ToString(
-                        "00",
-                        CultureInfo.InvariantCulture) + "  " +
-                    operation.Name + ": " +
-                    Milliseconds(operation.ElapsedMilliseconds) +
-                    (operation.Succeeded ? string.Empty : ", failed"));
-            }
-
-            DeferredWorkSnapshot deferred = snapshot.DeferredWork;
-            text.AppendLine();
-            text.AppendLine("Deferred work");
-            text.AppendLine(
-                "  Calls: " + deferred.Calls +
-                ", failures: " + deferred.Failures +
-                ", runtime: " + Milliseconds(deferred.RuntimeMilliseconds) +
-                ", max queue delay: " +
-                Milliseconds(deferred.MaximumQueueDelayMilliseconds));
-            foreach (DeferredWorkMeasurement item in deferred.Top.Take(10))
-            {
-                text.AppendLine(
-                    "  " + CompactLabel(item.Owner + ":" + item.Name) +
-                    ": " + Milliseconds(item.TotalMilliseconds) +
-                    " total, " + item.Calls + " calls, " +
-                    Milliseconds(item.MaximumMilliseconds) + " max");
-            }
-
-            text.AppendLine();
             text.AppendLine("DDS and textures");
             AppendDdsDetails(text, snapshot);
 
@@ -130,12 +90,6 @@ namespace FixWorld.Diagnostics
             text.AppendLine();
             text.AppendLine("Issues");
             bool hasIssues = false;
-            if (deferred.Failures > 0)
-            {
-                text.AppendLine("  Deferred failures: " + deferred.Failures);
-                hasIssues = true;
-            }
-
             if (snapshot.DdsCache.Failed > 0)
             {
                 text.AppendLine("  DDS build failures: " + snapshot.DdsCache.Failed);
@@ -216,24 +170,6 @@ namespace FixWorld.Diagnostics
                                     Milliseconds(item.ElapsedMilliseconds)));
         }
 
-        private static string FormatOperationHotpaths(
-            IReadOnlyList<PlayDataOperationMeasurement> operations)
-        {
-            if (operations.Count == 0)
-            {
-                return "none";
-            }
-
-            return string.Join(
-                "|",
-                operations
-                    .OrderByDescending(item => item.ElapsedMilliseconds)
-                    .ThenBy(item => item.Name, StringComparer.Ordinal)
-                    .Take(HotpathCount)
-                    .Select(item => CompactLabel(item.Name) + "=" +
-                                    Milliseconds(item.ElapsedMilliseconds)));
-        }
-
         private static string FormatStageExecution(
             PlayDataStageMeasurement stage)
         {
@@ -264,26 +200,6 @@ namespace FixWorld.Diagnostics
             return (mebibytes > 0.0 ? "+" : string.Empty) +
                    mebibytes.ToString("0.0", CultureInfo.InvariantCulture) +
                    " MiB";
-        }
-
-        private static string FormatDeferredHotpaths(
-            IReadOnlyList<DeferredWorkMeasurement> measurements)
-        {
-            if (measurements.Count == 0)
-            {
-                return "none";
-            }
-
-            return string.Join(
-                "|",
-                measurements
-                    .OrderByDescending(item => item.TotalMilliseconds)
-                    .ThenBy(item => item.Owner, StringComparer.Ordinal)
-                    .ThenBy(item => item.Name, StringComparer.Ordinal)
-                    .Take(HotpathCount)
-                    .Select(item => CompactLabel(item.Owner + ":" + item.Name) +
-                                    "=" + Milliseconds(
-                                        item.TotalMilliseconds)));
         }
 
         private static string FormatDds(RuntimeDiagnosticsSnapshot snapshot)

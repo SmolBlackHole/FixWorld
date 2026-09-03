@@ -6,25 +6,16 @@ using System.Runtime.Serialization;
 using FixWorld.Events;
 using FixWorld.PlayData;
 using FixWorld.Preloader;
-using FixWorld.Profiling;
 using FixWorld.Textures;
 
 namespace FixWorld.Diagnostics
 {
     internal sealed class RuntimeTelemetryStore : IDisposable
     {
-        private const int DeferredHotpathCount = 20;
-
-        private readonly IDisposable operationSubscription;
         private readonly IDisposable stageSubscription;
-        private readonly List<PlayDataOperationMeasurement> operations =
-            new List<PlayDataOperationMeasurement>();
         private readonly List<PlayDataStageMeasurement> stages =
             new List<PlayDataStageMeasurement>();
-        private Profiler<DeferredWorkKey> deferredRuntimes =
-            new Profiler<DeferredWorkKey>();
-        private Profiler<DeferredWorkKey> deferredWaits =
-            new Profiler<DeferredWorkKey>();
+        private int generation;
         private long startedAt;
 
         internal RuntimeTelemetryStore(EventBus events)
@@ -36,40 +27,21 @@ namespace FixWorld.Diagnostics
 
             stageSubscription = events.Subscribe<PlayDataLoadStageEvent>(
                 ObserveStage);
-            operationSubscription = events.Subscribe<PlayDataOperationEvent>(
-                ObserveOperation);
         }
 
         internal RuntimeDiagnosticsSnapshot Snapshot { get; private set; }
 
-        internal void Start()
+        internal void Start(int runGeneration)
         {
             stages.Clear();
-            operations.Clear();
-            deferredRuntimes = new Profiler<DeferredWorkKey>();
-            deferredWaits = new Profiler<DeferredWorkKey>();
+            generation = runGeneration;
             startedAt = Stopwatch.GetTimestamp();
         }
 
         internal void Abort()
         {
             stages.Clear();
-            operations.Clear();
-            deferredRuntimes = new Profiler<DeferredWorkKey>();
-            deferredWaits = new Profiler<DeferredWorkKey>();
             startedAt = 0L;
-        }
-
-        internal void ObserveDeferred(
-            string owner,
-            string name,
-            TimeSpan waitTime,
-            TimeSpan runTime,
-            bool succeeded)
-        {
-            DeferredWorkKey key = new DeferredWorkKey(owner, name);
-            deferredWaits.Observe(key, waitTime);
-            deferredRuntimes.Observe(key, runTime, succeeded);
         }
 
         internal RuntimeDiagnosticsSnapshot Complete(
@@ -88,7 +60,6 @@ namespace FixWorld.Diagnostics
                 CaptureStages(completedAt),
                 textures,
                 ddsCache,
-                CaptureDeferred(),
                 scheduler,
                 memory,
                 detailedCaptureEnabled);
@@ -97,7 +68,6 @@ namespace FixWorld.Diagnostics
 
         public void Dispose()
         {
-            operationSubscription.Dispose();
             stageSubscription.Dispose();
         }
 
@@ -108,104 +78,24 @@ namespace FixWorld.Diagnostics
                 : ToMilliseconds(Math.Max(0L, completedAt - startedAt));
             return new PlayDataTelemetrySnapshot(
                 observedMilliseconds,
-                stages.OrderBy(item => item.Number).ToList(),
-                operations.ToList());
-        }
-
-        private DeferredWorkSnapshot CaptureDeferred()
-        {
-            ProfileSnapshot<DeferredWorkKey> waitSnapshot =
-                deferredWaits.Snapshot();
-            List<DeferredWorkMeasurement> measurements = deferredRuntimes
-                .Snapshot()
-                .Select(runtime =>
-                {
-                    waitSnapshot.TryGet(
-                        runtime.Key,
-                        out ProfileMeasurement<DeferredWorkKey> wait);
-                    return new DeferredWorkMeasurement(
-                        runtime.Key.Owner,
-                        runtime.Key.Name,
-                        runtime.Calls,
-                        runtime.Failures,
-                        runtime.TotalTime.TotalMilliseconds,
-                        runtime.MaximumTime.TotalMilliseconds,
-                        wait?.AverageTime.TotalMilliseconds ?? 0.0,
-                        wait?.MaximumTime.TotalMilliseconds ?? 0.0);
-                })
-                .ToList();
-            return new DeferredWorkSnapshot(
-                measurements.Sum(item => item.Calls),
-                measurements.Sum(item => item.Failures),
-                measurements.Sum(item => item.TotalMilliseconds),
-                measurements.Count == 0
-                    ? 0.0
-                    : measurements.Max(item => item.MaximumWaitMilliseconds),
-                measurements
-                    .OrderByDescending(item => item.TotalMilliseconds)
-                    .ThenBy(item => item.Owner, StringComparer.Ordinal)
-                    .ThenBy(item => item.Name, StringComparer.Ordinal)
-                    .Take(DeferredHotpathCount)
-                    .ToList());
+                stages.OrderBy(item => item.Number).ToList());
         }
 
         private void ObserveStage(PlayDataLoadStageEvent stageEvent)
         {
-            if (stageEvent.Kind == PlayDataLoadStageEventKind.Completed)
+            if (stageEvent.Generation == generation &&
+                stageEvent.Kind == PlayDataLoadStageEventKind.Completed)
             {
-                PlayDataStageDiagnostics diagnostics = stageEvent.Diagnostics;
                 stages.Add(new PlayDataStageMeasurement(
                     stageEvent.Stage,
                     stageEvent.Elapsed.TotalMilliseconds,
-                    diagnostics));
+                    stageEvent.Diagnostics));
             }
-        }
-
-        private void ObserveOperation(PlayDataOperationEvent operationEvent)
-        {
-            operations.Add(new PlayDataOperationMeasurement(
-                operationEvent.Stage,
-                operationEvent.Name,
-                operationEvent.Elapsed.TotalMilliseconds,
-                operationEvent.Succeeded));
         }
 
         private static double ToMilliseconds(long ticks)
         {
             return ticks * 1000.0 / Stopwatch.Frequency;
-        }
-
-        private readonly struct DeferredWorkKey : IEquatable<DeferredWorkKey>
-        {
-            internal DeferredWorkKey(string owner, string name)
-            {
-                Owner = owner ?? "global";
-                Name = name ?? "unknown";
-            }
-
-            internal string Owner { get; }
-
-            internal string Name { get; }
-
-            public bool Equals(DeferredWorkKey other)
-            {
-                return string.Equals(Owner, other.Owner, StringComparison.Ordinal) &&
-                       string.Equals(Name, other.Name, StringComparison.Ordinal);
-            }
-
-            public override bool Equals(object value)
-            {
-                return value is DeferredWorkKey other && Equals(other);
-            }
-
-            public override int GetHashCode()
-            {
-                unchecked
-                {
-                    return ((Owner != null ? Owner.GetHashCode() : 0) * 397) ^
-                           (Name != null ? Name.GetHashCode() : 0);
-                }
-            }
         }
     }
 
@@ -214,14 +104,11 @@ namespace FixWorld.Diagnostics
     {
         internal PlayDataTelemetrySnapshot(
             double observedMilliseconds,
-            IReadOnlyList<PlayDataStageMeasurement> stages,
-            IReadOnlyList<PlayDataOperationMeasurement> operations)
+            IReadOnlyList<PlayDataStageMeasurement> stages)
         {
             ObservedMilliseconds = observedMilliseconds;
             Stages = new List<PlayDataStageMeasurement>(
                 stages ?? throw new ArgumentNullException(nameof(stages)));
-            Operations = new List<PlayDataOperationMeasurement>(
-                operations ?? throw new ArgumentNullException(nameof(operations)));
         }
 
         [DataMember(Name = "observedMs", Order = 1)]
@@ -229,41 +116,6 @@ namespace FixWorld.Diagnostics
 
         [DataMember(Name = "stages", Order = 2)]
         internal List<PlayDataStageMeasurement> Stages { get; private set; }
-
-        [DataMember(Name = "operations", Order = 3)]
-        internal List<PlayDataOperationMeasurement> Operations { get; private set; }
-    }
-
-    [DataContract]
-    internal sealed class PlayDataOperationMeasurement
-    {
-        internal PlayDataOperationMeasurement(
-            PlayDataLoadStage stage,
-            string name,
-            double elapsedMilliseconds,
-            bool succeeded)
-        {
-            StageId = stage.ToString();
-            StageNumber = (int)stage;
-            Name = name;
-            ElapsedMilliseconds = elapsedMilliseconds;
-            Succeeded = succeeded;
-        }
-
-        [DataMember(Name = "stageId", Order = 1)]
-        internal string StageId { get; private set; }
-
-        [DataMember(Name = "stageNumber", Order = 2)]
-        internal int StageNumber { get; private set; }
-
-        [DataMember(Name = "name", Order = 3)]
-        internal string Name { get; private set; }
-
-        [DataMember(Name = "elapsedMs", Order = 4)]
-        internal double ElapsedMilliseconds { get; private set; }
-
-        [DataMember(Name = "succeeded", Order = 5)]
-        internal bool Succeeded { get; private set; }
     }
 
     [DataContract]
@@ -334,87 +186,5 @@ namespace FixWorld.Diagnostics
 
         [DataMember(Name = "gen2Collections", Order = 14)]
         internal int GenerationTwoCollections { get; private set; }
-    }
-
-    [DataContract]
-    internal sealed class DeferredWorkSnapshot
-    {
-        internal DeferredWorkSnapshot(
-            long calls,
-            long failures,
-            double runtimeMilliseconds,
-            double maximumQueueDelayMilliseconds,
-            IReadOnlyList<DeferredWorkMeasurement> top)
-        {
-            Calls = calls;
-            Failures = failures;
-            RuntimeMilliseconds = runtimeMilliseconds;
-            MaximumQueueDelayMilliseconds = maximumQueueDelayMilliseconds;
-            Top = new List<DeferredWorkMeasurement>(
-                top ?? throw new ArgumentNullException(nameof(top)));
-        }
-
-        [DataMember(Name = "calls", Order = 1)]
-        internal long Calls { get; private set; }
-
-        [DataMember(Name = "failures", Order = 2)]
-        internal long Failures { get; private set; }
-
-        [DataMember(Name = "runtimeMs", Order = 3)]
-        internal double RuntimeMilliseconds { get; private set; }
-
-        [DataMember(Name = "maxQueueDelayMs", Order = 4)]
-        internal double MaximumQueueDelayMilliseconds { get; private set; }
-
-        [DataMember(Name = "top", Order = 5)]
-        internal List<DeferredWorkMeasurement> Top { get; private set; }
-    }
-
-    [DataContract]
-    internal sealed class DeferredWorkMeasurement
-    {
-        internal DeferredWorkMeasurement(
-            string owner,
-            string name,
-            long calls,
-            long failures,
-            double totalMilliseconds,
-            double maximumMilliseconds,
-            double averageWaitMilliseconds,
-            double maximumWaitMilliseconds)
-        {
-            Owner = owner;
-            Name = name;
-            Calls = calls;
-            Failures = failures;
-            TotalMilliseconds = totalMilliseconds;
-            MaximumMilliseconds = maximumMilliseconds;
-            AverageWaitMilliseconds = averageWaitMilliseconds;
-            MaximumWaitMilliseconds = maximumWaitMilliseconds;
-        }
-
-        [DataMember(Name = "owner", Order = 1)]
-        internal string Owner { get; private set; }
-
-        [DataMember(Name = "name", Order = 2)]
-        internal string Name { get; private set; }
-
-        [DataMember(Name = "calls", Order = 3)]
-        internal long Calls { get; private set; }
-
-        [DataMember(Name = "failures", Order = 4)]
-        internal long Failures { get; private set; }
-
-        [DataMember(Name = "totalMs", Order = 5)]
-        internal double TotalMilliseconds { get; private set; }
-
-        [DataMember(Name = "maxMs", Order = 6)]
-        internal double MaximumMilliseconds { get; private set; }
-
-        [DataMember(Name = "averageWaitMs", Order = 7)]
-        internal double AverageWaitMilliseconds { get; private set; }
-
-        [DataMember(Name = "maxWaitMs", Order = 8)]
-        internal double MaximumWaitMilliseconds { get; private set; }
     }
 }

@@ -2,9 +2,10 @@
 
 Parent: [Documentation index](README.md)
 
-FixWorld separates early process entry, version validation, runtime ownership,
-and RimWorld-facing mod integration. Each process has one runtime and one active
-play-data loading path.
+FixWorld separates early process entry, version validation, runtime services,
+and RimWorld-facing mod integration. RimWorld owns play-data execution. FixWorld
+observes that execution and replaces only the texture read path on a valid DDS
+cache hit.
 
 ## Boot flow
 
@@ -13,16 +14,17 @@ RimWorldWin64.exe
   -> UnityDoorstop
   -> FixWorld.Preloader.dll
      -> wait for Assembly-CSharp
-     -> preload a combined-XML cache candidate
+     -> start bounded DDS read-ahead
      -> resolve the installed Harmony assembly
   -> FixWorld.Loader.dll
      -> validate RimWorld version, MVID, and required methods
      -> load FixWorld.Runtime.dll
   -> FixWorld.Runtime
      -> create runtime services
-     -> claim PlayDataLoader.DoPlayLoad()
-     -> validate or rebuild the combined-XML cache
-     -> execute the owned play-data pipeline
+     -> install passive play-data stage hooks
+     -> install the DDS texture-load detour
+  -> RimWorld PlayDataLoader.DoPlayLoad()
+     -> execute the original loader and deferred queue
   -> FixWorld.Mod.dll
      -> attach settings and ModContentPack to the running runtime
 ```
@@ -36,50 +38,45 @@ the runtime that already exists.
 | Assembly | Responsibility |
 | --- | --- |
 | `FixWorld.Shared` | Assembly-neutral events, scheduling, profiling, cache snapshots, and boot contracts |
-| `FixWorld.Preloader` | Earliest managed entry, Assembly-CSharp observation, Harmony resolution, and loader handoff |
+| `FixWorld.Preloader` | Earliest managed entry, Assembly-CSharp observation, DDS read-ahead, Harmony resolution, and loader handoff |
 | `FixWorld.Loader` | Exact RimWorld contract validation and one runtime start call |
-| `FixWorld.Runtime` | Lifecycle, hooks, play-data stages, scheduler, telemetry store, XML and DDS caches, and loading UI state |
+| `FixWorld.Runtime` | Lifecycle, passive stage observation, scheduler, telemetry, DDS cache, and loading UI state |
 | `FixWorld.Mod` | Doorstop installation, settings, RimWorld UI, and runtime attachment |
 | `FixWorld.Tool` | Explicit command-line wrappers for preloader maintenance, DDS cleanup, and texconv |
 
-The preloader and loader contain no gameplay policy. The runtime is the only
-owner of long-lived infrastructure. Harmony patches are thin translation
-boundaries and do not own domain state.
+The preloader and loader contain no gameplay policy. The runtime owns long-lived
+FixWorld services. Harmony patches are thin observation or texture-routing
+boundaries and do not reproduce RimWorld's loader.
 
-## Play-data pipeline
+## Play-data observation
 
-FixWorld replaces `PlayDataLoader.DoPlayLoad()` with one ordered 17-stage
-pipeline. The stages are grouped into Boot, Content, Definitions, and Finalize
-for presentation without hiding their individual telemetry.
+FixWorld does not replace `PlayDataLoader.DoPlayLoad()` or
+`LongEventHandler.ExecuteWhenFinished()`. It records transitions at selected
+RimWorld method boundaries and presents them as 17 technical stages grouped into
+Boot, Content, Definitions, and Finalize. This preserves the useful loading UI
+and stage timings without owning mod order, XML processing, Def construction, or
+deferred execution.
 
-Owning the order does not mean every stage has been reimplemented. Some stages
-still call the corresponding RimWorld operation through a narrow adapter. Each
-deeper cutover must preserve the active mod list, ordering, Harmony expectations,
-and produced game data.
-
-The authoritative stage list, combined-XML cache boundary, current measurements,
-and deferred-work behavior are documented in the
+The authoritative stage list and measurement boundary are documented in the
 [play-data pipeline](play-data-pipeline.md).
 
 ## Threading boundary
 
-Unity and mutable Verse state remain on the main thread. Workers may prepare
-only independent file, hash, cache, or byte data. Worker results are immutable
-and must be committed in deterministic order through the main-thread queue.
+RimWorld and Unity retain their original threading behavior. FixWorld workers
+are used by the DDS cache for file, hash, conversion, and pack preparation.
+Unity texture creation remains on the thread that requested the texture, and
+background results are committed through the main-thread queue where required.
 
-The stage pipeline owns ordering and barriers. The scheduler owns resource
-limits and execution. The event bus reports typed observations. These concerns
-must not be collapsed into one executor.
-
-The Runtime telemetry store and read-only diagnostics UI are documented in
-[runtime diagnostics](diagnostics.md).
+The event bus carries stage and lifecycle observations. The telemetry store
+creates one startup snapshot consumed by logs, benchmarks, and the read-only
+diagnostics UI. See [runtime diagnostics](diagnostics.md).
 
 ## Failure boundary
 
-Before FixWorld claims `DoPlayLoad()`, contract failure disables the early
-runtime and lets RimWorld continue through its original loader. After ownership
-has been claimed, an unexpected failure is reported and terminates that load
-instead of silently executing a second pipeline.
+If the supported RimWorld contract or runtime-hook installation cannot be
+proven, the early runtime stays disabled and RimWorld continues with its original
+loader. DDS initialization and lookup failures fall back to the source texture.
+FixWorld never starts a second play-data pipeline after a failure.
 
 Doorstop installation, repair, and removal are documented separately in the
 [Windows loader guide](windows-preloader.md).

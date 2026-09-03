@@ -113,8 +113,8 @@ namespace FixWorld.Preloader
         internal const string ActiveVariable = "FIXWORLD_PRELOADER_ACTIVE";
         internal const string DoorstopVersion = "4.4.0";
 
-        internal const string RuntimeOwnsModBootVariable =
-            "FIXWORLD_RUNTIME_OWNS_MOD_BOOT";
+        internal const string RuntimeReadyVariable =
+            "FIXWORLD_RUNTIME_READY";
 
         private const string EntryTicksVariable = "FIXWORLD_PRELOADER_ENTRY_TICKS";
         private const string AssemblyCSharpTicksVariable =
@@ -143,15 +143,15 @@ namespace FixWorld.Preloader
             Set(AssembliesAtEntryVariable, assemblyCount);
         }
 
-        internal static void PublishRuntimeOwnsModBoot()
+        internal static void PublishRuntimeReady()
         {
-            Set(RuntimeOwnsModBootVariable, CurrentProcessId());
+            Set(RuntimeReadyVariable, CurrentProcessId());
         }
 
-        internal static bool RuntimeOwnsModBoot()
+        internal static bool RuntimeReady()
         {
             return string.Equals(
-                Get(RuntimeOwnsModBootVariable),
+                Get(RuntimeReadyVariable),
                 CurrentProcessId(),
                 StringComparison.Ordinal);
         }
