@@ -48,32 +48,18 @@ boundaries and do not own domain state.
 
 ## Play-data pipeline
 
-FixWorld replaces `PlayDataLoader.DoPlayLoad()` with one ordered pipeline that
-currently exposes 16 stages:
-
-```text
-Reset
-Initialize mods
-Index mod content
-Prepare mod content
-Create mod classes
-Load and patch XML
-Import definitions
-Early binding
-Pre-resolve implied definitions
-Cross-reference resolution
-Reference resolution
-Post-resolve implied definitions
-Definition finalization
-Initialize runtime
-Execute deferred main-thread work
-Complete
-```
+FixWorld replaces `PlayDataLoader.DoPlayLoad()` with one ordered 17-stage
+pipeline. The stages are grouped into Boot, Content, Definitions, and Finalize
+for presentation without hiding their individual telemetry.
 
 Owning the order does not mean every stage has been reimplemented. Some stages
 still call the corresponding RimWorld operation through a narrow adapter. Each
 deeper cutover must preserve the active mod list, ordering, Harmony expectations,
 and produced game data.
+
+The authoritative stage list, combined-XML cache boundary, current measurements,
+and deferred-work behavior are documented in the
+[play-data pipeline](play-data-pipeline.md).
 
 ## Threading boundary
 
@@ -84,6 +70,9 @@ and must be committed in deterministic order through the main-thread queue.
 The stage pipeline owns ordering and barriers. The scheduler owns resource
 limits and execution. The event bus reports typed observations. These concerns
 must not be collapsed into one executor.
+
+The Runtime telemetry store and read-only diagnostics UI are documented in
+[runtime diagnostics](diagnostics.md).
 
 ## Failure boundary
 

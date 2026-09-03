@@ -10,6 +10,8 @@ owner and link to it instead of copying the same explanation into several files
 | Product status and first build command | Root `README.md` |
 | Documentation navigation | `docs/README.md` |
 | Runtime and assembly boundaries | `docs/architecture.md` |
+| Play-data stages, XML cache, and deferred execution | `docs/play-data-pipeline.md` |
+| Runtime telemetry and diagnostics UI | `docs/diagnostics.md` |
 | Setup, checks, benchmarks, and release preparation | `docs/development.md` |
 | Windows installation and recovery | `docs/windows-preloader.md` |
 | DDS cache behavior | `docs/dds-cache.md` |

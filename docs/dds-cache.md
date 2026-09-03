@@ -2,20 +2,28 @@
 
 Parent: [Documentation index](README.md)
 
-FixWorld caches eligible mod textures as DDS so later launches can skip repeated
-PNG or JPEG decoding, mipmap generation, and BC3 compression. A cache failure
-must never change game content or prevent the original texture from loading.
+FixWorld caches eligible mod textures as BC7 DDS so later launches can skip
+repeated PNG or JPEG decoding, mipmap generation, and runtime compression. A
+cache failure must never change game content or prevent the original texture
+from loading.
 
 ## Measured pilot baseline
 
-The current 88-mod reference list contains 10,460 reusable DDS entries. Earlier
-measured runs reduced the texture path from about 21.16 seconds without DDS to
-2.24 through 2.51 seconds with a complete warm cache. The cache occupied about
-1.59 GiB
+The current 88-mod reference list contains 10,460 reusable DDS entries in 62
+per-mod packs. Recent fully warm runs spend about 0.3 seconds in texture loading
+and about 0.1 seconds reading packed DDS data. Earlier measurements of the
+loose-file implementation reduced a roughly 21.16-second source-texture path to
+2.24 through 2.51 seconds with a complete cache. The current packed cache is
+about 1.6 GiB.
 
 These numbers describe one machine, one mod list, and one cache identity. They
 are not a general performance guarantee. Raw runs and comparison rules belong
-to the benchmark data, not this document
+to the benchmark data, not this document.
+
+Rebuilding 8,250 missing entries into 52 packs took 282 seconds in the
+background with one active converter. Reading 256 MiB of packed data ahead of
+the Runtime was neutral for total startup time on the reference NVMe. Slow
+storage requires separate measurements.
 
 ## Validity
 
@@ -36,7 +44,9 @@ too dark are rebuilt rather than reused
 
 Cache validation occurs during loading. Missing DDS files are built later as
 low-priority background jobs after the menu is usable. Workers may perform file
-and conversion work, but publication remains ordered and atomic
+and conversion work, but publication remains ordered and atomic. Warm access
+timestamps are updated per pack at most every 12 hours, avoiding a complete
+manifest rewrite on every launch.
 
 The default disk limit is 6 GiB and can be changed between 1 and 64 GiB in the
 FixWorld settings. FixWorld also keeps at least 10 GiB of free disk space.
@@ -72,6 +82,19 @@ The bundled DirectXTex build and license are documented in
 [third-party notices](../THIRD_PARTY_NOTICES.md). Linux conversion is not yet
 implemented. Existing DDS files may be platform-neutral, but cache creation
 still requires an explicitly supported converter backend
+
+## BC7 quality checks
+
+An automated comparison decoded 10,344 packed BC7 top mip levels and compared
+them with their PNG or JPEG sources. Mean luminance ratios remained close to
+1.000 with and without PNG gamma, sRGB, or ICC metadata. The reported darker
+runtime appearance therefore still requires a named affected texture and an
+in-game check of Unity sampling, alpha handling, and generated mip levels.
+
+A 40-texture converter sample took 956 ms with normal GPU BC7, 674 ms with quick
+GPU BC7, and 21.9 seconds on the CPU. Quick mode increased mean top-level RGBA
+error from 0.291 to 0.456 values out of 255. Normal GPU quality remains the
+default until the runtime appearance issue is resolved.
 
 ## Measurement rules
 

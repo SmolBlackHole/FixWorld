@@ -71,7 +71,11 @@ never committed or redistributed by this repository
 Start at the [documentation index](docs/README.md):
 
 - [Architecture](docs/architecture.md) explains the preloader, loader, runtime,
-  mod bridge, play-data pipeline, and failure boundaries
+  mod bridge, ownership, and failure boundaries
+- [Play-data pipeline](docs/play-data-pipeline.md) documents the 17 loading
+  stages, combined-XML cache, and deferred work
+- [Runtime diagnostics](docs/diagnostics.md) documents telemetry, benchmark
+  output, and the in-game diagnostics window
 - [Development and verification](docs/development.md) owns local setup, builds,
   checks, benchmarks, and release preparation
 - [DDS texture cache](docs/dds-cache.md) documents cache behavior and limits.

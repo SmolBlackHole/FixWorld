@@ -39,6 +39,6 @@ work. The [TODO](TODO.md) owns concrete tasks.
 ## Compatibility boundary
 
 FixWorld currently supports one exact RimWorld build on Windows x64. Broader
-version compatibility, Linux conversion support, new texture formats, DDS packs,
-and alternative detour backends remain future work until the current pipeline is
+version compatibility, Linux conversion support, alternative cache formats, and
+alternative detour backends remain future work until the current pipeline is
 stable and measured.
