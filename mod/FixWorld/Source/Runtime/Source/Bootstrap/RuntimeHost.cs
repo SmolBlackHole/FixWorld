@@ -87,6 +87,11 @@ namespace FixWorld.Runtime
             Volatile.Read(ref current)?.PrepareTextures();
         }
 
+        internal static void BeginTextureDiscovery()
+        {
+            Volatile.Read(ref current)?.BeginTextureDiscovery();
+        }
+
         internal static void CompletePlayData()
         {
             Volatile.Read(ref current)?.CompletePlayData();

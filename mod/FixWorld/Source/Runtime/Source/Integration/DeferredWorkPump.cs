@@ -35,6 +35,7 @@ namespace FixWorld.Integration
                 return false;
             }
 
+            RuntimeHost.BeginTextureDiscovery();
             ExecutingField.SetValue(null, true);
             EventEnumeratorField.SetValue(
                 queuedEvent,

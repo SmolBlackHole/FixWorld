@@ -33,8 +33,16 @@ namespace FixWorld.Textures
         private readonly object sync = new object();
         private readonly JobScheduler scheduler;
         private readonly MainThreadQueue mainThread;
-        private readonly Dictionary<string, DdsModPlan> plans =
-            new Dictionary<string, DdsModPlan>(StringComparer.Ordinal);
+        private readonly HashSet<ModContentPack> observedTextureMods =
+            new HashSet<ModContentPack>();
+        private readonly HashSet<string> activePackages =
+            new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<string> usedPackages =
+            new HashSet<string>(StringComparer.Ordinal);
+        private readonly Dictionary<string, HashSet<string>> retainedByPackage =
+            new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        private readonly List<DdsModPlan> discoveredBuildPlans =
+            new List<DdsModPlan>();
         private readonly Dictionary<string, DdsPackSlice> startupHits =
             new Dictionary<string, DdsPackSlice>(
                 StringComparer.OrdinalIgnoreCase);
@@ -44,6 +52,7 @@ namespace FixWorld.Textures
                     StringComparer.OrdinalIgnoreCase);
         private readonly List<JobHandle> jobs = new List<JobHandle>();
         private DdsModPlan[] pendingBuildPlans = Array.Empty<DdsModPlan>();
+        private DdsPackSnapshot discoverySnapshot;
 
         private string cacheRoot;
         private string legacyCacheRoot;
@@ -55,6 +64,7 @@ namespace FixWorld.Textures
         private DdsPackStore store;
         private bool attached;
         private bool backgroundStarted;
+        private bool observingTextureDiscovery;
         private bool stopped;
         private int scheduledBuilds;
         private int completedBuilds;
@@ -141,7 +151,7 @@ namespace FixWorld.Textures
         {
             lock (sync)
             {
-                plans.Clear();
+                ResetDiscovery();
                 startupHits.Clear();
                 DisposeStartupReaders();
                 pendingBuildPlans = Array.Empty<DdsModPlan>();
@@ -159,74 +169,22 @@ namespace FixWorld.Textures
                 }
 
                 DdsCacheContract.RequestReadAheadStop();
-                DdsPackSnapshot snapshot = store.Snapshot();
-                HashSet<string> activePackages = new HashSet<string>(
-                    StringComparer.Ordinal);
-                HashSet<string> usedPackages = new HashSet<string>(
-                    StringComparer.Ordinal);
-                List<DdsModPlan> buildPlans = new List<DdsModPlan>();
-                long availableBytes = new DriveInfo(Path.GetPathRoot(cacheRoot))
-                    .AvailableFreeSpace;
+                ResetDiscovery();
+                discoverySnapshot = store.Snapshot();
                 foreach (ModContentPack mod in
                          LoadedModManager.RunningModsListForReading)
                 {
-                    DdsModPlan plan = CreatePlan(mod, snapshot);
-                    plans[plan.PackageId] = plan;
-                    foreach (DdsPackItem item in plan.Items)
-                    {
-                        if (item.HasExisting)
-                        {
-                            startupHits[item.Source.FullName] = item.Existing;
-                        }
-                    }
-
-                    activePackages.Add(plan.PackageId);
-                    Interlocked.Increment(ref workerPreparedMods);
-                    if (plan.Hits.Count > 0)
-                    {
-                        usedPackages.Add(plan.PackageId);
-                        Interlocked.Increment(ref workerAppliedMods);
-                    }
-                    else
-                    {
-                        Interlocked.Increment(ref workerFallbackMods);
-                    }
-
-                    Interlocked.Add(ref hits, plan.Hits.Count);
-                    Interlocked.Add(ref misses, plan.MissingCount);
-                    Interlocked.Add(ref excluded, plan.Excluded);
-                    Interlocked.Add(ref unsupported, plan.Unsupported);
-
-                    HashSet<string> retained = new HashSet<string>(
-                        plan.Items.Select(item => item.SourcePath),
-                        StringComparer.Ordinal);
-                    AddInvalidated(store.ReconcilePackage(
-                        plan.PackageId,
-                        retained));
-                    if (plan.MissingCount == 0)
-                    {
-                        continue;
-                    }
-
-                    long temporaryBytes = checked(
-                        plan.EstimatedPackBytes * 2L);
-                    if (string.IsNullOrEmpty(texconvPath) ||
-                        plan.EstimatedPackBytes > maximumCacheBytes ||
-                        availableBytes - temporaryBytes < minimumFreeBytes)
-                    {
-                        Interlocked.Add(ref budgetSkipped, plan.MissingCount);
-                        continue;
-                    }
-
-                    availableBytes -= temporaryBytes;
-                    buildPlans.Add(plan);
+                    activePackages.Add(DdsCacheKey.Normalize(mod.PackageId));
                 }
+            }
+        }
 
-                store.TouchPackages(usedPackages);
-                AddInvalidated(store.RemoveInactivePackages(activePackages));
-                store.Save();
-                SetCacheBytes(store.CurrentBytes);
-                pendingBuildPlans = buildPlans.ToArray();
+        internal void BeginTextureDiscovery()
+        {
+            lock (sync)
+            {
+                observingTextureDiscovery =
+                    IsRunning && discoverySnapshot != null;
             }
         }
 
@@ -298,10 +256,90 @@ namespace FixWorld.Textures
             }
         }
 
+        internal void ObserveTextureFiles(
+            ModContentPack mod,
+            string contentPath,
+            Func<string, bool> validateExtension,
+            List<string> foldersToLoadDebug,
+            Dictionary<string, FileInfo> files)
+        {
+            if (mod == null ||
+                files == null ||
+                foldersToLoadDebug != null ||
+                !string.Equals(
+                    contentPath,
+                    GenFilePaths.ContentPath<Texture2D>(),
+                    StringComparison.Ordinal) ||
+                validateExtension?.Method.DeclaringType !=
+                typeof(ModContentLoader<Texture2D>) ||
+                !string.Equals(
+                    validateExtension.Method.Name,
+                    nameof(ModContentLoader<Texture2D>.IsAcceptableExtension),
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            lock (sync)
+            {
+                if (!observingTextureDiscovery ||
+                    discoverySnapshot == null ||
+                    !observedTextureMods.Add(mod))
+                {
+                    return;
+                }
+
+                DdsModPlan plan = CreatePlan(
+                    mod,
+                    discoverySnapshot,
+                    files);
+                foreach (DdsPackItem item in plan.Items)
+                {
+                    if (item.HasExisting)
+                    {
+                        startupHits[item.Source.FullName] = item.Existing;
+                    }
+                }
+
+                Interlocked.Increment(ref workerPreparedMods);
+                if (plan.Hits.Count > 0)
+                {
+                    usedPackages.Add(plan.PackageId);
+                    Interlocked.Increment(ref workerAppliedMods);
+                }
+                else
+                {
+                    Interlocked.Increment(ref workerFallbackMods);
+                }
+
+                Interlocked.Add(ref hits, plan.Hits.Count);
+                Interlocked.Add(ref misses, plan.MissingCount);
+                Interlocked.Add(ref excluded, plan.Excluded);
+                Interlocked.Add(ref unsupported, plan.Unsupported);
+
+                retainedByPackage[plan.PackageId] = new HashSet<string>(
+                    plan.Items.Select(item => item.SourcePath),
+                    StringComparer.Ordinal);
+                if (plan.MissingCount == 0)
+                {
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(texconvPath))
+                {
+                    Interlocked.Add(ref budgetSkipped, plan.MissingCount);
+                    return;
+                }
+
+                discoveredBuildPlans.Add(plan);
+            }
+        }
+
         internal void CompleteLoading()
         {
             lock (sync)
             {
+                FinalizeDiscovery();
                 DisposeStartupReaders();
             }
         }
@@ -332,7 +370,7 @@ namespace FixWorld.Textures
                 scheduled = jobs.ToArray();
                 currentStore = store;
                 store = null;
-                plans.Clear();
+                ResetDiscovery();
                 startupHits.Clear();
                 DisposeStartupReaders();
                 pendingBuildPlans = Array.Empty<DdsModPlan>();
@@ -373,6 +411,40 @@ namespace FixWorld.Textures
 
         private bool IsRunning => !stopped && store != null;
 
+        private void FinalizeDiscovery()
+        {
+            observingTextureDiscovery = false;
+            if (store == null || discoverySnapshot == null)
+            {
+                ResetDiscovery();
+                return;
+            }
+
+            AddInvalidated(store.ReconcilePackages(retainedByPackage));
+            store.TouchPackages(usedPackages);
+            AddInvalidated(store.RemoveInactivePackages(activePackages));
+            store.Save();
+            SetCacheBytes(store.CurrentBytes);
+            pendingBuildPlans = discoveredBuildPlans.ToArray();
+            discoverySnapshot = null;
+            observedTextureMods.Clear();
+            activePackages.Clear();
+            usedPackages.Clear();
+            retainedByPackage.Clear();
+            discoveredBuildPlans.Clear();
+        }
+
+        private void ResetDiscovery()
+        {
+            observingTextureDiscovery = false;
+            discoverySnapshot = null;
+            observedTextureMods.Clear();
+            activePackages.Clear();
+            usedPackages.Clear();
+            retainedByPackage.Clear();
+            discoveredBuildPlans.Clear();
+        }
+
         private void DisposeStartupReaders()
         {
             foreach (MemoryMappedFileSpanWrapper reader in startupReaders.Values)
@@ -385,18 +457,14 @@ namespace FixWorld.Textures
 
         private DdsModPlan CreatePlan(
             ModContentPack mod,
-            DdsPackSnapshot snapshot)
+            DdsPackSnapshot snapshot,
+            Dictionary<string, FileInfo> discovered)
         {
             string packageId = DdsCacheKey.Normalize(mod.PackageId);
             string modRoot = Path.GetFullPath(mod.RootDir).TrimEnd(
                                  Path.DirectorySeparatorChar,
                                  Path.AltDirectorySeparatorChar) +
                              Path.DirectorySeparatorChar;
-            Dictionary<string, FileInfo> discovered =
-                ModContentPack.GetAllFilesForMod(
-                mod,
-                GenFilePaths.ContentPath<Texture2D>(),
-                ModContentLoader<Texture2D>.IsAcceptableExtension);
             HashSet<string> shippedDds = new HashSet<string>(
                 discovered.Keys
                     .Select(DdsCacheKey.Normalize)
@@ -449,30 +517,14 @@ namespace FixWorld.Textures
                     continue;
                 }
 
-                if (!TextureDimensions.TryRead(
-                        source,
-                        out TextureDimensions dimensions))
-                {
-                    unsupportedCount++;
-                    continue;
-                }
-
-                int mipCount = dimensions.GetBlockCompressedMipCount();
-                if (mipCount == 0)
-                {
-                    excludedCount++;
-                    continue;
-                }
-
-                long estimated = dimensions.GetBc7FileSize(mipCount);
                 items.Add(DdsPackItem.FromMissing(
                     discoveredFile.Key,
                     sourcePath,
                     source,
                     sourceHash: null,
-                    mipCount,
-                    estimated));
-                estimatedBytes += Align(estimated);
+                    mipCount: 0,
+                    estimatedBytes: source.Length));
+                estimatedBytes += Align(source.Length);
                 missing++;
             }
 
@@ -592,6 +644,36 @@ namespace FixWorld.Textures
             string stagingRoot = null;
             try
             {
+                plan = PrepareMissing(plan, cancellationToken);
+                if (plan.MissingCount == 0)
+                {
+                    DdsBuildResult empty = new DdsBuildResult(
+                        0,
+                        0,
+                        ElapsedMilliseconds(startedAt),
+                        null);
+                    PostCompletion(empty);
+                    return empty;
+                }
+
+                long temporaryBytes = checked(
+                    plan.EstimatedPackBytes * 2L);
+                long availableBytes = new DriveInfo(
+                        Path.GetPathRoot(cacheRoot))
+                    .AvailableFreeSpace;
+                if (plan.EstimatedPackBytes > maximumCacheBytes ||
+                    availableBytes - temporaryBytes < minimumFreeBytes)
+                {
+                    Interlocked.Add(ref budgetSkipped, plan.MissingCount);
+                    DdsBuildResult skipped = new DdsBuildResult(
+                        0,
+                        0,
+                        ElapsedMilliseconds(startedAt),
+                        null);
+                    PostCompletion(skipped);
+                    return skipped;
+                }
+
                 pack = BuildPack(
                     plan,
                     cancellationToken,
@@ -649,6 +731,64 @@ namespace FixWorld.Textures
                 PostCompletion(result);
                 return result;
             }
+        }
+
+        private DdsModPlan PrepareMissing(
+            DdsModPlan plan,
+            CancellationToken cancellationToken)
+        {
+            List<DdsPackItem> items = new List<DdsPackItem>(plan.Items.Count);
+            long estimatedBytes = 16L;
+            int missing = 0;
+            int excludedCount = 0;
+            int unsupportedCount = 0;
+            foreach (DdsPackItem item in plan.Items)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (item.HasExisting)
+                {
+                    items.Add(item);
+                    estimatedBytes += Align(item.Existing.Length);
+                    continue;
+                }
+
+                if (!TextureDimensions.TryRead(
+                        item.Source,
+                        out TextureDimensions dimensions))
+                {
+                    unsupportedCount++;
+                    continue;
+                }
+
+                int mipCount = dimensions.GetBlockCompressedMipCount();
+                if (mipCount == 0)
+                {
+                    excludedCount++;
+                    continue;
+                }
+
+                long estimated = dimensions.GetBc7FileSize(mipCount);
+                items.Add(DdsPackItem.FromMissing(
+                    item.LogicalPath,
+                    item.SourcePath,
+                    item.Source,
+                    item.SourceHash,
+                    mipCount,
+                    estimated));
+                estimatedBytes += Align(estimated);
+                missing++;
+            }
+
+            Interlocked.Add(ref excluded, excludedCount);
+            Interlocked.Add(ref unsupported, unsupportedCount);
+            return new DdsModPlan(
+                plan.PackageId,
+                plan.Hits,
+                items,
+                missing,
+                excludedCount,
+                unsupportedCount,
+                estimatedBytes);
         }
 
         private DdsBuiltPack BuildPack(

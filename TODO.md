@@ -28,7 +28,9 @@ history.
    100 `ThingDef.ResolveIcon()` failures. The replacement boundary passed with all
    90 active mods, both with DDS enabled and disabled.
 2. Reproduce the colony-to-menu crash with DDS enabled and disabled.
-3. Fix DDS background completion after pack and index publication.
+3. [x] Fix DDS background completion after pack and index publication. A normal
+   90-mod cold-cache run published 10,468 entries with 0 failures and emitted
+   the benchmark completion report after 343.7 seconds of background work.
 4. Capture a named darker texture and validate DDS sampling, alpha, and mipmaps.
 5. Reduce and throttle DDS background work from measured resource pressure.
 6. Re-run the second mod pack now that Royalty and Ideology are installed;
@@ -54,8 +56,9 @@ history.
       The captured stack points to MapModeFramework background cache work after
       teardown, so do not attribute it to DDS without an A/B result.
 - [ ] Throttle or pause background conversion from CPU, I/O, RAM, and TPS budgets.
-- [ ] Fix DDS background completion: the pack files and index finish, but the
-      benchmark completion report was still missing after 300 seconds.
+- [x] Verify DDS background completion after pack and index publication. The
+      90-mod cold-cache run created 10,468 entries with 0 failures and emitted
+      its typed completion report.
 - [ ] Expose background progress and remaining assets to UI, logs, and benchmarks.
 - [ ] Capture a named darker texture in-game, then validate Unity sampling, alpha,
       color space, and generated mip levels.
@@ -84,48 +87,23 @@ history.
 - [ ] Verify the diagnostics window in the main menu and in-game. Closed UI and
       default logging must have no measurable hotpath.
 
-## Direct loader replacement research track
+## Targeted RimWorld loading optimizations
 
-Build this as a local research prototype. It may patch or replace RimWorld
-methods directly, load additional replacement assemblies, or rebuild selected
-DLL boundaries when that gives us the cleanest test. Packaging and public
-distribution are separate decisions and do not constrain the experiment. Keep
-the prototype isolated from the active loader until it reproduces RimWorld's
-observable result for the supported build.
-
-- [ ] Record original assembly hashes and make the experimental installation
-      reversible, then identify and patch the smallest exact RimWorld entry point.
-- [ ] Build whatever FixWorld-owned patch or replacement DLLs are needed to take
-      control at that boundary instead of preserving an artificial mod-only limit.
-- [ ] Build a persistent mod index from `ModsConfig.xml`, effective load folders,
-      dependency metadata, and discovered files. Reuse it on a matching start and
-      reconcile additions, removals, and changed files during discovery.
-- [ ] Discover assemblies once, construct their dependency and load-order graph,
-      then load them deterministically. Preserve the active mod order wherever no
-      stronger assembly dependency exists.
-- [ ] Read XML files concurrently, parse independent documents in workers, merge
-      deterministically, and execute patch operations strictly in effective mod
-      order. Unknown or stateful custom patch operations must remain ordered and
-      observable.
-- [ ] Produce a per-mod texture plan while indexing so the complete required set
-      is known early. Parallelize bounded file I/O and source decoding without
-      touching Unity objects from workers.
-- [ ] Preload indexed source files and assemblies only under an explicit byte
-      budget. Measure RAM, I/O pressure, and overlap with the critical path.
-- [ ] Load compatible DDS/BCn payloads directly. Build missing artifacts per mod
-      and maintain a per-mod index, but compare a writable sidecar cache with the
-      central cache before choosing storage. Never mutate Workshop or source mod
-      directories implicitly.
-- [ ] Evaluate `UnityWebRequestTexture` and `DownloadHandlerTexture` for supported
-      source formats. Treat direct DDS/BCn upload as a separate path and commit
-      texture creation and GPU upload through a bounded main-thread queue.
-- [ ] Validate exact active-mod order, generated-at-start content, Def results,
-      patch side effects, texture appearance, recovery behavior, and unsupported
-      build fallback against the current RimWorld-owned baseline.
-- [ ] Keep the replacement only if cold and warm benchmarks show a material gain
-      on both the 88-mod fixture and the second mod pack. Otherwise retain the
-      index or texture artifacts that independently prove useful and delete the
-      replacement pipeline.
+- [x] End the direct-loader replacement experiment. The 89-mod fixture showed no
+      material warm-start gain. The 260-mod fixture recovered from 259 expected
+      mods to 5 and produced 4,893 relevant errors. Keep the prototype only on
+      `experiments/direct-loader`.
+- [x] Profile `GlobalTextureAtlasManager.BakeStaticAtlases()` by internal phase.
+      Two warm-DDS runs took 653 ms and 674 ms, dominated by GPU color blitting.
+      Do not replace it without new evidence on a representative slow system.
+- [x] Measure repeated `ModContentPack.GetAllFilesForMod()` texture calls. The
+      90-mod fixture made 180 equivalent calls; 90 repeated scans cost 68.2 ms.
+- [x] Remove the duplicate FixWorld scan. RimWorld still performs the canonical
+      discovery at its original deferred boundary, and DDS consumes that exact
+      dictionary in a postfix. A warm 90-mod run retained 10,468 DDS hits with
+      0 relevant errors and reduced `IndexTextureSources` to 0 ms.
+- [ ] Profile the next largest individual RimWorld method after file discovery.
+      Patch it only when the measured saving exceeds the compatibility surface.
 
 ## Benchmark and pilot operation
 

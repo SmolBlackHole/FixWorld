@@ -307,6 +307,10 @@ namespace FixWorld.Integration
             {
                 __state = RuntimeHost.TransitionStage(
                     PlayDataLoadStage.DeferredMainThreadWork);
+                if (__state)
+                {
+                    RuntimeHost.BeginTextureDiscovery();
+                }
             }
 
             [HarmonyFinalizer]

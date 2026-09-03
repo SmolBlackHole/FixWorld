@@ -99,6 +99,11 @@ namespace FixWorld.Runtime
             return telemetry.Transition(stage);
         }
 
+        internal void BeginTextureDiscovery()
+        {
+            Textures.BeginTextureDiscovery();
+        }
+
         internal void PrepareTextures()
         {
             telemetry.Transition(PlayDataLoadStage.InitializeTextureCache);

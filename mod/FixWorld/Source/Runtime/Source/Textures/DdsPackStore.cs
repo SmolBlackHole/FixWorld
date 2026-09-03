@@ -147,18 +147,15 @@ namespace FixWorld.Textures
             dirty |= changed;
         }
 
-        internal int ReconcilePackage(
-            string packageId,
-            ISet<string> retainedSourcePaths)
+        internal int ReconcilePackages(
+            IDictionary<string, HashSet<string>> retainedByPackage)
         {
-            string normalizedPackage = DdsCacheKey.Normalize(packageId);
             string[] keys = writer.SnapshotEntries()
-                .Where(pair =>
-                    string.Equals(
-                        pair.Value.Value.PackageId,
-                        normalizedPackage,
-                        StringComparison.Ordinal) &&
-                    !retainedSourcePaths.Contains(pair.Value.Value.SourcePath))
+                .Where(pair => retainedByPackage.TryGetValue(
+                                   pair.Value.Value.PackageId,
+                                   out HashSet<string> retained) &&
+                               !retained.Contains(
+                                   pair.Value.Value.SourcePath))
                 .Select(pair => pair.Key)
                 .ToArray();
             foreach (string key in keys)

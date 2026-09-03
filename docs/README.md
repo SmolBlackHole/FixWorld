@@ -12,6 +12,7 @@ support boundary
 | Understand process entry and runtime ownership | [Architecture](architecture.md) |
 | Understand the observed loading stages | [Play-data stages](play-data-pipeline.md) |
 | Understand telemetry, benchmark data, and the in-game UI | [Runtime diagnostics](diagnostics.md) |
+| Understand how performance changes are selected and proven | [Optimization method](optimization.md) |
 | Build, test, benchmark, or package FixWorld | [Development and verification](development.md) |
 | Understand or remove the Windows early loader | [Windows loader](windows-preloader.md) |
 | Understand the DDS cache and its limits | [DDS texture cache](dds-cache.md) |
