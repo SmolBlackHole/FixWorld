@@ -21,6 +21,16 @@
         <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472"
             Version="1.0.3"
             PrivateAssets="all" />
+        <PackageReference Include="Krafs.Rimworld.Ref"
+            Version="$(FixWorldRimWorldReferenceVersion)"
+            ExcludeAssets="runtime"
+            PrivateAssets="all"
+            Condition="'$(FixWorldUseLocalGameReferences)' != 'true'" />
+        <PackageReference Include="Lib.Harmony"
+            Version="$(FixWorldHarmonyReferenceVersion)"
+            ExcludeAssets="runtime"
+            PrivateAssets="all"
+            Condition="'$(FixWorldUseLocalHarmonyReference)' != 'true'" />
     </ItemGroup>
 
     <ItemGroup>
@@ -32,8 +42,7 @@
             Link="Source\ExternalTools\TexconvProcess.cs" />
     </ItemGroup>
 
-    <ItemGroup>
-        <Reference Include="System.Runtime.Serialization" />
+    <ItemGroup Condition="'$(FixWorldUseLocalGameReferences)' == 'true'">
         <Reference Include="Assembly-CSharp">
             <HintPath>$(RimWorldManagedDir)\Assembly-CSharp.dll</HintPath>
             <Private>false</Private>
@@ -62,13 +71,22 @@
             <HintPath>$(RimWorldManagedDir)\UnityEngine.TextRenderingModule.dll</HintPath>
             <Private>false</Private>
         </Reference>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Reference Include="System.Runtime.Serialization" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(FixWorldUseLocalHarmonyReference)' == 'true'">
         <Reference Include="0Harmony">
             <HintPath>$(HarmonyAssemblyPath)</HintPath>
             <Private>false</Private>
         </Reference>
     </ItemGroup>
 
-    <Target Name="ValidateLocalReferences" BeforeTargets="ResolveReferences">
+    <Target Name="ValidateLocalGameReferences"
+        BeforeTargets="ResolveReferences"
+        Condition="'$(FixWorldUseLocalGameReferences)' == 'true'">
         <Error Condition="!Exists('$(RimWorldManagedDir)\Assembly-CSharp.dll')"
             Text="Assembly-CSharp.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
         <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.CoreModule.dll')"
@@ -83,6 +101,11 @@
             Text="UnityEngine.IMGUIModule.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
         <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.TextRenderingModule.dll')"
             Text="UnityEngine.TextRenderingModule.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
+    </Target>
+
+    <Target Name="ValidateLocalHarmonyReference"
+        BeforeTargets="ResolveReferences"
+        Condition="'$(FixWorldUseLocalHarmonyReference)' == 'true'">
         <Error Condition="!Exists('$(HarmonyAssemblyPath)')"
             Text="0Harmony.dll is missing. Set HarmonyAssemblyPath in mod/FixWorld/Local.Build.props or RIMWORLD_HARMONY_ASSEMBLY." />
     </Target>

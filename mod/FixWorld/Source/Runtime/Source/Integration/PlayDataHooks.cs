@@ -230,18 +230,15 @@ namespace FixWorld.Integration
             private static MethodBase TargetMethod()
             {
                 return AccessTools.Method(
-                           typeof(DefDatabase<ThingCategoryDef>),
-                           nameof(DefDatabase<ThingCategoryDef>
-                               .ResolveAllReferences),
-                           new[] { typeof(bool), typeof(bool) }) ??
+                           typeof(PlayDataLoader),
+                           "ResetStaticDataPre") ??
                        throw new MissingMethodException(
-                           typeof(DefDatabase<ThingCategoryDef>).FullName,
-                           nameof(DefDatabase<ThingCategoryDef>
-                               .ResolveAllReferences));
+                           typeof(PlayDataLoader).FullName,
+                           "ResetStaticDataPre");
             }
 
-            [HarmonyPrefix]
-            private static void Prefix()
+            [HarmonyPostfix]
+            private static void Postfix()
             {
                 RuntimeHost.TransitionStage(
                     PlayDataLoadStage.ReferenceResolution);

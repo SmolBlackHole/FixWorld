@@ -4,8 +4,9 @@ Parent: [Documentation index](README.md)
 
 FixWorld targets .NET Framework 4.7.2 because that is the compatible runtime
 surface used by RimWorld. The repository uses .NET SDK 10 to build the projects.
-The complete build is Windows-only and requires local RimWorld and Harmony
-assemblies that are never redistributed by this repository
+The complete build is Windows-only. It uses pinned, compile-only RimWorld
+`1.6.4871` and Harmony `2.4.1` reference packages when local game assemblies are
+not configured
 
 ## Prerequisites
 
@@ -16,7 +17,7 @@ assemblies that are never redistributed by this repository
 - Python 3.11 or newer
 - Git
 
-## Configure local references
+## Configure local references (optional)
 
 Copy the example file:
 
@@ -27,7 +28,8 @@ Copy-Item .\mod\FixWorld\Local.Build.props.example `
 
 Edit the copy so `RimWorldRoot` points to the local game directory and
 `HarmonyAssemblyPath` points to the installed `0Harmony.dll`. The file is ignored
-by Git
+by Git. When these files exist, local builds prefer the installed assemblies over
+the portable reference packages
 
 The same values can be supplied without a file:
 
@@ -43,9 +45,7 @@ python .\tools\check.py
 ```
 
 The check validates UTF-8 and LF text, the public Markdown link graph, tracked
-artifact policy, Python syntax, and the Shared contract suite. It intentionally
-does not pretend to compile RimWorld-dependent projects without proprietary game
-assemblies
+artifact policy, Python syntax, and the Shared contract suite
 
 ## Build and package
 
@@ -58,6 +58,11 @@ The normal build writes the mod assembly under `mod/FixWorld/Assemblies` and
 runtime components under `mod/FixWorld/Tools/Windows-x64`. Generated FixWorld
 assemblies and packages are ignored. The package command writes
 `dist/FixWorld-pilot-win-x64.zip`
+
+GitHub Actions runs the repository checks and the same package build on every
+push and pull request. A successful push to `main` publishes an immutable
+`pilot-N` prerelease with the Windows archive and its SHA-256 checksum. Releases
+remain marked as pilot builds until the in-game gates below are complete
 
 ## Benchmark
 
@@ -72,17 +77,18 @@ python .\tools\benchmark.py `
 
 The Runtime writes its versioned telemetry snapshot as typed benchmark JSON.
 Python starts RimWorld, waits for the report, validates its schema, writes one
-`loader-stages.csv`, then appends one result row. Do not compare
-runs with different mod lists, cache states, or source fixtures as if they were
-the same experiment
+`loader-stages.csv`, then appends one result row. A run fails when relevant load
+errors are present or RimWorld changes the configured active-mod sequence during
+recovery. Do not compare runs with different mod lists, cache states, or source
+fixtures as if they were the same experiment
 
 Raw profiles, saves, logs, generated reports, and decompiled game code remain
 local. The tracked benchmark CSV contains only deliberately selected aggregate
 results
 
-## Public release checklist
+## Main-branch release checklist
 
-Before changing repository visibility or publishing an archive:
+Before merging a change into `main`:
 
 1. Run `python tools/check.py`
 2. Run `python tools/build.py --package` with the supported RimWorld build
@@ -94,5 +100,6 @@ Before changing repository visibility or publishing an archive:
 8. Confirm all bundled binary versions and licenses in
    [third-party notices](../THIRD_PARTY_NOTICES.md)
 
-CI covers only checks that can run without a RimWorld installation. A green CI
-run is not evidence that the complete mod loads in the game
+CI proves that the portable references compile and that the distributable archive
+can be assembled. A green CI run is not evidence that the complete mod loads or
+behaves correctly in the game

@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 /mod/FixWorld/Local.Build.props
+/temp/
 *.user
 *.suo
 

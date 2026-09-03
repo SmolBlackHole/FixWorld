@@ -21,6 +21,7 @@ EXCLUDED_DIRECTORY_NAMES = frozenset(
         "dist",
         "node_modules",
         "obj",
+        "temp",
         "TestResults",
     }
 )

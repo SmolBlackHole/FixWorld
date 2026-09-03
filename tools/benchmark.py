@@ -149,7 +149,7 @@ def bounded_int(minimum: int, maximum: int):
 
 def prepare_config(
     destination: Path, texture_compression: bool, use_live_mods: bool
-) -> int:
+) -> tuple[str, ...]:
     live_config = (
         Path.home()
         / "AppData"
@@ -175,8 +175,12 @@ def prepare_config(
     _set_xml_text(root, "textureCompression", str(texture_compression))
     prefs.write(prefs_path, encoding="utf-8", xml_declaration=True)
 
-    mods = ET.parse(destination / "ModsConfig.xml").getroot()
-    return len(mods.findall("./activeMods/li"))
+    return active_mod_ids(destination / "ModsConfig.xml")
+
+
+def active_mod_ids(path: Path) -> tuple[str, ...]:
+    root = ET.parse(path).getroot()
+    return tuple(element.text or "" for element in root.findall("./activeMods/li"))
 
 
 def _set_xml_text(root: ET.Element, name: str, value: str) -> None:
@@ -249,7 +253,7 @@ def validate_report(raw: object) -> BenchmarkReport:
     return cast(BenchmarkReport, report)
 
 
-def _format_optional_ms(value: object) -> str:
+def _format_optional_ms(value: float | None) -> str:
     return "n/a" if value is None else f"{float(value):.3f}"
 
 
@@ -307,6 +311,7 @@ def relevant_error_count(log_path: Path) -> int:
         r"TypeLoadException",
         r"Root level exception",
         r"Could not execute loading task",
+        r"Could not execute post-long-event action",
         r"\[FixWorld\].*(?:error|exception)",
     )
     return sum(len(re.findall(pattern, log, re.IGNORECASE)) for pattern in patterns)
@@ -341,7 +346,7 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
     background_report_path = run_root / "dds-background.json"
     config.mkdir(parents=True)
 
-    active_mods = prepare_config(
+    expected_mods = prepare_config(
         config, not args.disable_texture_compression, args.live_mods
     )
     monitor = select_monitor(args.monitor_name, args.monitor)
@@ -396,6 +401,8 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
         time.sleep(0.5)
 
         error_count = relevant_error_count(log_path)
+        actual_mods = active_mod_ids(config / "ModsConfig.xml")
+        mod_config_stable = actual_mods == expected_mods
         loader = report["loader"]
         cache = report["ddsCache"]
         preloader = report["preloader"]
@@ -405,7 +412,9 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
         )[:5]
         notes = "; ".join(
             (
-                f"activeMods={active_mods}",
+                f"activeMods={len(expected_mods)}",
+                f"finalActiveMods={len(actual_mods)}",
+                f"modConfigStable={mod_config_stable}",
                 f"ddsCache={args.dds_cache}",
                 f"ddsWorkers={cache['workerCount']}",
                 f"textureCompression={not args.disable_texture_compression}",
@@ -464,11 +473,19 @@ def run_once(args: argparse.Namespace, run_number: int) -> None:
             "texture_ms": "",
             "tps": "",
             "fps": "",
-            "result": "valid" if error_count == 0 else "invalid",
+            "result": (
+                "valid" if error_count == 0 and mod_config_stable else "invalid"
+            ),
             "notes": notes,
         }
         append_result(record)
         print(json.dumps(record, indent=2, ensure_ascii=False))
+        if record["result"] != "valid":
+            raise RuntimeError(
+                "Benchmark failed its runtime validity gate: "
+                f"relevantErrors={error_count}, "
+                f"modConfigStable={mod_config_stable}."
+            )
     finally:
         rimworld.close()
 

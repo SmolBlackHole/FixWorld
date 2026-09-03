@@ -24,15 +24,32 @@ history.
 
 ## Active order
 
-1. Reproduce the colony-to-menu crash with DDS enabled and disabled.
-2. Fix DDS background completion after pack and index publication.
-3. Capture a named darker texture and validate DDS sampling, alpha, and mipmaps.
-4. Reduce and throttle DDS background work from measured resource pressure.
-5. Re-run the second mod pack only when its required DLC set is available; its
-   current recovery to official mods is not a valid performance result.
+1. [x] Remove the generic `DefDatabase<ThingCategoryDef>` Harmony hook that caused
+   100 `ThingDef.ResolveIcon()` failures. The replacement boundary passed with all
+   90 active mods, both with DDS enabled and disabled.
+2. Reproduce the colony-to-menu crash with DDS enabled and disabled.
+3. Fix DDS background completion after pack and index publication.
+4. Capture a named darker texture and validate DDS sampling, alpha, and mipmaps.
+5. Reduce and throttle DDS background work from measured resource pressure.
+6. Re-run the second mod pack now that Royalty and Ideology are installed;
+   verify the fixture's complete DLC set before treating the result as valid.
+
+## Release engineering
+
+- [ ] Verify the first automatic `pilot-N` GitHub prerelease from `main`, including
+      the Windows ZIP, SHA-256 sidecar, and exact source commit.
+- [ ] Protect `main` with the `Quality and package on Windows` status check after
+      the renamed check has completed successfully once.
+- [ ] Keep releases marked as pilot builds until the real-game checklist passes;
+      a portable compile and package job is not a runtime stability claim.
 
 ## DDS texture cache
 
+- [x] A/B the 100 `ThingDef.ResolveIcon()` null-reference failures reported by
+      `ExecuteToExecuteWhenFinished()`. DDS and the deferred frame pump were not
+      responsible. A Harmony patch on the static generic
+      `DefDatabase<ThingCategoryDef>.ResolveAllReferences()` method corrupted Def
+      resolution under Mono; a non-generic `ResetStaticDataPre()` boundary fixes it.
 - [ ] Reproduce the reported colony-to-menu crash with DDS enabled and disabled.
       The captured stack points to MapModeFramework background cache work after
       teardown, so do not attribute it to DDS without an A/B result.

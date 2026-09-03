@@ -20,6 +20,11 @@
         <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472"
             Version="1.0.3"
             PrivateAssets="all" />
+        <PackageReference Include="Krafs.Rimworld.Ref"
+            Version="$(FixWorldRimWorldReferenceVersion)"
+            ExcludeAssets="runtime"
+            PrivateAssets="all"
+            Condition="'$(FixWorldUseLocalGameReferences)' != 'true'" />
     </ItemGroup>
 
     <ItemGroup>
@@ -37,6 +42,9 @@
 
     <ItemGroup>
         <Reference Include="System.Runtime.Serialization" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(FixWorldUseLocalGameReferences)' == 'true'">
         <Reference Include="Assembly-CSharp">
             <HintPath>$(RimWorldManagedDir)\Assembly-CSharp.dll</HintPath>
             <Private>false</Private>
@@ -55,7 +63,9 @@
         </Reference>
     </ItemGroup>
 
-    <Target Name="ValidateLocalRimWorldReferences" BeforeTargets="ResolveReferences">
+    <Target Name="ValidateLocalRimWorldReferences"
+        BeforeTargets="ResolveReferences"
+        Condition="'$(FixWorldUseLocalGameReferences)' == 'true'">
         <Error Condition="!Exists('$(RimWorldManagedDir)\Assembly-CSharp.dll')"
             Text="Assembly-CSharp.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
         <Error Condition="!Exists('$(RimWorldManagedDir)\UnityEngine.CoreModule.dll')"

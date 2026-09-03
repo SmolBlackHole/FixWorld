@@ -1,41 +1,48 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net472</TargetFramework>
-    <LangVersion>latest</LangVersion>
-    <PlatformTarget>x64</PlatformTarget>
-    <AssemblyName>FixWorld.Loader</AssemblyName>
-    <RootNamespace>FixWorld.Loader</RootNamespace>
-    <Nullable>disable</Nullable>
-    <ImplicitUsings>disable</ImplicitUsings>
-    <Deterministic>true</Deterministic>
-    <DebugType>portable</DebugType>
-    <DebugSymbols>true</DebugSymbols>
-    <Optimize>true</Optimize>
-    <OutputPath>..\..\Tools\Windows-x64\</OutputPath>
-    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net472</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <PlatformTarget>x64</PlatformTarget>
+        <AssemblyName>FixWorld.Loader</AssemblyName>
+        <RootNamespace>FixWorld.Loader</RootNamespace>
+        <Nullable>disable</Nullable>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <Deterministic>true</Deterministic>
+        <DebugType>portable</DebugType>
+        <DebugSymbols>true</DebugSymbols>
+        <Optimize>true</Optimize>
+        <OutputPath>..\..\Tools\Windows-x64\</OutputPath>
+        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472"
-      Version="1.0.3"
-      PrivateAssets="all" />
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472"
+            Version="1.0.3"
+            PrivateAssets="all" />
+        <PackageReference Include="Krafs.Rimworld.Ref"
+            Version="$(FixWorldRimWorldReferenceVersion)"
+            ExcludeAssets="runtime"
+            PrivateAssets="all"
+            Condition="'$(FixWorldUseLocalGameReferences)' != 'true'" />
+    </ItemGroup>
 
-  <ItemGroup>
-    <Compile Include="..\Shared\RuntimeContract.cs"
-      Link="RuntimeContract.cs" />
-  </ItemGroup>
+    <ItemGroup>
+        <Compile Include="..\Shared\RuntimeContract.cs"
+            Link="RuntimeContract.cs" />
+    </ItemGroup>
 
-  <ItemGroup>
-    <Reference Include="Assembly-CSharp">
-      <HintPath>$(RimWorldManagedDir)\Assembly-CSharp.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-  </ItemGroup>
+    <ItemGroup Condition="'$(FixWorldUseLocalGameReferences)' == 'true'">
+        <Reference Include="Assembly-CSharp">
+            <HintPath>$(RimWorldManagedDir)\Assembly-CSharp.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+    </ItemGroup>
 
-  <Target Name="ValidateLocalReferences" BeforeTargets="ResolveReferences">
-    <Error Condition="!Exists('$(RimWorldManagedDir)\Assembly-CSharp.dll')"
-      Text="Assembly-CSharp.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
-  </Target>
+    <Target Name="ValidateLocalReferences"
+        BeforeTargets="ResolveReferences"
+        Condition="'$(FixWorldUseLocalGameReferences)' == 'true'">
+        <Error Condition="!Exists('$(RimWorldManagedDir)\Assembly-CSharp.dll')"
+            Text="Assembly-CSharp.dll is missing. Set RimWorldRoot in mod/FixWorld/Local.Build.props or RIMWORLD_ROOT." />
+    </Target>
 </Project>

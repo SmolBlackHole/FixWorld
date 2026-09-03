@@ -41,14 +41,10 @@ uninstall commands in the [Windows loader guide](docs/windows-preloader.md).
 Requirements:
 
 - Windows x64;
-- RimWorld 1.6 with the supported build installed;
-- the RimWorld Harmony mod;
 - .NET SDK 10;
 - Python 3.11 or newer
 
-Copy `mod/FixWorld/Local.Build.props.example` to
-`mod/FixWorld/Local.Build.props`, set the local RimWorld and Harmony paths, then
-run:
+Run:
 
 ```powershell
 python .\tools\check.py
@@ -61,8 +57,11 @@ Create a distributable pilot archive with:
 python .\tools\build.py --package
 ```
 
-The full runtime build requires locally installed RimWorld assemblies. They are
-never committed or redistributed by this repository
+The portable build uses pinned, compile-only RimWorld `1.6.4871` and Harmony
+reference packages. For local development against the exact installed binaries,
+copy `mod/FixWorld/Local.Build.props.example` to
+`mod/FixWorld/Local.Build.props` and set the RimWorld and Harmony paths. Local
+game assemblies are never committed or redistributed by this repository
 
 ## Documentation
 

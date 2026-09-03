@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def check_python() -> None:
     for path in sorted((ROOT / "tools").glob("*.py")):
-        py_compile.compile(path, doraise=True)
+        py_compile.compile(str(path), doraise=True)
     print("Python syntax checks passed.")
 
 
