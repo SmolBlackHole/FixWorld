@@ -106,12 +106,20 @@ ordered experiment design live in
 - [ ] Test a semantics-preserving `ConnectivitySource.UpdateIncrementally` patch
       that deduplicates the union of expanded dirty cells, then compare two
       frozen-save runs against the recorded baseline.
-- [ ] Attribute request demand to pawn category, traversal profile, target shape,
-      and repeated destinations without adding pawn-tick hotpath probes.
+- [x] Validate the new request-demand counters on the frozen save: pawn category,
+      traversal and end mode, target shape, distance, constraints, and repeated
+      destinations must cover queued and immediate requests without pawn-tick
+      probes.
+- [ ] Reduce target-history collisions before using the repeated-destination
+      rate for path-reuse decisions. The first 1,970-request run recorded 914
+      collisions, so its 106 repeats are only a lower bound.
 - [ ] Add a fixed-window detailed capture for pawn movement, current jobs,
       think-tree selection, needs, health, pathfinding, and reachability.
 - [ ] Prototype layered topology, restriction, and cost masks plus per-layer
       generations in shadow mode.
+- [x] Use measured unique expanded cells and 8, 16, and 32-cell chunk counts to
+      select the first shadow-model representation and chunk-size candidates.
+      Start with 16 by 16, retaining 8 by 8 and 32 by 32 as benchmark controls.
 - [ ] Benchmark full bit-parallel component rebuilds against scalar full rebuilds
       and 8, 16, and 32-cell chunk-local rebuilds.
 - [ ] Build chunk-local components and boundary portals, then update only affected

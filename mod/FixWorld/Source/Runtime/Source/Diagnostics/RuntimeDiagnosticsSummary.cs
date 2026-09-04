@@ -237,6 +237,41 @@ namespace FixWorld.Diagnostics
             text.Append(",reachMisses:");
             text.Append(path.ReachabilityCacheMisses.ToString(
                 CultureInfo.InvariantCulture));
+            RuntimePathRequestSnapshot demand = path.RequestDemand;
+            text.Append("; demand=observations:");
+            text.Append(demand.Observations.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",origins:");
+            text.Append(FormatPawnCategories(demand.PawnCategories));
+            text.Append(",traversal:");
+            text.Append(FormatTraversalModes(demand.TraversalModes));
+            text.Append(",endModes:");
+            text.Append(FormatEndModes(demand.EndModes));
+            text.Append(",targets:");
+            text.Append(FormatTargetKinds(demand.TargetKinds));
+            text.Append(",distance:");
+            text.Append(FormatDistanceBuckets(demand.DistanceBuckets));
+            text.Append(",repeated600:");
+            text.Append(demand.RepeatedTargets.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",targetCollisions:");
+            text.Append(demand.TargetTrackerCollisions.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",constraints:");
+            text.Append(FormatConstraints(demand.Constraints));
+            RuntimeSpatialSnapshot spatial = path.Spatial;
+            text.Append("; spatial=expandedVisits:");
+            text.Append(spatial.ExpandedCellVisits.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",uniqueExpanded:");
+            text.Append(spatial.UniqueExpandedCells.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",chunks8:");
+            text.Append(spatial.Chunks8.ToString(CultureInfo.InvariantCulture));
+            text.Append(",chunks16:");
+            text.Append(spatial.Chunks16.ToString(CultureInfo.InvariantCulture));
+            text.Append(",chunks32:");
+            text.Append(spatial.Chunks32.ToString(CultureInfo.InvariantCulture));
             return text.ToString();
         }
 
@@ -323,6 +358,78 @@ namespace FixWorld.Diagnostics
                 pathfinding.GridJobsCreated.ToString(
                     CultureInfo.InvariantCulture));
 
+            RuntimePathRequestSnapshot demand = pathfinding.RequestDemand;
+            text.AppendLine(
+                "  Request origins: " +
+                FormatPawnCategories(demand.PawnCategories));
+            text.AppendLine(
+                "  Traversal modes: " +
+                FormatTraversalModes(demand.TraversalModes));
+            text.AppendLine(
+                "  End modes: " + FormatEndModes(demand.EndModes));
+            text.AppendLine(
+                "  Targets: " + FormatTargetKinds(demand.TargetKinds));
+            double averageDistance = demand.Observations == 0L
+                ? 0.0
+                : demand.TotalDistance / (double)demand.Observations;
+            double repeatedTargetRate = demand.Observations == 0L
+                ? 0.0
+                : demand.RepeatedTargets * 100.0 / demand.Observations;
+            text.AppendLine(
+                "  Request distance: " + averageDistance.ToString(
+                    "F1",
+                    CultureInfo.InvariantCulture) +
+                " cells average, " + demand.MaximumDistance.ToString(
+                    CultureInfo.InvariantCulture) +
+                " maximum; " +
+                FormatDistanceBuckets(demand.DistanceBuckets));
+            text.AppendLine(
+                "  Repeated targets: " + demand.RepeatedTargets.ToString(
+                    CultureInfo.InvariantCulture) +
+                " within 600 ticks, " + repeatedTargetRate.ToString(
+                    "F1",
+                    CultureInfo.InvariantCulture) +
+                "% of created requests, " +
+                demand.TargetTrackerCollisions.ToString(
+                    CultureInfo.InvariantCulture) +
+                " tracker collisions");
+            text.AppendLine(
+                "  Request constraints: " +
+                FormatConstraints(demand.Constraints));
+
+            RuntimeSpatialSnapshot spatial = pathfinding.Spatial;
+            double uniqueRatio = spatial.ExpandedCellVisits == 0L
+                ? 0.0
+                : spatial.UniqueExpandedCells * 100.0 /
+                  spatial.ExpandedCellVisits;
+            text.AppendLine(
+                "  Connectivity expansion: " +
+                spatial.ExpandedCellVisits.ToString(
+                    CultureInfo.InvariantCulture) +
+                " cell visits, " + spatial.UniqueExpandedCells.ToString(
+                    CultureInfo.InvariantCulture) +
+                " unique, " + uniqueRatio.ToString(
+                    "F1",
+                    CultureInfo.InvariantCulture) +
+                "% retained after deduplication");
+            text.AppendLine(
+                "  Chunks per update: " +
+                FormatChunkMeasurement(
+                    spatial.Chunks8,
+                    spatial.MaximumChunks8,
+                    pathfinding.DataUpdates,
+                    8) + ", " +
+                FormatChunkMeasurement(
+                    spatial.Chunks16,
+                    spatial.MaximumChunks16,
+                    pathfinding.DataUpdates,
+                    16) + ", " +
+                FormatChunkMeasurement(
+                    spatial.Chunks32,
+                    spatial.MaximumChunks32,
+                    pathfinding.DataUpdates,
+                    32));
+
             long cacheLookups = pathfinding.ReachabilityCacheHits +
                                 pathfinding.ReachabilityCacheMisses;
             double cacheHitRate = cacheLookups == 0L
@@ -338,6 +445,83 @@ namespace FixWorld.Diagnostics
                     "F1",
                     CultureInfo.InvariantCulture) +
                 "% hit rate");
+        }
+
+        private static string FormatPawnCategories(long[] counts) =>
+            FormatCounts(
+                counts,
+                index => PathRequestCatalog.GetName(
+                    (PathRequestPawnCategory)index));
+
+        private static string FormatTraversalModes(long[] counts) =>
+            FormatCounts(
+                counts,
+                index => PathRequestCatalog.GetName(
+                    (PathRequestTraversalMode)index));
+
+        private static string FormatEndModes(long[] counts) =>
+            FormatCounts(
+                counts,
+                index => PathRequestCatalog.GetName(
+                    (PathRequestEndMode)index));
+
+        private static string FormatTargetKinds(long[] counts) =>
+            FormatCounts(
+                counts,
+                index => PathRequestCatalog.GetName(
+                    (PathRequestTargetKind)index));
+
+        private static string FormatDistanceBuckets(long[] counts) =>
+            FormatCounts(
+                counts,
+                index => PathRequestCatalog.GetName(
+                    (PathRequestDistanceBucket)index));
+
+        private static string FormatConstraints(long[] counts) =>
+            FormatCounts(
+                counts,
+                index => PathRequestCatalog.GetName(
+                    (PathRequestConstraint)(1 << index)),
+                includeZero: false);
+
+        private static string FormatCounts(
+            long[] counts,
+            Func<int, string> name,
+            bool includeZero = true)
+        {
+            var text = new StringBuilder(192);
+            for (int index = 0; index < counts.Length; index++)
+            {
+                if (!includeZero && counts[index] == 0L)
+                {
+                    continue;
+                }
+
+                if (text.Length > 0)
+                {
+                    text.Append(", ");
+                }
+
+                text.Append(name(index));
+                text.Append(' ');
+                text.Append(counts[index].ToString(CultureInfo.InvariantCulture));
+            }
+
+            return text.Length == 0 ? "none" : text.ToString();
+        }
+
+        private static string FormatChunkMeasurement(
+            long total,
+            long maximum,
+            long updates,
+            int size)
+        {
+            double average = updates == 0L ? 0.0 : total / (double)updates;
+            return size.ToString(CultureInfo.InvariantCulture) + "x" +
+                   size.ToString(CultureInfo.InvariantCulture) + " " +
+                   average.ToString("F1", CultureInfo.InvariantCulture) +
+                   " average/" + maximum.ToString(
+                       CultureInfo.InvariantCulture) + " max";
         }
 
         private static string FormatStageHotpaths(

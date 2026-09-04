@@ -13,20 +13,54 @@ namespace FixWorld.Diagnostics
 {
     internal sealed class RuntimeTelemetryStore : IDisposable
     {
+        private const int TargetHistoryCapacity = 1024;
+        private const int TargetHistoryMask = TargetHistoryCapacity - 1;
+        private const int TargetReuseWindowTicks = 600;
+
         private readonly object sync = new();
         private readonly Profiler<RuntimeHotpath> runtimeProfiler;
         private readonly ProfileSlot<RuntimeHotpath>[] runtimeSlots;
+        private readonly long[] pathConstraintCounts =
+            new long[PathRequestCatalog.ConstraintCount];
+        private readonly long[] pathDistanceBuckets =
+            new long[PathRequestCatalog.DistanceBucketCount];
+        private readonly long[] pathEndModes =
+            new long[PathRequestCatalog.EndModeCount];
+        private readonly long[] pathPawnCategories =
+            new long[PathRequestCatalog.PawnCategoryCount];
+        private readonly long[] pathTargetHistoryKeys =
+            new long[TargetHistoryCapacity];
+        private readonly int[] pathTargetHistoryTicks =
+            new int[TargetHistoryCapacity];
+        private readonly long[] pathTargetKinds =
+            new long[PathRequestCatalog.TargetKindCount];
+        private readonly long[] pathTraversalModes =
+            new long[PathRequestCatalog.TraversalModeCount];
 
         private bool active;
         private long pathBatches;
         private long pathDataUpdates;
         private long pathDirtyCells;
+        private long pathExpandedCellVisits;
         private long pathGridJobsCreated;
+        private long pathChunks8;
+        private long pathChunks16;
+        private long pathChunks32;
+        private long pathMaximumChunks8;
+        private long pathMaximumChunks16;
+        private long pathMaximumChunks32;
         private long pathMaximumBatchSize;
+        private long pathMaximumDistance;
         private long pathMaximumDirtyCells;
+        private long pathMaximumUniqueExpandedCells;
         private long pathMaximumQueueDelayTicks;
+        private long pathRequestObservations;
+        private long pathRepeatedTargets;
         private long pathRequests;
+        private long pathTargetTrackerCollisions;
+        private long pathTotalDistance;
         private long pathTotalQueueDelayTicks;
+        private long pathUniqueExpandedCells;
         private long reachabilityCacheHits;
         private long reachabilityCacheMisses;
         private double estimatedDurationMilliseconds;
@@ -195,11 +229,59 @@ namespace FixWorld.Diagnostics
         internal void ObservePathGridJobCreated() =>
             Interlocked.Increment(ref pathGridJobsCreated);
 
-        internal void ObservePathDataUpdate(int dirtyCells)
+        internal void ObservePathRequest(in PathRequestObservation observation)
+        {
+            Interlocked.Increment(ref pathRequestObservations);
+            Interlocked.Increment(
+                ref pathPawnCategories[(int)observation.PawnCategory]);
+            Interlocked.Increment(
+                ref pathTraversalModes[(int)observation.TraversalMode]);
+            Interlocked.Increment(
+                ref pathEndModes[(int)observation.EndMode]);
+            Interlocked.Increment(
+                ref pathTargetKinds[(int)observation.TargetKind]);
+
+            int distance = Math.Max(0, observation.Distance);
+            Interlocked.Add(ref pathTotalDistance, distance);
+            UpdateMaximum(ref pathMaximumDistance, distance);
+            Interlocked.Increment(
+                ref pathDistanceBuckets[(int)GetDistanceBucket(distance)]);
+
+            ushort constraints = (ushort)observation.Constraints;
+            for (int index = 0;
+                 index < PathRequestCatalog.ConstraintCount;
+                 index++)
+            {
+                if ((constraints & (1 << index)) != 0)
+                {
+                    Interlocked.Increment(ref pathConstraintCounts[index]);
+                }
+            }
+
+            ObserveTargetReuse(observation.TargetKey, observation.Tick);
+        }
+
+        internal void ObservePathDataUpdate(
+            in PathSpatialObservation observation)
         {
             Interlocked.Increment(ref pathDataUpdates);
-            Interlocked.Add(ref pathDirtyCells, dirtyCells);
-            UpdateMaximum(ref pathMaximumDirtyCells, dirtyCells);
+            Interlocked.Add(ref pathDirtyCells, observation.DirtyCells);
+            Interlocked.Add(
+                ref pathExpandedCellVisits,
+                observation.ExpandedCellVisits);
+            Interlocked.Add(
+                ref pathUniqueExpandedCells,
+                observation.UniqueExpandedCells);
+            Interlocked.Add(ref pathChunks8, observation.Chunks8);
+            Interlocked.Add(ref pathChunks16, observation.Chunks16);
+            Interlocked.Add(ref pathChunks32, observation.Chunks32);
+            UpdateMaximum(ref pathMaximumDirtyCells, observation.DirtyCells);
+            UpdateMaximum(
+                ref pathMaximumUniqueExpandedCells,
+                observation.UniqueExpandedCells);
+            UpdateMaximum(ref pathMaximumChunks8, observation.Chunks8);
+            UpdateMaximum(ref pathMaximumChunks16, observation.Chunks16);
+            UpdateMaximum(ref pathMaximumChunks32, observation.Chunks32);
         }
 
         internal void ObserveReachabilityCache(bool hit)
@@ -232,7 +314,29 @@ namespace FixWorld.Diagnostics
                     Interlocked.Read(ref pathMaximumDirtyCells),
                     Interlocked.Read(ref pathGridJobsCreated),
                     Interlocked.Read(ref reachabilityCacheHits),
-                    Interlocked.Read(ref reachabilityCacheMisses)));
+                    Interlocked.Read(ref reachabilityCacheMisses),
+                    new RuntimePathRequestSnapshot(
+                        Interlocked.Read(ref pathRequestObservations),
+                        Interlocked.Read(ref pathRepeatedTargets),
+                        Interlocked.Read(ref pathTargetTrackerCollisions),
+                        Interlocked.Read(ref pathTotalDistance),
+                        Interlocked.Read(ref pathMaximumDistance),
+                        CaptureCounters(pathPawnCategories),
+                        CaptureCounters(pathTraversalModes),
+                        CaptureCounters(pathEndModes),
+                        CaptureCounters(pathTargetKinds),
+                        CaptureCounters(pathDistanceBuckets),
+                        CaptureCounters(pathConstraintCounts)),
+                    new RuntimeSpatialSnapshot(
+                        Interlocked.Read(ref pathExpandedCellVisits),
+                        Interlocked.Read(ref pathUniqueExpandedCells),
+                        Interlocked.Read(ref pathChunks8),
+                        Interlocked.Read(ref pathChunks16),
+                        Interlocked.Read(ref pathChunks32),
+                        Interlocked.Read(ref pathMaximumUniqueExpandedCells),
+                        Interlocked.Read(ref pathMaximumChunks8),
+                        Interlocked.Read(ref pathMaximumChunks16),
+                        Interlocked.Read(ref pathMaximumChunks32))));
 
         internal RuntimeDiagnosticsSnapshot Complete(
             string source,
@@ -351,6 +455,70 @@ namespace FixWorld.Diagnostics
             }
 
             return slots;
+        }
+
+        private void ObserveTargetReuse(long targetKey, int tick)
+        {
+            int index = (int)((ulong)targetKey ^
+                              ((ulong)targetKey >> 32)) &
+                        TargetHistoryMask;
+            long previousKey = Interlocked.Read(
+                ref pathTargetHistoryKeys[index]);
+            if (previousKey == targetKey)
+            {
+                int previousTick = Interlocked.Exchange(
+                    ref pathTargetHistoryTicks[index],
+                    tick);
+                int elapsed = tick - previousTick;
+                if (elapsed >= 0 && elapsed <= TargetReuseWindowTicks)
+                {
+                    Interlocked.Increment(ref pathRepeatedTargets);
+                }
+
+                return;
+            }
+
+            if (previousKey != 0L)
+            {
+                Interlocked.Increment(ref pathTargetTrackerCollisions);
+            }
+
+            Interlocked.Exchange(ref pathTargetHistoryKeys[index], targetKey);
+            Volatile.Write(ref pathTargetHistoryTicks[index], tick);
+        }
+
+        private static PathRequestDistanceBucket GetDistanceBucket(
+            int distance)
+        {
+            if (distance <= 16)
+            {
+                return PathRequestDistanceBucket.UpTo16;
+            }
+
+            if (distance <= 32)
+            {
+                return PathRequestDistanceBucket.UpTo32;
+            }
+
+            if (distance <= 64)
+            {
+                return PathRequestDistanceBucket.UpTo64;
+            }
+
+            return distance <= 128
+                ? PathRequestDistanceBucket.UpTo128
+                : PathRequestDistanceBucket.Over128;
+        }
+
+        private static long[] CaptureCounters(long[] counters)
+        {
+            var snapshot = new long[counters.Length];
+            for (int index = 0; index < snapshot.Length; index++)
+            {
+                snapshot[index] = Interlocked.Read(ref counters[index]);
+            }
+
+            return snapshot;
         }
 
         private static void UpdateMaximum(ref long target, long value)

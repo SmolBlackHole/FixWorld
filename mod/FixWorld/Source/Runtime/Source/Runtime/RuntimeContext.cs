@@ -25,8 +25,6 @@ namespace FixWorld.Runtime
         private readonly IDisposable lifecycleSubscription;
         private readonly RuntimeTelemetryStore telemetry;
         private object attachedMod;
-        private string startupDiagnosticsText =
-            "No completed startup diagnostics are available yet.";
         private bool disposed;
         private long nextRuntimeProfileLogAt;
         private bool runtimeProfileLoggingActive;
@@ -59,10 +57,13 @@ namespace FixWorld.Runtime
 
         internal int WorkerCount => scheduler.WorkerCount;
 
-        internal string DiagnosticsText =>
+        internal string DiagnosticsText
+        {
+            get =>
             RuntimeDiagnosticsSummary.FormatRuntimeDetails(
-                startupDiagnosticsText,
-                telemetry.CaptureRuntimeProfiling());
+                field,
+                telemetry.CaptureRuntimeProfiling()); private set;
+        } = "No completed startup diagnostics are available yet.";
 
         internal string ClearDdsCache() => Textures.ClearCache();
 
@@ -214,8 +215,13 @@ namespace FixWorld.Runtime
         internal void ObservePathGridJobCreated() =>
             telemetry.ObservePathGridJobCreated();
 
-        internal void ObservePathDataUpdate(int dirtyCells) =>
-            telemetry.ObservePathDataUpdate(dirtyCells);
+        internal void ObservePathRequest(
+            in PathRequestObservation observation) =>
+            telemetry.ObservePathRequest(in observation);
+
+        internal void ObservePathDataUpdate(
+            in PathSpatialObservation observation) =>
+            telemetry.ObservePathDataUpdate(in observation);
 
         internal void ObserveReachabilityCache(bool hit) =>
             telemetry.ObserveReachabilityCache(hit);
@@ -310,7 +316,7 @@ namespace FixWorld.Runtime
                 return false;
             }
 
-            startupDiagnosticsText =
+            DiagnosticsText =
                 RuntimeDiagnosticsSummary.FormatDetails(diagnostics);
             Log.Message(RuntimeDiagnosticsSummary.Format(diagnostics));
             BenchmarkExporter.Write(diagnostics);

@@ -154,8 +154,13 @@ namespace FixWorld.Runtime
 
         internal static void ObservePathGridJobCreated() => Volatile.Read(ref current)?.ObservePathGridJobCreated();
 
-        internal static void ObservePathDataUpdate(int dirtyCells) =>
-            Volatile.Read(ref current)?.ObservePathDataUpdate(dirtyCells);
+        internal static void ObservePathRequest(
+            in PathRequestObservation observation) =>
+            Volatile.Read(ref current)?.ObservePathRequest(in observation);
+
+        internal static void ObservePathDataUpdate(
+            in PathSpatialObservation observation) =>
+            Volatile.Read(ref current)?.ObservePathDataUpdate(in observation);
 
         internal static void ObserveReachabilityCache(bool hit) => Volatile.Read(ref current)?.ObserveReachabilityCache(hit);
 

@@ -4,6 +4,7 @@ using System.Reflection;
 using FixWorld.Diagnostics;
 using FixWorld.Runtime;
 using HarmonyLib;
+using RimWorld;
 using Verse;
 using Verse.AI;
 
@@ -11,12 +12,16 @@ namespace FixWorld.Integration
 {
     internal static class RuntimeProfilingHooks
     {
+        [ThreadStatic]
+        private static PathSpatialScratch pathSpatialScratch;
+
         internal static readonly Type[] PatchTypes =
         [
             typeof(TickPatch),
             typeof(MapPreTickPatch),
             typeof(MapPostTickPatch),
             typeof(PathFinderTickPatch),
+            typeof(PathFinderCreateRequestPatch),
             typeof(PathFinderPushRequestPatch),
             typeof(PathFinderFindPathNowPatch),
             typeof(PathFinderGatherMapDataPatch),
@@ -107,6 +112,221 @@ namespace FixWorld.Integration
             throw new ArgumentOutOfRangeException(nameof(source));
         }
 
+        private static PathRequestObservation Observe(PathRequest request)
+        {
+            TraverseParms traversal = request.TraverseParms;
+            LocalTargetInfo target = request.Target;
+            Pawn pawn = request.pawn ?? traversal.pawn;
+            PathRequestConstraint constraints = PathRequestConstraint.None;
+            if (request.area != null)
+            {
+                constraints |= PathRequestConstraint.AllowedArea;
+            }
+
+            if (request.customizer != null)
+            {
+                constraints |= PathRequestConstraint.Customizer;
+            }
+
+            if (traversal.canBashDoors)
+            {
+                constraints |= PathRequestConstraint.BashDoors;
+            }
+
+            if (traversal.canBashFences)
+            {
+                constraints |= PathRequestConstraint.BashFences;
+            }
+
+            if (traversal.alwaysUseAvoidGrid)
+            {
+                constraints |= PathRequestConstraint.AvoidGrid;
+            }
+
+            if (traversal.fenceBlocked)
+            {
+                constraints |= PathRequestConstraint.FenceBlocked;
+            }
+
+            if (traversal.avoidPersistentDanger)
+            {
+                constraints |= PathRequestConstraint.PersistentDanger;
+            }
+
+            if (traversal.avoidDarknessDanger)
+            {
+                constraints |= PathRequestConstraint.Darkness;
+            }
+
+            if (traversal.avoidFog)
+            {
+                constraints |= PathRequestConstraint.Fog;
+            }
+
+            int distance = target.IsValid
+                ? Math.Abs(request.Start.x - target.Cell.x) +
+                  Math.Abs(request.Start.z - target.Cell.z)
+                : 0;
+            return new PathRequestObservation(
+                GetTargetKey(request, target),
+                GenTicks.TicksGame,
+                distance,
+                constraints,
+                Classify(pawn),
+                Classify(traversal.mode),
+                Classify(request.EndMode),
+                Classify(target));
+        }
+
+        private static PathRequestPawnCategory Classify(Pawn pawn)
+        {
+            if (pawn == null)
+            {
+                return PathRequestPawnCategory.Other;
+            }
+
+            if (pawn.RaceProps.IsMechanoid)
+            {
+                return PathRequestPawnCategory.Mechanoid;
+            }
+
+            if (pawn.IsColonist)
+            {
+                return PathRequestPawnCategory.Colonist;
+            }
+
+            if (Faction.OfPlayer != null && pawn.HostileTo(Faction.OfPlayer))
+            {
+                return PathRequestPawnCategory.Hostile;
+            }
+
+            if (!pawn.RaceProps.Animal)
+            {
+                return PathRequestPawnCategory.Other;
+            }
+
+            return pawn.Faction == null
+                ? PathRequestPawnCategory.Wildlife
+                : PathRequestPawnCategory.Animal;
+        }
+
+        private static PathRequestTraversalMode Classify(TraverseMode mode) =>
+            mode switch
+            {
+                TraverseMode.ByPawn => PathRequestTraversalMode.ByPawn,
+                TraverseMode.PassDoors => PathRequestTraversalMode.PassDoors,
+                TraverseMode.NoPassClosedDoors =>
+                    PathRequestTraversalMode.NoPassClosedDoors,
+                TraverseMode.PassAllDestroyableThings =>
+                    PathRequestTraversalMode.PassAllDestroyableThings,
+                TraverseMode.PassAllDestroyablePlayerOwnedThings =>
+                    PathRequestTraversalMode
+                        .PassAllDestroyablePlayerOwnedThings,
+                TraverseMode.NoPassClosedDoorsOrWater =>
+                    PathRequestTraversalMode.NoPassClosedDoorsOrWater,
+                TraverseMode.PassAllDestroyableThingsNotWater =>
+                    PathRequestTraversalMode
+                        .PassAllDestroyableThingsNotWater,
+                _ => PathRequestTraversalMode.Unknown
+            };
+
+        private static PathRequestEndMode Classify(PathEndMode mode) =>
+            mode switch
+            {
+                PathEndMode.None => PathRequestEndMode.None,
+                PathEndMode.OnCell => PathRequestEndMode.OnCell,
+                PathEndMode.Touch => PathRequestEndMode.Touch,
+                PathEndMode.ClosestTouch => PathRequestEndMode.ClosestTouch,
+                PathEndMode.InteractionCell =>
+                    PathRequestEndMode.InteractionCell,
+                _ => PathRequestEndMode.Unknown
+            };
+
+        private static PathRequestTargetKind Classify(
+            LocalTargetInfo target)
+        {
+            if (!target.IsValid)
+            {
+                return PathRequestTargetKind.Invalid;
+            }
+
+            if (target.Pawn != null)
+            {
+                return PathRequestTargetKind.Pawn;
+            }
+
+            return target.HasThing
+                ? PathRequestTargetKind.Thing
+                : PathRequestTargetKind.Cell;
+        }
+
+        private static long GetTargetKey(
+            PathRequest request,
+            LocalTargetInfo target)
+        {
+            unchecked
+            {
+                const ulong offset = 1469598103934665603UL;
+                const ulong prime = 1099511628211UL;
+                ulong hash = (offset ^ (uint)(request.map?.uniqueID ?? -1)) *
+                             prime;
+                if (target.HasThing)
+                {
+                    hash = (hash ^ 1UL) * prime;
+                    hash = (hash ^ (uint)target.Thing.thingIDNumber) * prime;
+                }
+                else
+                {
+                    hash = (hash ^ 2UL) * prime;
+                    hash = (hash ^ (uint)target.Cell.x) * prime;
+                    hash = (hash ^ (uint)target.Cell.z) * prime;
+                }
+
+                hash = (hash ^ (byte)request.EndMode) * prime;
+                long key = (long)hash;
+                return key == 0L ? 1L : key;
+            }
+        }
+
+        private static PathSpatialObservation ObserveSpatialChanges(
+            Map map,
+            List<IntVec3> dirtyCells)
+        {
+            PathSpatialScratch scratch = pathSpatialScratch ??=
+                new PathSpatialScratch();
+            scratch.Clear();
+            int expandedCellVisits = 0;
+            int sizeX = map.Size.x;
+            int sizeZ = map.Size.z;
+            for (int index = 0; index < dirtyCells.Count; index++)
+            {
+                IntVec3 dirty = dirtyCells[index];
+                int minimumX = Math.Max(0, dirty.x - 1);
+                int maximumX = Math.Min(sizeX - 1, dirty.x + 1);
+                int minimumZ = Math.Max(0, dirty.z - 1);
+                int maximumZ = Math.Min(sizeZ - 1, dirty.z + 1);
+                for (int z = minimumZ; z <= maximumZ; z++)
+                {
+                    for (int x = minimumX; x <= maximumX; x++)
+                    {
+                        expandedCellVisits++;
+                        scratch.ExpandedCells.Add(x + (z * sizeX));
+                        scratch.Chunks8.Add((x >> 3) | ((z >> 3) << 16));
+                        scratch.Chunks16.Add((x >> 4) | ((z >> 4) << 16));
+                        scratch.Chunks32.Add((x >> 5) | ((z >> 5) << 16));
+                    }
+                }
+            }
+
+            return new PathSpatialObservation(
+                dirtyCells.Count,
+                expandedCellVisits,
+                scratch.ExpandedCells.Count,
+                scratch.Chunks8.Count,
+                scratch.Chunks16.Count,
+                scratch.Chunks32.Count);
+        }
+
         [HarmonyPatch(typeof(TickManager), nameof(TickManager.DoSingleTick))]
         private static class TickPatch
         {
@@ -165,6 +385,42 @@ namespace FixWorld.Integration
             [HarmonyPostfix]
             private static void Postfix(long __state) =>
                 End(RuntimeHotpath.PathFinderPushRequest, __state);
+        }
+
+        [HarmonyPatch]
+        private static class PathFinderCreateRequestPatch
+        {
+            private static MethodBase TargetMethod() =>
+                AccessTools.Method(
+                    typeof(PathFinder),
+                    nameof(PathFinder.CreateRequest),
+                    [
+                        typeof(IntVec3),
+                        typeof(LocalTargetInfo),
+                        typeof(Nullable<IntVec3>),
+                        typeof(TraverseParms),
+                        typeof(Nullable<PathFinderCostTuning>),
+                        typeof(PathEndMode),
+                        typeof(Pawn),
+                        typeof(PathRequest.IPathGridCustomizer)
+                    ]) ??
+                throw new MissingMethodException(
+                    typeof(PathFinder).FullName,
+                    nameof(PathFinder.CreateRequest));
+
+            [HarmonyPostfix]
+            private static void Postfix(PathRequest __result)
+            {
+                if (__result == null)
+                {
+                    return;
+                }
+
+                long startedAt = Begin(RuntimeHotpath.PathRequestTelemetry);
+                PathRequestObservation observation = Observe(__result);
+                RuntimeHost.ObservePathRequest(in observation);
+                End(RuntimeHotpath.PathRequestTelemetry, startedAt);
+            }
         }
 
         [HarmonyPatch]
@@ -244,11 +500,16 @@ namespace FixWorld.Integration
             private static void Prefix(
                 object __instance,
                 List<IntVec3> __1,
+                Map ___map,
                 out HotpathState __state)
             {
-                if (__instance is AreaSource)
+                if (__instance is ConnectivitySource)
                 {
-                    RuntimeHost.ObservePathDataUpdate(__1.Count);
+                    long startedAt = Begin(RuntimeHotpath.PathSpatialTelemetry);
+                    PathSpatialObservation observation =
+                        ObserveSpatialChanges(___map, __1);
+                    RuntimeHost.ObservePathDataUpdate(in observation);
+                    End(RuntimeHotpath.PathSpatialTelemetry, startedAt);
                 }
 
                 __state = new HotpathState(
@@ -377,5 +638,21 @@ namespace FixWorld.Integration
         private static MethodBase RequirePathFinderMethod(string name) =>
             AccessTools.Method(typeof(PathFinder), name) ??
             throw new MissingMethodException(typeof(PathFinder).FullName, name);
+
+        private sealed class PathSpatialScratch
+        {
+            internal readonly HashSet<int> ExpandedCells = new(4096);
+            internal readonly HashSet<int> Chunks8 = new(512);
+            internal readonly HashSet<int> Chunks16 = new(256);
+            internal readonly HashSet<int> Chunks32 = new(128);
+
+            internal void Clear()
+            {
+                ExpandedCells.Clear();
+                Chunks8.Clear();
+                Chunks16.Clear();
+                Chunks32.Clear();
+            }
+        }
     }
 }

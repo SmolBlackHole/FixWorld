@@ -64,6 +64,58 @@ comparison. The first implementation experiment therefore targets connectivity
 updates, while the longer research track changes the representation that makes
 those updates and later searches expensive.
 
+### Demand and invalidation sample
+
+A 7,022-tick run of the same complex save on 2026-09-04 validated the request
+and spatial counters:
+
+| Measurement | Result |
+| --- | ---: |
+| Created path requests observed | 1,970 |
+| Requests scheduled in path batches | 1,966 |
+| Animal and wildlife requests | 1,323 (67.2%) |
+| Mechanoid requests | 341 (17.3%) |
+| Colonist requests | 271 (13.8%) |
+| Requests at 0 to 16 cells | 1,560 (79.2%) |
+| Requests beyond 64 cells | 96 (4.9%) |
+| Connectivity updates | 1,614 |
+| Dirty cells | 82,047 (50.8 per update) |
+| Raw 3 by 3 expansion visits | 738,423 |
+| Unique expanded cells | 142,133 (88.1 per update) |
+| Affected 8 by 8 chunks | 8,340 (5.17 per update) |
+| Affected 16 by 16 chunks | 5,886 (3.65 per update) |
+| Affected 32 by 32 chunks | 4,428 (2.74 per update) |
+
+The canonical `CreateRequest` counter was four requests above the queued batch
+counter. This is consistent with the hook covering immediate or otherwise
+non-queued requests without adding a pawn-tick probe.
+
+The expanded connectivity rectangles contained 596,290 duplicate cell visits.
+Deduplicating their union would remove 80.8% of the measured inner-loop visits
+before accounting for the set construction itself. This is a direct reason to
+run the Phase 1 patch rather than an estimate derived only from wall-clock time.
+
+Invalidations were strongly local. A 16 by 16 chunk model touched 3.65 chunks
+per update on average. It is the primary shadow-model baseline, with 8 by 8 and
+32 by 32 retained as benchmark controls. The 32 by 32 model reduced the chunk
+count by only 25% relative to 16 by 16 while making each full local rebuild four
+times larger.
+
+Most requests were short, so hierarchical routing must retain a cheap local
+path for same-chunk and nearby destinations. The 96 requests beyond 64 cells
+still provide a real sample for portal-graph and corridor experiments.
+
+The bounded target-history tracker reported 106 repeats within 600 ticks, but
+also 914 direct-map collisions. The repeat count is therefore only a lower
+bound and cannot yet justify or reject path reuse. The tracker must be widened
+or made set-associative before reuse rate is treated as a decision metric.
+
+The request observer consumed 2.6 ms total and the spatial observer 41.1 ms
+total. Combined, that is about 0.10% of the recorded 43,380.6 ms tick time. The
+spatial observer added about 1.95% relative to the measured connectivity time,
+so it is suitable for bounded experiments but should not remain permanently
+enabled at this detail without sampling or a cheaper counter path.
+
 ## Current integration boundaries
 
 RimWorld 1.6 already exposes useful points at which FixWorld can observe or
@@ -295,8 +347,18 @@ work. It is not the endpoint of this track.
 ### Phase 2: Attribute demand
 
 Record request count, batch size, traversal profile, target shape, and pawn
-category at `PushRequest`. Use a bounded detailed capture when a category needs a
-deeper think, movement, needs, or health breakdown.
+category at request creation. Use a bounded detailed capture when a category
+needs a deeper think, movement, needs, or health breakdown.
+
+The passive counters are now attached to the canonical `CreateRequest` overload,
+which covers queued and immediate searches without probing every pawn tick. They
+record fixed distributions for pawn category, traversal mode, end mode, target
+kind, distance, and constraints. A bounded tracker records repeated targets
+within 600 ticks. Connectivity updates additionally report raw and unique 3 by 3
+expansion work plus affected chunk counts for the three candidate chunk sizes.
+The real-save run above validates this passive attribution path. Its repeat
+tracker remains deliberately excluded from reuse decisions until its collision
+rate is reduced.
 
 ### Phase 3: Build the shadow spatial model
 

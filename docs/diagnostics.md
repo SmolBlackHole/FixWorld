@@ -106,6 +106,24 @@ While a game is active, FixWorld also writes a cumulative
 ends. Each hotpath uses `calls,totalMs,avgMs,maxMs`; pathfinding counters follow
 in the same structured line.
 
+Pathfinding demand is observed once when RimWorld creates a `PathRequest`, not
+from every pawn tick. Fixed counters record pawn category, traversal mode, end
+mode, target kind, Manhattan-distance bucket, and active path constraints. A
+bounded 1,024-slot tracker counts the same map target and end mode appearing
+again within 600 game ticks. Tracker collisions are exposed with the result so
+the repetition rate is not presented as exact when the table is saturated.
+
+Connectivity invalidation is sampled from the final dirty-cell list passed to
+`ConnectivitySource`. FixWorld counts the raw 3 by 3 cell visits, the unique
+expanded cells, and the affected 8 by 8, 16 by 16, and 32 by 32 chunks. Each
+worker reuses its scratch sets. The recording path does not allocate after a
+worker's scratch storage has reached the required capacity. Snapshot arrays are
+copied only when diagnostics are read or published.
+
+`FixWorld path request telemetry` and `FixWorld path spatial telemetry` are
+profiled as normal hotpaths. Their reported totals expose the observer cost in
+the same runtime snapshot as the game work being studied.
+
 ## In-game UI
 
 The normal Mod presents Startup, Preloader, Stages, DDS cache, Runtime, Issues,
@@ -129,6 +147,10 @@ allocate.
 Stage timings show where startup time is spent, but they do not attribute nested
 work to individual mods or methods. Runtime hotpath totals are inclusive and can
 overlap. Queue delay is currently measured in game ticks, not wall-clock time.
+The target-repetition tracker measures reuse candidates, not paths that are
+already proven interchangeable. Its key intentionally excludes the start cell
+but includes the map, target identity, and end mode. Constraint distributions
+must be used to decide which candidates can safely share a path or corridor.
 The scheduler snapshot reports configured workers and queued main-thread work,
 not measured utilization. Expensive texture method transpilers and per-stage
 process sampling are intentionally outside the always-on telemetry path.
