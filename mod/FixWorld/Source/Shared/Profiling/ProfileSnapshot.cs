@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace FixWorld.Profiling
 {
@@ -64,9 +65,16 @@ namespace FixWorld.Profiling
                 throw new ArgumentNullException(nameof(measurements));
             this.keyComparer = keyComparer ??
                 throw new ArgumentNullException(nameof(keyComparer));
+            PublishedAtTimestamp = Stopwatch.GetTimestamp();
         }
 
         public int Count => measurements.Length;
+
+        public long PublishedAtTimestamp { get; }
+
+        public TimeSpan Age =>
+            ProfileTime.ToTimeSpan(
+                Math.Max(0L, Stopwatch.GetTimestamp() - PublishedAtTimestamp));
 
         public ProfileMeasurement<TKey> this[int index] => measurements[index];
 

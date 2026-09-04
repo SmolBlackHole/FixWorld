@@ -24,13 +24,14 @@ history.
 
 ## Active order
 
-1. Validate the shared profiler under Unity Mono and expose its published runtime
-   snapshot through the existing diagnostics UI.
-2. Measure the frozen complex save twice, then instrument the dominant tick path.
-   Start with RimWorld's existing pathfinding jobs if the baseline confirms them.
-3. Capture a named darker texture and validate DDS sampling, alpha, and mipmaps.
-4. Reduce and throttle DDS background work from measured resource pressure.
-5. Re-run the second mod pack now that Royalty and Ideology are installed;
+1. Validate the shared profiler recording and publication cost under Unity Mono.
+2. Test duplicate suppression in `ConnectivitySource.UpdateIncrementally`; two
+   frozen-save runs identified it as the stable pathfinding critical path.
+3. Attribute path requests to pawn categories, traversal profiles, and targets.
+4. Build the layered tile-mask and chunk-component model in shadow mode.
+5. Capture a named darker texture and validate DDS sampling, alpha, and mipmaps.
+6. Reduce and throttle DDS background work from measured resource pressure.
+7. Re-run the second mod pack now that Royalty and Ideology are installed;
    verify the fixture's complete DLC set before treating the result as valid.
 
 ## Release engineering
@@ -84,9 +85,9 @@ history.
       a Release benchmark harness.
 - [ ] Validate profiler cost and snapshot publication inside Unity Mono. Desktop
       CLR measurements are not a substitute for the actual game runtime.
-- [ ] Surface profiler mode, publication age, and measured hotpaths in the
+- [x] Surface profiler mode, publication age, and measured hotpaths in the
       diagnostics UI without formatting on the recording path.
-- [ ] Measure the frozen complex save twice and identify the dominant tick path.
+- [x] Measure the frozen complex save twice and identify the dominant tick path.
 - [ ] Separate `TickManager`, `MapPreTick`, `MapPostTick`, Unity Jobs, FixWorld
       workers, and main-thread time.
 - [ ] Throttle background jobs from TPS, frame time, CPU pressure, and I/O pressure.
@@ -94,13 +95,36 @@ history.
 
 ### Pathfinding
 
-- [ ] Instrument existing RimWorld 1.6 path jobs before replacing anything.
-- [ ] Record `PushRequest`, `FindPathNow`, queue latency, requests per tick, batch
-      size, and `MapGridRequest` reuse.
-- [ ] Separate `PathFinderMapData`, request context, traversal cost, and invalidation.
-- [ ] Profile reachability and `ReachabilityCache` separately from pathfinding.
-- [ ] Only then test path reuse and tiered path caches with precise invalidation.
-- [ ] Report time, expanded nodes, path length, worst case, hit rate, and invalidations.
+Architecture, retained decisions, measurements, correctness cases, and the
+ordered experiment design live in
+[Pathfinding and spatial runtime optimization](docs/pathfinding.md).
+
+- [x] Instrument existing RimWorld 1.6 path jobs before replacing anything.
+- [x] Record `PushRequest`, `FindPathNow`, queue latency, requests per tick, batch
+      size, and grid-job creation.
+- [x] Profile reachability and `ReachabilityCache` separately from pathfinding.
+- [ ] Test a semantics-preserving `ConnectivitySource.UpdateIncrementally` patch
+      that deduplicates the union of expanded dirty cells, then compare two
+      frozen-save runs against the recorded baseline.
+- [ ] Attribute request demand to pawn category, traversal profile, target shape,
+      and repeated destinations without adding pawn-tick hotpath probes.
+- [ ] Add a fixed-window detailed capture for pawn movement, current jobs,
+      think-tree selection, needs, health, pathfinding, and reachability.
+- [ ] Prototype layered topology, restriction, and cost masks plus per-layer
+      generations in shadow mode.
+- [ ] Benchmark full bit-parallel component rebuilds against scalar full rebuilds
+      and 8, 16, and 32-cell chunk-local rebuilds.
+- [ ] Build chunk-local components and boundary portals, then update only affected
+      chunks and edges from RimWorld's map invalidation events.
+- [ ] Build the global connectivity graph and compare shadow reachability with
+      RimWorld across the documented correctness fixtures.
+- [ ] Add generation-validated portal-route, corridor, path, and suffix reuse for
+      supported traversal profiles.
+- [ ] Test hierarchical portal-graph and corridor pathfinding with an explicit
+      vanilla fallback for unsupported customizers.
+- [ ] Report time, allocations, memory, dirty cells, rebuilt chunks, changed
+      portals, expanded nodes, path cost and length, worst case, cache hit rate,
+      invalidations, mismatches, and fallbacks.
 
 ## Platform work, later
 

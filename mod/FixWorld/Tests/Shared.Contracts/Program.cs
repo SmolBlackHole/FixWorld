@@ -368,6 +368,12 @@ internal static class Program
             succeeded: false);
 
         ProfileSnapshot<string> original = profiler.Snapshot();
+        Assert(
+            profiler.AggregationMode == ProfileAggregationMode.Inline,
+            "The profiler did not expose its aggregation mode.");
+        Assert(
+            original.Age >= TimeSpan.Zero,
+            "The profile snapshot published an invalid age.");
         Assert(original.Count == 1, "Equivalent profile keys were separated.");
         Assert(
             original.TryGet(
@@ -509,6 +515,9 @@ internal static class Program
                        ProfileAggregationMode.Buffered,
                        publishInterval: TimeSpan.FromMilliseconds(10)));
         ProfileSlot<string> slot = profiler.GetSlot("tick");
+        Assert(
+            profiler.AggregationMode == ProfileAggregationMode.Buffered,
+            "The buffered profiler exposed the wrong aggregation mode.");
         slot.ObserveStopwatchTicks(StopwatchFrequency());
         Assert(
             SpinWait.SpinUntil(

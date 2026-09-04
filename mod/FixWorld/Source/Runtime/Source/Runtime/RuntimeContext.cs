@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using FixWorld.Diagnostics;
 using FixWorld.Events;
 using FixWorld.Lifecycle;
@@ -14,6 +15,8 @@ namespace FixWorld.Runtime
         private const string FixWorldPackageId = "smolblackhole.fixworld";
         private const float DefaultDdsCacheMaxGiB = 6.0f;
         private const int MaximumLifecycleEventsPerPump = 64;
+        private static readonly long RuntimeProfileLogIntervalTicks =
+            Stopwatch.Frequency * 30L;
 
         private readonly object attachmentSync = new object();
         private readonly EventBus events;
@@ -22,7 +25,11 @@ namespace FixWorld.Runtime
         private readonly IDisposable lifecycleSubscription;
         private readonly RuntimeTelemetryStore telemetry;
         private object attachedMod;
+        private string startupDiagnosticsText =
+            "No completed startup diagnostics are available yet.";
         private bool disposed;
+        private long nextRuntimeProfileLogAt;
+        private bool runtimeProfileLoggingActive;
 
         internal RuntimeContext()
         {
@@ -52,7 +59,10 @@ namespace FixWorld.Runtime
 
         internal int WorkerCount => scheduler.WorkerCount;
 
-        internal string DiagnosticsText { get; private set; } = "No completed startup diagnostics are available yet.";
+        internal string DiagnosticsText =>
+            RuntimeDiagnosticsSummary.FormatRuntimeDetails(
+                startupDiagnosticsText,
+                telemetry.CaptureRuntimeProfiling());
 
         internal string ClearDdsCache() => Textures.ClearCache();
 
@@ -178,10 +188,37 @@ namespace FixWorld.Runtime
             mainThread.Pump(64, TimeSpan.FromMilliseconds(4));
             Lifecycle.ObserveFrame();
             events.Pump();
+            LogRuntimeProfileIfDue();
         }
 
         internal bool TryGetLoadingSnapshot(
             out PlayDataLoadingSnapshot snapshot) => telemetry.TryGetLoadingSnapshot(out snapshot);
+
+        internal long StartRuntimeHotpath(RuntimeHotpath hotpath) =>
+            telemetry.StartRuntimeHotpath(hotpath);
+
+        internal void StopRuntimeHotpath(
+            RuntimeHotpath hotpath,
+            long startedAt) =>
+            telemetry.StopRuntimeHotpath(hotpath, startedAt);
+
+        internal void ObservePathBatch(
+            int requests,
+            long totalQueueDelayTicks,
+            int maximumQueueDelayTicks) =>
+            telemetry.ObservePathBatch(
+                requests,
+                totalQueueDelayTicks,
+                maximumQueueDelayTicks);
+
+        internal void ObservePathGridJobCreated() =>
+            telemetry.ObservePathGridJobCreated();
+
+        internal void ObservePathDataUpdate(int dirtyCells) =>
+            telemetry.ObservePathDataUpdate(dirtyCells);
+
+        internal void ObserveReachabilityCache(bool hit) =>
+            telemetry.ObserveReachabilityCache(hit);
 
         public void Dispose()
         {
@@ -191,6 +228,12 @@ namespace FixWorld.Runtime
             }
 
             disposed = true;
+            if (runtimeProfileLoggingActive)
+            {
+                LogRuntimeProfile("shutdown", publish: true);
+                runtimeProfileLoggingActive = false;
+            }
+
             try
             {
                 Lifecycle.NotifyShuttingDown();
@@ -228,12 +271,24 @@ namespace FixWorld.Runtime
                 case RimWorldLifecycleEventKind.GameReady:
                     CompleteStartup(lifecycleEvent.Source);
                     Textures.StartBackgroundBuild();
+                    runtimeProfileLoggingActive = true;
+                    nextRuntimeProfileLogAt =
+                        Stopwatch.GetTimestamp() +
+                        RuntimeProfileLogIntervalTicks;
                     Log.Message(
                         "[FixWorld] Game ready; generation=" +
                         lifecycleEvent.GameGeneration + ".");
                     break;
                 case RimWorldLifecycleEventKind.PlayDataReady:
+                    break;
                 case RimWorldLifecycleEventKind.GameEnded:
+                    if (runtimeProfileLoggingActive)
+                    {
+                        LogRuntimeProfile("game-ended", publish: true);
+                        runtimeProfileLoggingActive = false;
+                    }
+
+                    break;
                 case RimWorldLifecycleEventKind.ShuttingDown:
                     break;
                 default:
@@ -255,10 +310,36 @@ namespace FixWorld.Runtime
                 return false;
             }
 
-            DiagnosticsText = RuntimeDiagnosticsSummary.FormatDetails(diagnostics);
+            startupDiagnosticsText =
+                RuntimeDiagnosticsSummary.FormatDetails(diagnostics);
             Log.Message(RuntimeDiagnosticsSummary.Format(diagnostics));
             BenchmarkExporter.Write(diagnostics);
             return true;
+        }
+
+        private void LogRuntimeProfileIfDue()
+        {
+            if (!runtimeProfileLoggingActive)
+            {
+                return;
+            }
+
+            long now = Stopwatch.GetTimestamp();
+            if (now < nextRuntimeProfileLogAt)
+            {
+                return;
+            }
+
+            nextRuntimeProfileLogAt = now + RuntimeProfileLogIntervalTicks;
+            LogRuntimeProfile("periodic", publish: false);
+        }
+
+        private void LogRuntimeProfile(string reason, bool publish)
+        {
+            Log.Message(
+                RuntimeDiagnosticsSummary.FormatRuntimeLog(
+                    reason,
+                    telemetry.CaptureRuntimeProfiling(publish)));
         }
     }
 }

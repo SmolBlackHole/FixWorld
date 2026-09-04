@@ -13,6 +13,7 @@ support boundary
 | Understand the observed loading stages | [Play-data stages](play-data-pipeline.md) |
 | Understand telemetry, benchmark data, and the in-game UI | [Runtime diagnostics](diagnostics.md) |
 | Understand how performance changes are selected and proven | [Optimization method](optimization.md) |
+| Follow the pathfinding, map-tiling, connectivity, and path-reuse track | [Pathfinding and spatial optimization](pathfinding.md) |
 | Review Dubs Performance Analyzer's profiling architecture | [Dubs Performance Analyzer source review](research/dubs-performance-analyzer.md) |
 | Review Performance Optimizer's targeted patches and caches | [Performance Optimizer implementation notes](research/performance-optimizer.md) |
 | Review RimThreaded's threading and compatibility model | [RimThreaded architecture notes](research/rimthreaded.md) |

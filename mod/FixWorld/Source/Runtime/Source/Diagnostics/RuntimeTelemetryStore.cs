@@ -14,8 +14,21 @@ namespace FixWorld.Diagnostics
     internal sealed class RuntimeTelemetryStore : IDisposable
     {
         private readonly object sync = new();
+        private readonly Profiler<RuntimeHotpath> runtimeProfiler;
+        private readonly ProfileSlot<RuntimeHotpath>[] runtimeSlots;
 
         private bool active;
+        private long pathBatches;
+        private long pathDataUpdates;
+        private long pathDirtyCells;
+        private long pathGridJobsCreated;
+        private long pathMaximumBatchSize;
+        private long pathMaximumDirtyCells;
+        private long pathMaximumQueueDelayTicks;
+        private long pathRequests;
+        private long pathTotalQueueDelayTicks;
+        private long reachabilityCacheHits;
+        private long reachabilityCacheMisses;
         private double estimatedDurationMilliseconds;
         private LoadingLiveState liveState;
         private Profiler<PlayDataLoadStage> profiler;
@@ -24,6 +37,13 @@ namespace FixWorld.Diagnostics
         private long stageStartedAt;
         private long startedAt;
         private bool stagesComplete;
+        private int disposed;
+
+        internal RuntimeTelemetryStore()
+        {
+            runtimeProfiler = new(options: ProfilerOptions.Buffered);
+            runtimeSlots = CreateRuntimeSlots(runtimeProfiler);
+        }
 
         internal bool Start()
         {
@@ -148,6 +168,72 @@ namespace FixWorld.Diagnostics
             return true;
         }
 
+        internal long StartRuntimeHotpath(RuntimeHotpath hotpath) =>
+            runtimeSlots[(int)hotpath].StartTimestamp();
+
+        internal void StopRuntimeHotpath(
+            RuntimeHotpath hotpath,
+            long startedAt) =>
+            runtimeSlots[(int)hotpath].StopTimestamp(startedAt);
+
+        internal void ObservePathBatch(
+            int requests,
+            long totalQueueDelayTicks,
+            int maximumQueueDelayTicks)
+        {
+            Interlocked.Increment(ref pathBatches);
+            Interlocked.Add(ref pathRequests, requests);
+            Interlocked.Add(
+                ref pathTotalQueueDelayTicks,
+                totalQueueDelayTicks);
+            UpdateMaximum(ref pathMaximumBatchSize, requests);
+            UpdateMaximum(
+                ref pathMaximumQueueDelayTicks,
+                maximumQueueDelayTicks);
+        }
+
+        internal void ObservePathGridJobCreated() =>
+            Interlocked.Increment(ref pathGridJobsCreated);
+
+        internal void ObservePathDataUpdate(int dirtyCells)
+        {
+            Interlocked.Increment(ref pathDataUpdates);
+            Interlocked.Add(ref pathDirtyCells, dirtyCells);
+            UpdateMaximum(ref pathMaximumDirtyCells, dirtyCells);
+        }
+
+        internal void ObserveReachabilityCache(bool hit)
+        {
+            if (hit)
+            {
+                Interlocked.Increment(ref reachabilityCacheHits);
+            }
+            else
+            {
+                Interlocked.Increment(ref reachabilityCacheMisses);
+            }
+        }
+
+        internal RuntimeProfilingSnapshot CaptureRuntimeProfiling(
+            bool publish = false) =>
+            new(
+                runtimeProfiler.AggregationMode,
+                publish
+                    ? runtimeProfiler.PublishSnapshot()
+                    : runtimeProfiler.PublishedSnapshot,
+                new RuntimePathfindingSnapshot(
+                    Interlocked.Read(ref pathBatches),
+                    Interlocked.Read(ref pathRequests),
+                    Interlocked.Read(ref pathMaximumBatchSize),
+                    Interlocked.Read(ref pathTotalQueueDelayTicks),
+                    Interlocked.Read(ref pathMaximumQueueDelayTicks),
+                    Interlocked.Read(ref pathDataUpdates),
+                    Interlocked.Read(ref pathDirtyCells),
+                    Interlocked.Read(ref pathMaximumDirtyCells),
+                    Interlocked.Read(ref pathGridJobsCreated),
+                    Interlocked.Read(ref reachabilityCacheHits),
+                    Interlocked.Read(ref reachabilityCacheMisses)));
+
         internal RuntimeDiagnosticsSnapshot Complete(
             string source,
             TextureDdsCacheSnapshot ddsCache,
@@ -194,7 +280,16 @@ namespace FixWorld.Diagnostics
                 memory);
         }
 
-        public void Dispose() => Abort();
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref disposed, 1) != 0)
+            {
+                return;
+            }
+
+            Abort();
+            runtimeProfiler.Dispose();
+        }
 
         private static List<PlayDataStageMeasurement> CaptureStages(
             ProfileSnapshot<PlayDataLoadStage> stages)
@@ -243,6 +338,37 @@ namespace FixWorld.Diagnostics
             }
 
             return slots;
+        }
+
+        private static ProfileSlot<RuntimeHotpath>[] CreateRuntimeSlots(
+            Profiler<RuntimeHotpath> profiler)
+        {
+            var slots =
+                new ProfileSlot<RuntimeHotpath>[RuntimeHotpathCatalog.Count];
+            for (int index = 0; index < slots.Length; index++)
+            {
+                slots[index] = profiler.GetSlot((RuntimeHotpath)index);
+            }
+
+            return slots;
+        }
+
+        private static void UpdateMaximum(ref long target, long value)
+        {
+            long current = Interlocked.Read(ref target);
+            while (value > current)
+            {
+                long observed = Interlocked.CompareExchange(
+                    ref target,
+                    value,
+                    current);
+                if (observed == current)
+                {
+                    return;
+                }
+
+                current = observed;
+            }
         }
 
         private static double ToMilliseconds(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;

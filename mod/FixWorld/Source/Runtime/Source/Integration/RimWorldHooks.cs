@@ -7,27 +7,33 @@ namespace FixWorld.Integration
     internal static class RimWorldHooks
     {
         private const string OwnerPrefix = "smolblackhole.fixworld";
-        private static readonly object Sync = new object();
-        private static readonly HookGroup BootstrapHookGroup = new HookGroup(
+        private static readonly object Sync = new();
+        private static readonly HookGroup BootstrapHookGroup = new(
             "bootstrap",
             OwnerPrefix + ".bootstrap",
             BootstrapHooks.PatchTypes);
-        private static readonly HookGroup PlayDataHookGroup = new HookGroup(
+        private static readonly HookGroup PlayDataHookGroup = new(
             "play-data",
             OwnerPrefix + ".playdata",
             PlayDataHooks.PatchTypes);
-        private static readonly HookGroup TextureHookGroup = new HookGroup(
+        private static readonly HookGroup TextureHookGroup = new(
             "textures",
             OwnerPrefix + ".textures",
             TextureHooks.PatchTypes);
-        private static readonly HookGroup LoadingUiHookGroup = new HookGroup(
+        private static readonly HookGroup LoadingUiHookGroup = new(
             "loading-ui",
             OwnerPrefix + ".loading-ui",
             LoadingUiHooks.PatchTypes);
-        private static readonly HookGroup LifecycleHookGroup = new HookGroup(
+        private static readonly HookGroup LifecycleHookGroup = new(
             "lifecycle",
             OwnerPrefix + ".lifecycle",
             LifecycleHooks.PatchTypes);
+        private static readonly HookGroup RuntimeProfilingHookGroup =
+            new(
+                "runtime profiling",
+                OwnerPrefix + ".profiling",
+                RuntimeProfilingHooks.PatchTypes,
+                required: false);
         internal static bool InstallBootstrap()
         {
             lock (Sync)
@@ -66,6 +72,7 @@ namespace FixWorld.Integration
                     return false;
                 }
 
+                RuntimeProfilingHookGroup.Install();
                 return true;
             }
         }
@@ -82,6 +89,7 @@ namespace FixWorld.Integration
         {
             lock (Sync)
             {
+                RuntimeProfilingHookGroup.Uninstall();
                 LifecycleHookGroup.Uninstall();
                 LoadingUiHookGroup.Uninstall();
                 TextureHookGroup.Uninstall();
@@ -95,14 +103,20 @@ namespace FixWorld.Integration
             private readonly string name;
             private readonly string owner;
             private readonly Type[] patchTypes;
+            private readonly bool required;
             private Harmony harmony;
             private bool installed;
 
-            internal HookGroup(string name, string owner, Type[] patchTypes)
+            internal HookGroup(
+                string name,
+                string owner,
+                Type[] patchTypes,
+                bool required = true)
             {
                 this.name = name;
                 this.owner = owner;
                 this.patchTypes = patchTypes;
+                this.required = required;
             }
 
             internal bool Install()
@@ -125,9 +139,18 @@ namespace FixWorld.Integration
                 }
                 catch (Exception exception)
                 {
-                    Log.Error(
+                    string message =
                         "[FixWorld] Could not install " + name +
-                        " hooks: " + exception);
+                        " hooks: " + exception;
+                    if (required)
+                    {
+                        Log.Error(message);
+                    }
+                    else
+                    {
+                        Log.Warning(message);
+                    }
+
                     Uninstall();
                     return false;
                 }

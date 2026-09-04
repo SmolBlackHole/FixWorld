@@ -2,9 +2,9 @@
 
 Parent: [Documentation index](README.md)
 
-The Runtime owns one telemetry store for startup diagnostics. The Loader and
-normal Mod expose its output at their boundaries; they do not maintain parallel
-profiling systems.
+The Runtime owns one telemetry store for startup and live hotpath diagnostics.
+The Loader and normal Mod expose its output at their boundaries; they do not
+maintain parallel profiling systems.
 
 ## Data flow
 
@@ -80,12 +80,39 @@ and verifies the accepted observation count. Desktop CLR results are a design
 check, not proof of Unity Mono performance; every new in-game hotpath still needs
 a representative RimWorld measurement.
 
+## Runtime hotpaths
+
+The same telemetry store owns one long-lived `Buffered` profiler. Runtime hooks
+measure RimWorld's existing tick and pathfinding boundaries without replacing
+their behavior:
+
+- `TickManager.DoSingleTick`, `MapPreTick`, and `MapPostTick`;
+- pathfinder ticks, synchronous requests, map-data gathering, the Unity Job
+  completion barrier, and grid/path scheduling;
+- each incremental path-data source used by map-data gathering;
+- reachability checks and reachability-cache lookups.
+
+The path-scheduling boundary also accumulates batch size and queue delay in game
+ticks. Grid-job creation and reachability-cache outcomes use atomic counters.
+These values are aggregated directly and do not enqueue sample objects or pass
+through the event bus. Private pathfinder hooks are an optional diagnostic
+group: failure to resolve one disables that group without disabling FixWorld's
+loading or DDS features.
+
+Readers use the last immutable published snapshot and its monotonic publication
+timestamp. Formatting happens only when a consumer asks for diagnostics.
+While a game is active, FixWorld also writes a cumulative
+`[FixWorld.Profile]` entry to `Player.log` every 30 seconds and when the game
+ends. Each hotpath uses `calls,totalMs,avgMs,maxMs`; pathfinding counters follow
+in the same structured line.
+
 ## In-game UI
 
-The normal Mod presents Startup, Preloader, Stages, DDS cache, Runtime,
-and Issues sections in a resizable window. Dense stage rows scroll independently.
-The Runtime formats the retained snapshot once; an open window polls the stable
-text contract at most every 500 ms. A closed window does no polling or formatting
+The normal Mod presents Startup, Preloader, Stages, DDS cache, Runtime, Issues,
+Hotpaths, and Pathfinding sections in a resizable window. Dense rows scroll
+independently. The Runtime retains the formatted startup result and appends the
+latest published runtime snapshot when requested. An open window polls the text
+contract at most every 500 ms. A closed window does no polling or formatting
 work.
 
 The UI is observational. Opening it does not install Harmony patches, activate
@@ -100,10 +127,11 @@ allocate.
 ## Current limits
 
 Stage timings show where startup time is spent, but they do not attribute nested
-work to individual mods or methods. The scheduler snapshot reports configured
-workers and queued main-thread work, not measured utilization. Expensive texture
-method transpilers and per-stage process sampling are intentionally outside the
-always-on telemetry path.
+work to individual mods or methods. Runtime hotpath totals are inclusive and can
+overlap. Queue delay is currently measured in game ticks, not wall-clock time.
+The scheduler snapshot reports configured workers and queued main-thread work,
+not measured utilization. Expensive texture method transpilers and per-stage
+process sampling are intentionally outside the always-on telemetry path.
 
 Open diagnostics work is tracked in the [TODO](../TODO.md). Benchmark operation
 and reproducibility rules are documented in

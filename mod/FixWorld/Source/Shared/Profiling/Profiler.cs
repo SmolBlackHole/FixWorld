@@ -20,13 +20,17 @@ namespace FixWorld.Profiling
             IEqualityComparer<TKey> keyComparer = null,
             ProfilerOptions options = null)
         {
+            ProfilerOptions resolvedOptions = options ?? ProfilerOptions.Inline;
             this.keyComparer = keyComparer ?? EqualityComparer<TKey>.Default;
             slots = new(this.keyComparer);
             publishedSnapshot = new([], this.keyComparer);
+            AggregationMode = resolvedOptions.AggregationMode;
             state = new(
-                options ?? ProfilerOptions.Inline,
+                resolvedOptions,
                 PublishSnapshotCore);
         }
+
+        public ProfileAggregationMode AggregationMode { get; }
 
         public bool Enabled => state.Enabled;
 

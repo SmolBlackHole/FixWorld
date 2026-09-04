@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using FixWorld.Profiling;
 using FixWorld.Textures;
 
 namespace FixWorld.Diagnostics
@@ -39,7 +40,7 @@ namespace FixWorld.Diagnostics
                 throw new ArgumentNullException(nameof(snapshot));
             }
 
-            StringBuilder text = new StringBuilder(4096);
+            var text = new StringBuilder(4096);
             text.AppendLine("Startup");
             text.AppendLine("  Completed: " + snapshot.CompletedUtc);
             text.AppendLine("  Source: " + snapshot.CompletionSource);
@@ -107,6 +108,138 @@ namespace FixWorld.Diagnostics
             return text.ToString().TrimEnd();
         }
 
+        internal static string FormatRuntimeDetails(
+            string startupDiagnostics,
+            RuntimeProfilingSnapshot profiling)
+        {
+            string startup = string.IsNullOrWhiteSpace(startupDiagnostics)
+                ? "No completed startup diagnostics are available yet."
+                : startupDiagnostics.TrimEnd();
+            StringBuilder text = new(startup.Length + 2048);
+            text.Append(startup);
+            text.AppendLine();
+            text.AppendLine();
+            text.AppendLine("Hotpaths");
+            text.AppendLine(
+                "  Profiler: " + profiling.AggregationMode.ToString().ToLowerInvariant() +
+                ", snapshot age: " +
+                Milliseconds(profiling.Hotpaths.Age.TotalMilliseconds));
+
+            bool hasMeasurements = false;
+            for (int index = 0; index < profiling.Hotpaths.Count; index++)
+            {
+                ProfileMeasurement<RuntimeHotpath> measurement =
+                    profiling.Hotpaths[index];
+                if (measurement.Calls == 0L)
+                {
+                    continue;
+                }
+
+                hasMeasurements = true;
+                text.AppendLine(
+                    "  " + RuntimeHotpathCatalog.GetName(measurement.Key) +
+                    ": " + measurement.Calls.ToString(
+                        CultureInfo.InvariantCulture) +
+                    " calls, " + Milliseconds(
+                        measurement.TotalTime.TotalMilliseconds) +
+                    " total, " + Milliseconds(
+                        measurement.AverageTime.TotalMilliseconds) +
+                    " average, " + Milliseconds(
+                        measurement.MaximumTime.TotalMilliseconds) +
+                    " max");
+            }
+
+            if (!hasMeasurements)
+            {
+                text.AppendLine("  No runtime measurements published yet.");
+            }
+
+            AppendPathfindingDetails(text, profiling.Pathfinding);
+            return text.ToString().TrimEnd();
+        }
+
+        internal static string FormatRuntimeLog(
+            string reason,
+            RuntimeProfilingSnapshot profiling)
+        {
+            StringBuilder text = new(3072);
+            text.Append("[FixWorld.Profile] reason=");
+            text.Append(reason);
+            text.Append("; mode=");
+            text.Append(profiling.AggregationMode.ToString().ToLowerInvariant());
+            text.Append("; snapshotAgeMs=");
+            text.Append(profiling.Hotpaths.Age.TotalMilliseconds.ToString(
+                "F1",
+                CultureInfo.InvariantCulture));
+            text.Append("; hotpaths(calls,totalMs,avgMs,maxMs)=");
+
+            bool first = true;
+            for (int index = 0; index < profiling.Hotpaths.Count; index++)
+            {
+                ProfileMeasurement<RuntimeHotpath> measurement =
+                    profiling.Hotpaths[index];
+                if (measurement.Calls == 0L)
+                {
+                    continue;
+                }
+
+                if (!first)
+                {
+                    text.Append('|');
+                }
+
+                first = false;
+                text.Append(measurement.Key);
+                text.Append(':');
+                text.Append(measurement.Calls.ToString(
+                    CultureInfo.InvariantCulture));
+                text.Append(',');
+                text.Append(measurement.TotalTime.TotalMilliseconds.ToString(
+                    "F1",
+                    CultureInfo.InvariantCulture));
+                text.Append(',');
+                text.Append(measurement.AverageTime.TotalMilliseconds.ToString(
+                    "F3",
+                    CultureInfo.InvariantCulture));
+                text.Append(',');
+                text.Append(measurement.MaximumTime.TotalMilliseconds.ToString(
+                    "F1",
+                    CultureInfo.InvariantCulture));
+            }
+
+            RuntimePathfindingSnapshot path = profiling.Pathfinding;
+            text.Append("; path=batches:");
+            text.Append(path.Batches.ToString(CultureInfo.InvariantCulture));
+            text.Append(",requests:");
+            text.Append(path.Requests.ToString(CultureInfo.InvariantCulture));
+            text.Append(",maxBatch:");
+            text.Append(path.MaximumBatchSize.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",queueTicks:");
+            text.Append(path.TotalQueueDelayTicks.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",maxQueueTicks:");
+            text.Append(path.MaximumQueueDelayTicks.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",dataUpdates:");
+            text.Append(path.DataUpdates.ToString(CultureInfo.InvariantCulture));
+            text.Append(",dirtyCells:");
+            text.Append(path.DirtyCells.ToString(CultureInfo.InvariantCulture));
+            text.Append(",maxDirtyCells:");
+            text.Append(path.MaximumDirtyCells.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",gridJobs:");
+            text.Append(path.GridJobsCreated.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",reachHits:");
+            text.Append(path.ReachabilityCacheHits.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",reachMisses:");
+            text.Append(path.ReachabilityCacheMisses.ToString(
+                CultureInfo.InvariantCulture));
+            return text.ToString();
+        }
+
         private static void AppendDdsDetails(
             StringBuilder text,
             RuntimeDiagnosticsSnapshot snapshot)
@@ -140,6 +273,71 @@ namespace FixWorld.Diagnostics
                 Mebibytes(readAhead.BytesRead) + " MiB, " +
                 Milliseconds(readAhead.ElapsedMilliseconds));
 
+        }
+
+        private static void AppendPathfindingDetails(
+            StringBuilder text,
+            RuntimePathfindingSnapshot pathfinding)
+        {
+            text.AppendLine();
+            text.AppendLine("Pathfinding");
+            double averageBatch = pathfinding.Batches == 0L
+                ? 0.0
+                : pathfinding.Requests / (double)pathfinding.Batches;
+            double averageQueueDelay = pathfinding.Requests == 0L
+                ? 0.0
+                : pathfinding.TotalQueueDelayTicks /
+                  (double)pathfinding.Requests;
+            text.AppendLine(
+                "  Batches: " + pathfinding.Batches.ToString(
+                    CultureInfo.InvariantCulture) +
+                ", requests: " + pathfinding.Requests.ToString(
+                    CultureInfo.InvariantCulture) +
+                ", average size: " + averageBatch.ToString(
+                    "F2",
+                    CultureInfo.InvariantCulture) +
+                ", maximum: " + pathfinding.MaximumBatchSize.ToString(
+                    CultureInfo.InvariantCulture));
+            text.AppendLine(
+                "  Queue delay: " + averageQueueDelay.ToString(
+                    "F2",
+                    CultureInfo.InvariantCulture) +
+                " ticks average, " +
+                pathfinding.MaximumQueueDelayTicks.ToString(
+                    CultureInfo.InvariantCulture) +
+                " ticks maximum");
+            double averageDirtyCells = pathfinding.DataUpdates == 0L
+                ? 0.0
+                : pathfinding.DirtyCells / (double)pathfinding.DataUpdates;
+            text.AppendLine(
+                "  Dirty cells: " + averageDirtyCells.ToString(
+                    "F1",
+                    CultureInfo.InvariantCulture) +
+                " average, " + pathfinding.MaximumDirtyCells.ToString(
+                    CultureInfo.InvariantCulture) +
+                " maximum across " + pathfinding.DataUpdates.ToString(
+                    CultureInfo.InvariantCulture) +
+                " data updates");
+            text.AppendLine(
+                "  Grid jobs created: " +
+                pathfinding.GridJobsCreated.ToString(
+                    CultureInfo.InvariantCulture));
+
+            long cacheLookups = pathfinding.ReachabilityCacheHits +
+                                pathfinding.ReachabilityCacheMisses;
+            double cacheHitRate = cacheLookups == 0L
+                ? 0.0
+                : pathfinding.ReachabilityCacheHits * 100.0 / cacheLookups;
+            text.AppendLine(
+                "  Reachability cache: " +
+                pathfinding.ReachabilityCacheHits.ToString(
+                    CultureInfo.InvariantCulture) +
+                " hits, " + pathfinding.ReachabilityCacheMisses.ToString(
+                    CultureInfo.InvariantCulture) +
+                " misses, " + cacheHitRate.ToString(
+                    "F1",
+                    CultureInfo.InvariantCulture) +
+                "% hit rate");
         }
 
         private static string FormatStageHotpaths(

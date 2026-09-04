@@ -1,5 +1,7 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
+using FixWorld.Diagnostics;
 using FixWorld.Integration;
 using FixWorld.PlayData;
 using FixWorld.Preloader;
@@ -71,10 +73,7 @@ namespace FixWorld.Runtime
                 "workers=" + Current.WorkerCount + ".");
         }
 
-        internal static void BeginPlayData()
-        {
-            Current.BeginPlayData();
-        }
+        internal static void BeginPlayData() => Current.BeginPlayData();
 
         internal static bool TransitionStage(PlayDataLoadStage stage)
         {
@@ -82,25 +81,13 @@ namespace FixWorld.Runtime
             return context != null && context.TransitionStage(stage);
         }
 
-        internal static void PrepareTextures()
-        {
-            Volatile.Read(ref current)?.PrepareTextures();
-        }
+        internal static void PrepareTextures() => Volatile.Read(ref current)?.PrepareTextures();
 
-        internal static void BeginTextureDiscovery()
-        {
-            Volatile.Read(ref current)?.BeginTextureDiscovery();
-        }
+        internal static void BeginTextureDiscovery() => Volatile.Read(ref current)?.BeginTextureDiscovery();
 
-        internal static void CompletePlayData()
-        {
-            Volatile.Read(ref current)?.CompletePlayData();
-        }
+        internal static void CompletePlayData() => Volatile.Read(ref current)?.CompletePlayData();
 
-        internal static void FailPlayData(System.Exception exception)
-        {
-            Volatile.Read(ref current)?.FailPlayData(exception);
-        }
+        internal static void FailPlayData(System.Exception exception) => Volatile.Read(ref current)?.FailPlayData(exception);
 
         internal static bool ActivateRuntimeHooks()
         {
@@ -135,6 +122,43 @@ namespace FixWorld.Runtime
                 : context.DiagnosticsText;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static long StartRuntimeHotpath(RuntimeHotpath hotpath)
+        {
+            RuntimeContext context = Volatile.Read(ref current);
+            return context == null
+                ? long.MinValue
+                : context.StartRuntimeHotpath(hotpath);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static void StopRuntimeHotpath(
+            RuntimeHotpath hotpath,
+            long startedAt)
+        {
+            Volatile.Read(ref current)?.StopRuntimeHotpath(
+                hotpath,
+                startedAt);
+        }
+
+        internal static void ObservePathBatch(
+            int requests,
+            long totalQueueDelayTicks,
+            int maximumQueueDelayTicks)
+        {
+            Volatile.Read(ref current)?.ObservePathBatch(
+                requests,
+                totalQueueDelayTicks,
+                maximumQueueDelayTicks);
+        }
+
+        internal static void ObservePathGridJobCreated() => Volatile.Read(ref current)?.ObservePathGridJobCreated();
+
+        internal static void ObservePathDataUpdate(int dirtyCells) =>
+            Volatile.Read(ref current)?.ObservePathDataUpdate(dirtyCells);
+
+        internal static void ObserveReachabilityCache(bool hit) => Volatile.Read(ref current)?.ObserveReachabilityCache(hit);
+
         internal static string ClearDdsCache()
         {
             RuntimeContext context = Volatile.Read(ref current);
@@ -151,20 +175,11 @@ namespace FixWorld.Runtime
                 : context.RetryFailedDdsBuilds();
         }
 
-        internal static void Pump()
-        {
-            Volatile.Read(ref current)?.Pump();
-        }
+        internal static void Pump() => Volatile.Read(ref current)?.Pump();
 
-        internal static void NotifyMainMenuReady()
-        {
-            Volatile.Read(ref current)?.Lifecycle.NotifyMainMenuReady();
-        }
+        internal static void NotifyMainMenuReady() => Volatile.Read(ref current)?.Lifecycle.NotifyMainMenuReady();
 
-        internal static void NotifyGameEnded(Game game)
-        {
-            Volatile.Read(ref current)?.Lifecycle.NotifyGameEnded(game);
-        }
+        internal static void NotifyGameEnded(Game game) => Volatile.Read(ref current)?.Lifecycle.NotifyGameEnded(game);
 
         internal static void Shutdown()
         {
