@@ -30,6 +30,8 @@
     <ItemGroup>
         <Compile Include="..\Shared\PreloaderInstallation.cs"
             Link="Preloader\PreloaderInstallation.cs" />
+        <Compile Include="..\Shared\RimWorldRestart.cs"
+            Link="Preloader\RimWorldRestart.cs" />
         <Compile Include="..\Shared\PreloaderTimeline.cs"
             Link="Preloader\PreloaderTimeline.cs" />
         <Compile Include="..\Shared\RuntimeContract.cs"

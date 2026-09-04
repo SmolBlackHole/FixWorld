@@ -14,7 +14,14 @@ The normal RimWorld mod owns installation policy. On the first launch it:
 3. removes the superseded `FixWorld.dll` deployment if present;
 4. installs the managed files next to `RimWorldWin64.exe`;
 5. records a pending restart atomically; and
-6. restarts RimWorld once
+6. starts a hidden FixWorld helper, closes the current process, and starts one
+   replacement process only after the old process has exited.
+
+The same coordinated restart replaces RimWorld's Mods-tab restart while the
+FixWorld Runtime is active. The helper preserves the original command line and
+working directory, but removes inherited loader state before starting RimWorld.
+This allows Doorstop and the FixWorld loading UI to initialize again and avoids
+overlapping RimWorld processes.
 
 The managed files are:
 

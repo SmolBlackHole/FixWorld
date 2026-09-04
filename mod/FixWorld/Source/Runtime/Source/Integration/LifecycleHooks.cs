@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using FixWorld.Processes;
 using FixWorld.Runtime;
 using HarmonyLib;
 using RimWorld;
@@ -12,6 +14,7 @@ namespace FixWorld.Integration
         {
             typeof(RuntimePumpPatch),
             typeof(RuntimeShutdownPatch),
+            typeof(RimWorldRestartPatch),
             typeof(MainMenuReadyPatch),
             typeof(GameEndedPatch)
         };
@@ -23,6 +26,25 @@ namespace FixWorld.Integration
             private static void Prefix()
             {
                 RuntimeHost.Pump();
+            }
+        }
+
+        [HarmonyPatch(typeof(GenCommandLine), nameof(GenCommandLine.Restart))]
+        private static class RimWorldRestartPatch
+        {
+            [HarmonyPrefix]
+            [HarmonyPriority(Priority.First)]
+            private static bool Prefix()
+            {
+                string runtimeDirectory = Path.GetDirectoryName(
+                    typeof(FixWorldRuntime).Assembly.Location);
+                RimWorldRestart.Request(
+                    Path.Combine(
+                        runtimeDirectory ?? string.Empty,
+                        "FixWorld.Tool.exe"),
+                    Root.Shutdown,
+                    error => Log.Error("[FixWorld] " + error));
+                return false;
             }
         }
 

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using FixWorld.Migrations;
+using FixWorld.Processes;
 using UnityEngine;
 using Verse;
 
@@ -105,7 +106,15 @@ namespace FixWorld.Preloader
                 Log.Message(
                     "[FixWorld] Installed the required early loader. Restarting " +
                     "RimWorld so FixWorld.Runtime can start before mod loading.");
-                GenCommandLine.Restart();
+                string helper = Path.Combine(
+                    modRoot,
+                    "Tools",
+                    "Windows-x64",
+                    "FixWorld.Tool.exe");
+                RimWorldRestart.Request(
+                    helper,
+                    Root.Shutdown,
+                    error => Log.Error("[FixWorld] " + error));
                 return false;
             }
             catch (Exception exception)

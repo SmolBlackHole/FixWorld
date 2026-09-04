@@ -7,6 +7,7 @@ using FixWorld.Caching;
 using FixWorld.Events;
 using FixWorld.Migrations;
 using FixWorld.Preloader;
+using FixWorld.Processes;
 using FixWorld.Profiling;
 using FixWorld.Scheduling;
 using FixWorld.Textures;
@@ -22,6 +23,7 @@ internal static class Program
             CacheSnapshotsAreImmutable();
             MigrationCleanupIsSafeAndIdempotent();
             PreloaderInstallationIsVersionedAndRepairable();
+            RimWorldRestartPreservesArguments();
             ProfilingAggregatesImmutableSnapshots();
             ProfilingSlotsAreReusable();
             ProfileScopesCompleteExactlyOnce();
@@ -142,6 +144,36 @@ internal static class Program
                 Directory.Delete(fixture, recursive: true);
             }
         }
+    }
+
+    private static void RimWorldRestartPreservesArguments()
+    {
+        string[] values =
+        {
+            string.Empty,
+            "plain",
+            "two words",
+            "quoted \"value\"",
+            @"C:\RimWorld Mods\FixWorld\"
+        };
+        foreach (string value in values)
+        {
+            Assert(
+                string.Equals(
+                    RimWorldRestart.Decode(
+                        RimWorldRestart.Encode(value)),
+                    value,
+                    StringComparison.Ordinal),
+                "The coordinated restart did not preserve an argument.");
+        }
+
+        Assert(
+            string.Equals(
+                RimWorldRestart.BuildCommandLine(
+                    new[] { "plain", "two words", string.Empty }),
+                "plain \"two words\" \"\"",
+                StringComparison.Ordinal),
+            "The coordinated restart command line is malformed.");
     }
 
     private static void PreloaderInstallationIsVersionedAndRepairable()

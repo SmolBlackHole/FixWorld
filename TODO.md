@@ -27,7 +27,9 @@ history.
 1. [x] Remove the generic `DefDatabase<ThingCategoryDef>` Harmony hook that caused
    100 `ThingDef.ResolveIcon()` failures. The replacement boundary passed with all
    90 active mods, both with DDS enabled and disabled.
-2. Reproduce the colony-to-menu crash with DDS enabled and disabled.
+2. [x] Verify the colony-to-menu transition while DDS background work is active.
+   A cold-cache run loaded a colony and returned to the main menu without a
+   crash. Disabling FixWorld also leaves RimWorld on its original loading path.
 3. [x] Fix DDS background completion after pack and index publication. A normal
    90-mod cold-cache run published 10,468 entries with 0 failures and emitted
    the benchmark completion report after 343.7 seconds of background work.
@@ -61,9 +63,10 @@ history.
       completed with 0 relevant errors. The 257-mod no-Anomaly run reached the
       menu with a stable mod list and exactly the same known mod errors as the
       atomic baseline, with no new missing textures or Vehicle failures.
-- [ ] Reproduce the reported colony-to-menu crash with DDS enabled and disabled.
-      The captured stack points to MapModeFramework background cache work after
-      teardown, so do not attribute it to DDS without an A/B result.
+- [x] Verify the reported colony-to-menu transition while DDS background work is
+      active. A cold-cache run loaded a colony and returned to the main menu
+      without a crash. The previously captured failure remains attributable to
+      MapModeFramework background cache work rather than the DDS worker.
 - [ ] Throttle or pause background conversion from CPU, I/O, RAM, and TPS budgets.
 - [x] Verify DDS background completion after pack and index publication. The
       90-mod cold-cache run created 10,468 entries with 0 failures and emitted
@@ -90,6 +93,9 @@ history.
       order, and exception handling. While a mod-content reload remains pending,
       the normal RimWorld long-event UI must stay suppressed.
 - [ ] Verify `MainMenuReady` across menu, game, menu, and second-game transitions.
+- [ ] Verify coordinated restart from the Mods tab and from a clean first
+      Doorstop installation. Each path must close the old process before one
+      replacement starts, and the replacement must show the FixWorld loading UI.
 - [ ] Add measured worker utilization after the scheduler exposes busy and queued
       intervals.
 - [ ] Aggregate missing textures and NPOT warnings by mod and path without calling

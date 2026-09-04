@@ -202,7 +202,7 @@ namespace FixWorld.UI
             DiagnosticsSection section = document.Sections[selectedSection];
             bool ddsSection = string.Equals(
                 section.Title,
-                "DDS / Textures",
+                "DDS cache",
                 StringComparison.Ordinal);
 
             Text.Font = GameFont.Medium;

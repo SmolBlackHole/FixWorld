@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using FixWorld.Preloader;
+using FixWorld.Processes;
 
 namespace FixWorld.Tool
 {
@@ -19,6 +20,10 @@ namespace FixWorld.Tool
 
                 switch (args[0].ToLowerInvariant())
                 {
+                    case RimWorldRestart.CommandName:
+                        RimWorldRestart.RunHelper(
+                            args.Skip(1).ToArray());
+                        return 0;
                     case "preloader":
                         return RunPreloader(args.Skip(1).ToArray());
                     case "dds-cache":
@@ -123,6 +128,10 @@ namespace FixWorld.Tool
                    Environment.NewLine +
                    "  FixWorld.Tool.exe dds-cache " +
                    "[status|clean] [cache directory]" +
+                   Environment.NewLine +
+                   "  FixWorld.Tool.exe restart-after-exit " +
+                   "<parent-pid> <encoded-working-directory> " +
+                   "<encoded-executable> [encoded-arguments...]" +
                    Environment.NewLine +
                    TexconvTool.Usage();
         }
