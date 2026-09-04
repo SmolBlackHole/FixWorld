@@ -13,6 +13,9 @@ support boundary
 | Understand the observed loading stages | [Play-data stages](play-data-pipeline.md) |
 | Understand telemetry, benchmark data, and the in-game UI | [Runtime diagnostics](diagnostics.md) |
 | Understand how performance changes are selected and proven | [Optimization method](optimization.md) |
+| Review Dubs Performance Analyzer's profiling architecture | [Dubs Performance Analyzer source review](research/dubs-performance-analyzer.md) |
+| Review Performance Optimizer's targeted patches and caches | [Performance Optimizer implementation notes](research/performance-optimizer.md) |
+| Review RimThreaded's threading and compatibility model | [RimThreaded architecture notes](research/rimthreaded.md) |
 | Build, test, benchmark, or package FixWorld | [Development and verification](development.md) |
 | Understand or remove the Windows early loader | [Windows loader](windows-preloader.md) |
 | Understand the DDS cache and its limits | [DDS texture cache](dds-cache.md) |
