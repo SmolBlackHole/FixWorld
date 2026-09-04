@@ -7,7 +7,6 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization.Json;
 using System.Threading;
-using System.Xml;
 using FixWorld.Textures;
 
 namespace FixWorld.Preloader
@@ -96,7 +95,8 @@ namespace FixWorld.Preloader
                     return;
                 }
 
-                IReadOnlyDictionary<string, int> modOrder = ReadActiveModOrder(saveDataFolder);
+                IReadOnlyDictionary<string, int> modOrder =
+                    ActiveModConfig.ReadLoadOrder(saveDataFolder);
                 byte[] buffer = new byte[ReadBufferBytes];
                 DdsCacheContract.PublishReadAhead(
                     "running",
@@ -278,64 +278,6 @@ namespace FixWorld.Preloader
                         : int.MaxValue)
                 .ThenBy(entry => entry.PackageId, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(entry => entry.SourcePath, StringComparer.OrdinalIgnoreCase);
-        }
-
-        private static IReadOnlyDictionary<string, int> ReadActiveModOrder(
-            string saveDataFolder)
-        {
-            Dictionary<string, int> result =
-                new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            if (string.IsNullOrWhiteSpace(saveDataFolder))
-            {
-                return result;
-            }
-
-            string path = Path.Combine(saveDataFolder, "Config", "ModsConfig.xml");
-            if (!File.Exists(path))
-            {
-                return result;
-            }
-
-            try
-            {
-                XmlReaderSettings settings = new XmlReaderSettings
-                {
-                    DtdProcessing = DtdProcessing.Prohibit,
-                    XmlResolver = null
-                };
-                XmlDocument document = new XmlDocument { XmlResolver = null };
-                using (XmlReader reader = XmlReader.Create(path, settings))
-                {
-                    document.Load(reader);
-                }
-
-                XmlNodeList nodes = document.SelectNodes("/ModsConfigData/activeMods/li");
-                if (nodes == null)
-                {
-                    return result;
-                }
-
-                foreach (XmlNode node in nodes)
-                {
-                    string packageId = node.InnerText?.Trim();
-                    if (!string.IsNullOrEmpty(packageId) &&
-                        !result.ContainsKey(packageId))
-                    {
-                        result.Add(packageId, result.Count);
-                    }
-                }
-            }
-            catch (IOException)
-            {
-            }
-            catch (UnauthorizedAccessException)
-            {
-            }
-            catch (XmlException)
-            {
-            }
-
-            return result;
         }
 
         private static bool TryResolveCachePath(

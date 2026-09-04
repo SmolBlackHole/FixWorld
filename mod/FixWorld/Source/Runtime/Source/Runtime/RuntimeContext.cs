@@ -56,6 +56,16 @@ namespace FixWorld.Runtime
 
         internal string DiagnosticsText => diagnosticsText;
 
+        internal string ClearDdsCache()
+        {
+            return Textures.ClearCache();
+        }
+
+        internal string RetryFailedDdsBuilds()
+        {
+            return Textures.RetryFailedBuilds();
+        }
+
         internal void AttachMod(RuntimeModAttachmentSnapshot attachment)
         {
             if (attachment == null)

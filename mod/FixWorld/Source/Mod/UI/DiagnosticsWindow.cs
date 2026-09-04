@@ -13,6 +13,7 @@ namespace FixWorld.UI
         private const float NavigationGap = 14f;
         private const float NavigationWidth = 178f;
         private const float DetailedRowHeight = 47f;
+        private const float DdsActionsHeight = 66f;
         private const float RefreshIntervalSeconds = 0.5f;
         private const float RowHeight = 29f;
         private const float MinimumHeight = 440f;
@@ -29,6 +30,8 @@ namespace FixWorld.UI
         private DiagnosticsDocument document = DiagnosticsDocument.Parse(
             "Status\n  No completed startup diagnostics are available yet.");
         private string diagnosticsText;
+        private string ddsActionStatus =
+            "Retry failed packs, or clear the cache and rebuild it next launch.";
         private float nextRefreshAt;
         private Vector2 scrollPosition;
         private int selectedSection;
@@ -143,7 +146,7 @@ namespace FixWorld.UI
             GUI.color = MutedText;
             Widgets.Label(
                 new Rect(bounds.x + 360f, bounds.y + 9f, bounds.width - 364f, 24f),
-                "Read-only startup snapshot");
+                "Startup snapshot and DDS maintenance");
 
             GUI.color = Color.white;
             Widgets.DrawBoxSolid(
@@ -197,6 +200,10 @@ namespace FixWorld.UI
             Widgets.DrawBoxSolid(bounds, Track);
             Rect inner = bounds.ContractedBy(18f);
             DiagnosticsSection section = document.Sections[selectedSection];
+            bool ddsSection = string.Equals(
+                section.Title,
+                "DDS / Textures",
+                StringComparison.Ordinal);
 
             Text.Font = GameFont.Medium;
             Text.Anchor = TextAnchor.UpperLeft;
@@ -212,7 +219,7 @@ namespace FixWorld.UI
                 inner.x,
                 inner.y + 47f,
                 inner.width,
-                inner.height - 47f);
+                inner.height - 47f - (ddsSection ? DdsActionsHeight : 0f));
             bool stackedRows =
                 string.Equals(
                     section.Title,
@@ -242,6 +249,73 @@ namespace FixWorld.UI
             }
 
             Widgets.EndScrollView();
+            if (ddsSection)
+            {
+                DrawDdsActions(new Rect(
+                    inner.x,
+                    inner.yMax - DdsActionsHeight,
+                    inner.width,
+                    DdsActionsHeight));
+            }
+        }
+
+        private void DrawDdsActions(Rect bounds)
+        {
+            GUI.color = Color.white;
+            Widgets.DrawBoxSolid(
+                new Rect(bounds.x, bounds.y, bounds.width, 1f),
+                Pending);
+
+            const float gap = 8f;
+            float buttonWidth = (bounds.width - gap) / 2f;
+            Rect retryButton = new Rect(
+                bounds.x,
+                bounds.y + 8f,
+                buttonWidth,
+                30f);
+            Rect clearButton = new Rect(
+                retryButton.xMax + gap,
+                retryButton.y,
+                buttonWidth,
+                retryButton.height);
+            if (Widgets.ButtonText(retryButton, "Retry failed DDS builds"))
+            {
+                RunDdsAction(() => FixWorldMod.Instance?.RetryFailedDdsBuilds() ??
+                    "FixWorld.Mod is not active.");
+            }
+
+            if (Widgets.ButtonText(clearButton, "Clear DDS cache"))
+            {
+                Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation(
+                    "Delete FixWorld's DDS cache? Loaded textures remain usable " +
+                    "for this session. RimWorld must be restarted to rebuild " +
+                    "the cache.",
+                    () => RunDdsAction(() =>
+                        FixWorldMod.Instance?.ClearDdsCache() ??
+                        "FixWorld.Mod is not active.")));
+            }
+
+            Text.Font = GameFont.Tiny;
+            Text.Anchor = TextAnchor.LowerLeft;
+            GUI.color = MutedText;
+            Widgets.LabelEllipses(
+                new Rect(bounds.x + 2f, bounds.y + 42f, bounds.width - 4f, 20f),
+                ddsActionStatus);
+            TooltipHandler.TipRegion(bounds, ddsActionStatus);
+        }
+
+        private void RunDdsAction(Func<string> action)
+        {
+            try
+            {
+                ddsActionStatus = action();
+                Refresh(force: true);
+            }
+            catch (Exception exception)
+            {
+                ddsActionStatus = "DDS action failed: " + exception.Message;
+                Log.Warning("[FixWorld] " + ddsActionStatus);
+            }
         }
 
         private static void DrawRow(

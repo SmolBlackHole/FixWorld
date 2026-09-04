@@ -135,6 +135,22 @@ namespace FixWorld.Runtime
                 : context.DiagnosticsText;
         }
 
+        internal static string ClearDdsCache()
+        {
+            RuntimeContext context = Volatile.Read(ref current);
+            return context == null
+                ? "FixWorld.Runtime is not active."
+                : context.ClearDdsCache();
+        }
+
+        internal static string RetryFailedDdsBuilds()
+        {
+            RuntimeContext context = Volatile.Read(ref current);
+            return context == null
+                ? "FixWorld.Runtime is not active."
+                : context.RetryFailedDdsBuilds();
+        }
+
         internal static void Pump()
         {
             Volatile.Read(ref current)?.Pump();

@@ -11,12 +11,13 @@ namespace FixWorld.UI
 {
     internal static class LoadingProgressUi
     {
-        private const float PanelHeight = 278f;
+        private const float PanelHeight = 326f;
         private const float PanelMaxWidth = 860f;
 
         private static readonly Color Accent = ToColor(FixWorldUiTheme.Accent);
         private static readonly Color Completed = ToColor(FixWorldUiTheme.Completed);
         private static readonly Color Pending = ToColor(FixWorldUiTheme.Pending);
+        private static readonly Color Row = ToColor(FixWorldUiTheme.Row);
         private static readonly Color Track = ToColor(FixWorldUiTheme.Track);
 
         private static float nextMemoryRefresh;
@@ -48,6 +49,7 @@ namespace FixWorld.UI
                 DrawProgressBars(content, snapshot);
                 DrawStageGroups(content, snapshot.Stage);
                 DrawActiveGroupStages(content, snapshot.Stage);
+                DrawLoadingTip(content, snapshot.ElapsedMilliseconds);
                 DrawFooter(content, snapshot.HasDurationEstimate);
             }
             finally
@@ -204,6 +206,34 @@ namespace FixWorld.UI
                     new Rect(x, rail.yMax + 3f, segmentWidth, 19f),
                     PlayDataLoadStageCatalog.GetShortName(item));
             }
+        }
+
+        private static void DrawLoadingTip(
+            Rect content,
+            double elapsedMilliseconds)
+        {
+            Rect bounds = new Rect(
+                content.x,
+                content.y + 220f,
+                content.width,
+                42f);
+            Widgets.DrawBoxSolid(bounds, Row);
+
+            Text.Font = GameFont.Tiny;
+            Text.Anchor = TextAnchor.MiddleLeft;
+            Color previousColor = GUI.color;
+            GUI.color = Accent;
+            Widgets.Label(
+                new Rect(bounds.x + 12f, bounds.y, 82f, bounds.height),
+                "LOADING TIP");
+            GUI.color = previousColor;
+            Widgets.LabelEllipses(
+                new Rect(
+                    bounds.x + 96f,
+                    bounds.y,
+                    bounds.width - 108f,
+                    bounds.height),
+                LoadingTips.Get(elapsedMilliseconds));
         }
 
         private static void DrawFooter(Rect content, bool hasDurationEstimate)

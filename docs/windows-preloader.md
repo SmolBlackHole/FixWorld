@@ -37,6 +37,7 @@ launch
 RimWorldWin64.exe
   -> UnityDoorstop
   -> FixWorld.Preloader
+     -> verify that smolblackhole.fixworld is active in ModsConfig.xml
      -> wait for Assembly-CSharp
      -> resolve the installed Harmony 2 assembly
   -> FixWorld.Loader
@@ -54,6 +55,10 @@ The delayed hook activation is intentional. Installing runtime hooks at the
 Doorstop entry caused Unity resource initialization while the engine was not ready.
 The bootstrap hook enters early but installs stage and texture hooks only at
 `PlayDataLoader.LoadAllPlayData()`
+
+The installed Doorstop entry is inert when FixWorld is disabled in RimWorld's
+active mod list. In that state the preloader does not start the assembly timeline,
+DDS read-ahead, loader, runtime, or Harmony hooks for the launch.
 
 The normal `FixWorld.Mod.dll` is not a second runtime. It remains the RimWorld-facing
 installer, settings UI, and `ModContentPack` adapter for the already running

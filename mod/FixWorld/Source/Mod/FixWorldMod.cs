@@ -76,5 +76,19 @@ namespace FixWorld
                 ? "FixWorld.Runtime is not active for this launch."
                 : runtime.GetDiagnosticsText();
         }
+
+        internal string ClearDdsCache()
+        {
+            return runtime == null
+                ? "FixWorld.Runtime is not active for this launch."
+                : runtime.ClearDdsCache();
+        }
+
+        internal string RetryFailedDdsBuilds()
+        {
+            return runtime == null
+                ? "FixWorld.Runtime is not active for this launch."
+                : runtime.RetryFailedDdsBuilds();
+        }
     }
 }

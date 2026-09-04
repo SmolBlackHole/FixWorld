@@ -11,9 +11,18 @@ namespace FixWorld.Preloader
             PreloaderLog log = null;
             try
             {
-                PreloaderTimelineCapture.Start(entryTimestamp);
                 string gameRoot = PreloaderPaths.FindGameRoot();
                 log = new PreloaderLog(Path.Combine(gameRoot, "FixWorld.Preloader.log"));
+                string saveDataFolder = PreloaderPaths.FindSaveDataFolder();
+                if (!ActiveModConfig.IsFixWorldActive(saveDataFolder))
+                {
+                    log.Write(
+                        "FixWorld is not active in ModsConfig.xml; the early " +
+                        "loader is disabled for this launch.");
+                    return;
+                }
+
+                PreloaderTimelineCapture.Start(entryTimestamp);
                 EarlyLoaderBridge.Start(log);
                 log.Write(
                     "Doorstop entered FixWorld preloader, armed FixWorld.Loader, " +

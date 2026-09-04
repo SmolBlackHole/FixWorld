@@ -8,10 +8,12 @@ namespace FixWorld.RuntimeBridge
     {
         internal const string AssemblyName = "FixWorld.Runtime";
         internal const string TypeName = "FixWorld.Runtime.FixWorldRuntime";
-        internal const int Version = 3;
+        internal const int Version = 4;
 
         private readonly MethodInfo attachMod;
+        private readonly MethodInfo clearDdsCache;
         private readonly MethodInfo getDiagnosticsText;
+        private readonly MethodInfo retryFailedDdsBuilds;
         private readonly MethodInfo startEarly;
 
         private RuntimeContract(Type entrypoint)
@@ -41,6 +43,16 @@ namespace FixWorld.RuntimeBridge
             getDiagnosticsText = RequireMethod(
                 entrypoint,
                 "GetDiagnosticsText",
+                Type.EmptyTypes,
+                typeof(string));
+            clearDdsCache = RequireMethod(
+                entrypoint,
+                "ClearDdsCache",
+                Type.EmptyTypes,
+                typeof(string));
+            retryFailedDdsBuilds = RequireMethod(
+                entrypoint,
+                "RetryFailedDdsBuilds",
                 Type.EmptyTypes,
                 typeof(string));
         }
@@ -99,6 +111,16 @@ namespace FixWorld.RuntimeBridge
         internal string GetDiagnosticsText()
         {
             return (string)Invoke(getDiagnosticsText, null);
+        }
+
+        internal string ClearDdsCache()
+        {
+            return (string)Invoke(clearDdsCache, null);
+        }
+
+        internal string RetryFailedDdsBuilds()
+        {
+            return (string)Invoke(retryFailedDdsBuilds, null);
         }
 
         private static MethodInfo RequireMethod(

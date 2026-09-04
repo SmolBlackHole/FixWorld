@@ -108,7 +108,7 @@ namespace FixWorld.Textures
             string root = Path.Combine(
                 cacheRoot,
                 ".staging-" +
-                DdsCacheKey.Sanitize(packageId) + "-" +
+                DdsCacheKey.HashText(packageId).Substring(0, 12) + "-" +
                 Guid.NewGuid().ToString("N"));
             DdsCacheKey.EnsureChildPath(cacheRoot, root);
             Directory.CreateDirectory(root);

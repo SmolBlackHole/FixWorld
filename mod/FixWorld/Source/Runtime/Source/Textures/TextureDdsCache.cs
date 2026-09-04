@@ -43,6 +43,8 @@ namespace FixWorld.Textures
             new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         private readonly List<DdsModPlan> discoveredBuildPlans =
             new List<DdsModPlan>();
+        private readonly Dictionary<string, DdsModPlan> failedBuildPlans =
+            new Dictionary<string, DdsModPlan>(StringComparer.Ordinal);
         private readonly Dictionary<string, DdsPackSlice> startupHits =
             new Dictionary<string, DdsPackSlice>(
                 StringComparer.OrdinalIgnoreCase);
@@ -354,6 +356,91 @@ namespace FixWorld.Textures
             }
         }
 
+        internal string ClearCache()
+        {
+            lock (sync)
+            {
+                if (!IsRunning)
+                {
+                    return "The DDS cache is not active.";
+                }
+
+                if (jobs.Any(job => !job.IsTerminal))
+                {
+                    return "DDS work is still running. Try again when it has finished.";
+                }
+
+                DisposeStartupReaders();
+                startupHits.Clear();
+                pendingBuildPlans = Array.Empty<DdsModPlan>();
+                failedBuildPlans.Clear();
+                jobs.Clear();
+                ResetDiscovery();
+
+                DdsPackStore currentStore = store;
+                store = null;
+                currentStore.Dispose();
+
+                MigrationCleanupResult result;
+                try
+                {
+                    result = MigrationCleanup.DeleteDirectory(
+                        cacheRoot,
+                        DdsCacheContract.CacheDirectoryName);
+                }
+                finally
+                {
+                    store = DdsPackStore.Open(
+                        cacheRoot,
+                        DdsCacheContract.CacheIdentityVersion);
+                    SetCacheBytes(store.CurrentBytes);
+                }
+
+                if (result.Errors.Count > 0)
+                {
+                    return "The DDS cache could not be fully cleared: " +
+                           string.Join("; ", result.Errors);
+                }
+
+                double mebibytes = result.Bytes / (1024.0 * 1024.0);
+                return "DDS cache cleared (" +
+                       mebibytes.ToString("N1", CultureInfo.InvariantCulture) +
+                       " MiB). Restart RimWorld to rebuild it.";
+            }
+        }
+
+        internal string RetryFailedBuilds()
+        {
+            lock (sync)
+            {
+                if (!IsRunning)
+                {
+                    return "The DDS cache is not active.";
+                }
+
+                if (jobs.Any(job => !job.IsTerminal))
+                {
+                    return "DDS background work is already running.";
+                }
+
+                if (failedBuildPlans.Count == 0)
+                {
+                    return "There are no failed DDS builds to retry.";
+                }
+
+                DdsModPlan[] retryPlans = failedBuildPlans.Values.ToArray();
+                failedBuildPlans.Clear();
+                jobs.Clear();
+                ScheduleBuilds(retryPlans);
+                Log.Message(
+                    "[FixWorld] Retrying failed DDS pack builds; queuedMods=" +
+                    retryPlans.Length.ToString(CultureInfo.InvariantCulture) + ".");
+                return "Retry started for " +
+                       retryPlans.Length.ToString(CultureInfo.InvariantCulture) +
+                       (retryPlans.Length == 1 ? " mod." : " mods.");
+            }
+        }
+
         internal void Shutdown()
         {
             JobHandle[] scheduled;
@@ -374,6 +461,7 @@ namespace FixWorld.Textures
                 startupHits.Clear();
                 DisposeStartupReaders();
                 pendingBuildPlans = Array.Empty<DdsModPlan>();
+                failedBuildPlans.Clear();
             }
 
             foreach (JobHandle job in scheduled)
@@ -647,6 +735,11 @@ namespace FixWorld.Textures
                 plan = PrepareMissing(plan, cancellationToken);
                 if (plan.MissingCount == 0)
                 {
+                    lock (sync)
+                    {
+                        failedBuildPlans.Remove(plan.PackageId);
+                    }
+
                     DdsBuildResult empty = new DdsBuildResult(
                         0,
                         0,
@@ -689,6 +782,7 @@ namespace FixWorld.Textures
                     store.Publish(pack);
                     store.EnforceBudget(maximumCacheBytes);
                     SetCacheBytes(store.CurrentBytes);
+                    failedBuildPlans.Remove(plan.PackageId);
                 }
 
                 DdsBuildResult result = new DdsBuildResult(
@@ -708,6 +802,7 @@ namespace FixWorld.Textures
                     {
                         store?.DiscardStaging(stagingRoot);
                     }
+
                 }
 
                 throw;
@@ -720,6 +815,11 @@ namespace FixWorld.Textures
                     if (pack == null)
                     {
                         store?.DiscardStaging(stagingRoot);
+                    }
+
+                    if (IsRunning)
+                    {
+                        failedBuildPlans[plan.PackageId] = plan;
                     }
                 }
 

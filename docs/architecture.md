@@ -13,6 +13,7 @@ cache hit.
 RimWorldWin64.exe
   -> UnityDoorstop
   -> FixWorld.Preloader.dll
+     -> stop unless FixWorld is active in ModsConfig.xml
      -> wait for Assembly-CSharp
      -> start bounded DDS read-ahead
      -> resolve the installed Harmony assembly
