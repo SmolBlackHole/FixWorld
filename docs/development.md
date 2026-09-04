@@ -45,7 +45,10 @@ python .\tools\check.py
 ```
 
 The check validates UTF-8 and LF text, the public Markdown link graph, tracked
-artifact policy, Python syntax, and the Shared contract suite
+artifact policy, Python syntax, and the Shared and standalone pathfinding contract
+suites. The pathfinding suite links the pure shadow-grid source directly and does
+not require a RimWorld installation. Its optional `--benchmark` mode is described
+in [Pathfinding](pathfinding.md); timing results are not a CI pass/fail threshold.
 
 ## Build and package
 

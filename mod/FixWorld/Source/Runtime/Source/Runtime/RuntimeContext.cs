@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using FixWorld.Diagnostics;
 using FixWorld.Events;
 using FixWorld.Lifecycle;
+using FixWorld.Pathfinding;
 using FixWorld.PlayData;
 using FixWorld.Scheduling;
 using FixWorld.Textures;
@@ -24,6 +26,7 @@ namespace FixWorld.Runtime
         private readonly JobScheduler scheduler;
         private readonly IDisposable lifecycleSubscription;
         private readonly RuntimeTelemetryStore telemetry;
+        private readonly ShadowGridObserver shadowGrid;
         private object attachedMod;
         private bool disposed;
         private long nextRuntimeProfileLogAt;
@@ -45,6 +48,7 @@ namespace FixWorld.Runtime
                     "[FixWorld] Main-thread action failed (" + name + "): " +
                     error));
             telemetry = new RuntimeTelemetryStore();
+            shadowGrid = new ShadowGridObserver(telemetry);
             Lifecycle = new RimWorldLifecycle(events);
             Textures = new TextureDdsCache(scheduler, mainThread);
             lifecycleSubscription = events.Subscribe<RimWorldLifecycleEvent>(
@@ -222,6 +226,9 @@ namespace FixWorld.Runtime
         internal void ObservePathDataUpdate(
             in PathSpatialObservation observation) =>
             telemetry.ObservePathDataUpdate(in observation);
+
+        internal void ObserveShadowGrid(Map map, List<IntVec3> deltas, bool fullRebuild) =>
+            shadowGrid.Observe(map, deltas, fullRebuild);
 
         internal void ObserveReachabilityCache(bool hit) =>
             telemetry.ObserveReachabilityCache(hit);

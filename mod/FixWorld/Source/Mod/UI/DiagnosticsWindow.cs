@@ -188,8 +188,11 @@ namespace FixWorld.UI
                     document.Sections[index].Title);
                 if (Widgets.ButtonInvisible(item))
                 {
-                    selectedSection = index;
-                    scrollPosition = Vector2.zero;
+                    if (selectedSection != index)
+                    {
+                        selectedSection = index;
+                        scrollPosition = Vector2.zero;
+                    }
                 }
             }
         }
@@ -234,6 +237,10 @@ namespace FixWorld.UI
                 0f,
                 Math.Max(100f, viewport.width - 18f),
                 contentHeight);
+            float maxScrollY = Mathf.Max(0f, content.height - viewport.height);
+            scrollPosition = new Vector2(
+                scrollPosition.x,
+                Mathf.Clamp(scrollPosition.y, 0f, maxScrollY));
             Widgets.BeginScrollView(viewport, ref scrollPosition, content);
             for (int index = 0; index < section.Lines.Count; index++)
             {
@@ -439,8 +446,16 @@ namespace FixWorld.UI
             string selectedTitle = document.Sections[selectedSection].Title;
             diagnosticsText = current;
             document = DiagnosticsDocument.Parse(current);
-            selectedSection = document.FindSection(selectedTitle);
-            scrollPosition = Vector2.zero;
+            int nextSelectedSection = document.FindSection(selectedTitle);
+            bool selectedTitleMissing = !string.Equals(
+                document.Sections[nextSelectedSection].Title,
+                selectedTitle,
+                StringComparison.Ordinal);
+            selectedSection = nextSelectedSection;
+            if (selectedTitleMissing)
+            {
+                scrollPosition = Vector2.zero;
+            }
         }
 
         private static Color ToColor(UiColor color)

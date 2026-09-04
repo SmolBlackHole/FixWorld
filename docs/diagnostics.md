@@ -127,14 +127,27 @@ copied only when diagnostics are read or published.
 profiled as normal hotpaths. Their reported totals expose the observer cost in
 the same runtime snapshot as the game work being studied.
 
+The experimental shadow grid uses that same profiler for full observations,
+incremental observations, and nested rebuilds. `Shadow grid` shows full/incremental
+update counts, sampled/changed cells, rebuilt/changed chunks at all three levels,
+and failures. These counters also appear in the existing `shadow=` log fields.
+Rebuild time is included in the full/incremental totals. The observer does not
+answer gameplay queries or claim a RimWorld reachability match rate. See
+[the runtime shadow observer](pathfinding.md#runtime-shadow-observer) for scope,
+activation, and the live-test procedure.
+
 ## In-game UI
 
 The normal Mod presents Startup, Preloader, Stages, DDS cache, Runtime, Issues,
-Hotpaths, and Pathfinding sections in a resizable window. Dense rows scroll
+Hotpaths, Pathfinding, and Shadow grid sections in a resizable window. Dense rows scroll
 independently. The Runtime retains the formatted startup result and appends the
 latest published runtime snapshot when requested. An open window polls the text
 contract at most every 500 ms. A closed window does no polling or formatting
 work.
+
+Value refreshes preserve the current section's scroll offset. Switching sections
+or losing the selected section resets it; content shrinkage and window resizing
+clamp it to the remaining scroll range instead of jumping to the top.
 
 The UI is observational. Opening it does not install Harmony patches, activate
 additional profilers, change scheduler behavior, or mutate the completed

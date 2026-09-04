@@ -191,10 +191,43 @@ does not establish that many simulated ticks elapsed. Queue-delay data from that
 point needs investigation; independently measured connectivity durations remain
 available.
 
+Source inspection found a concrete clock-discontinuity candidate: the debug
+`Increment time` action includes a 30,000-tick option and calls
+`TickManager.DebugSetTicksGame`, which assigns the clock directly. `PathRequest`
+keeps the constructor's `TickStart`; clearing `tmpCurrentWork` does not modify
+that timestamp. An outstanding request across such a jump can therefore report
+30,000 ticks without waiting through 30,000 actual simulation updates. This is a
+reproducible mechanism, not yet a confirmed explanation of this run. The current
+metric is scheduling tick minus requested start tick, not elapsed wall time or
+strict enqueue-to-dispatch latency. Direct request constructors or delayed
+`PushRequest` calls can also make those definitions differ.
+
 The candidate also removes a `HashSet.Clear()` inside every dirty-cell iteration,
 on a set constructed with capacity 160,000. The measured gain combines removing
 that clearing cost, changing membership representation, and deduplicating the
 union. The 80.8% duplicate count is not a measured attribution of runtime savings.
+
+### Follow-up review of the connectivity result
+
+The external review quoted candidate run 1 (1.624 to 0.015 ms/tick) and its
+31.3% total-tick reduction. The second candidate run above is already available;
+neither comparison isolates identical tick workloads. A repeated A/B/A/B sequence
+at equal simulated tick counts, frozen save, camera, speed, warm-up, mod set,
+instrumentation, and background-work state is the stronger promotion check.
+
+Generation rollover is already handled: `VisitMap.BeginUpdate` clears once at
+`int.MaxValue` and resumes at generation 1. The independent source review found
+no state-changing side effect in vanilla `ComputeCellConnectivity`; this is not
+proof for arbitrary third-party patches. Gameplay fixtures remain required.
+
+The hierarchy now targets avoided downstream work, not merely replacement of
+the much cheaper connectivity update. Locality is a candidate filter, not route
+proof: endpoints inside one super-chunk may require a detour outside it. Local
+component inequality must never become a global unreachable answer. Child
+changes should propagate only when their summaries change, with separate rebuilt
+and changed counters at each level. A future mismatch capture needs the exact
+mask, endpoints, traversal profile, generations, dirty cells, relevant portals,
+and both answers so that it becomes a reproducible fixture.
 
 ## Current integration boundaries
 
@@ -510,6 +543,133 @@ memory, dirty-set size, neighbor visits, and upward propagation depth.
 Build boundary portals and the global connectivity graph. Mirror reachability
 queries, compare every result with RimWorld, and report mismatches by traversal
 profile and invalidation cause.
+
+### Standalone hierarchy harness
+
+The first Phase 3 slice lives in `ShadowConnectivityGrid` and the standalone
+`Pathfinding.Contracts` executable. It uses binary, cardinal passability only.
+Its scalar BFS oracle checks the same model independently; passing it is not a
+claim of equivalence to RimWorld's diagonal movement, doors, bashing, traversal
+restrictions, or global reachability. Game queries remain untouched.
+
+Run correctness checks and the optional synthetic benchmark separately:
+
+```powershell
+dotnet run --project mod/FixWorld/Tests/Pathfinding.Contracts -c Release
+dotnet run --project mod/FixWorld/Tests/Pathfinding.Contracts -c Release -- --benchmark
+```
+
+`GetComponent` returns a component local to the requested 8, 16, or 32-cell chunk.
+Compare IDs only inside that same chunk and completed generation. A local
+negative answer does not exclude a route outside the chunk. The mutable grid has
+one owner: edits accumulate, component queries reject pending changes, and a
+synchronous `Rebuild` finishes before queries resume. This is not an immutable
+snapshot API for concurrent readers. The runtime adapter below serializes updates
+per map and exposes counters only. Cross-thread topology publication and
+comparisons with real RimWorld queries remain later parts of Experiment B.
+
+Benchmark timings belong to the standalone CLR and synthetic masks. Full-map
+scalar work, hierarchy construction, and retained-grid incremental updates must
+be reported as distinct workloads, not as an in-game speedup. Record allocations
+separately from garbage collections: zero collections does not prove zero bytes
+allocated.
+
+The kernel keeps one bitboard per leaf, component-token maps and exact perimeter
+summaries at the parents, and preallocated deduplicated dirty queues. It does not
+scan every chunk on a local update or materialize a second tile raster at each
+parent. An unchanged region summary stops propagation even when its leaves were
+rebuilt. Summary equality includes boundary occupancy, not just component IDs.
+
+The standalone suite passed 59,820,814 assertions, including independent scalar
+partitions, seeded random edits, incremental-versus-fresh comparisons, splits,
+merges, 8/16 seams, partial parents, and pending-query rejection. Review caught
+two parent defects before integration: unchanged component IDs hiding a newly
+opened boundary, and an absent eastern child aliasing the next row. Both have
+dedicated regression fixtures. No gameplay query uses this class.
+
+One Release run on the standalone CLR, 250 by 250 seeded binary map, five samples:
+
+| Workload | Median | Min to max | Allocated bytes in measured operation |
+| --- | ---: | ---: | ---: |
+| Scalar BFS, independent partitions at 8/16/32 | 5.28 ms | 5.11 to 6.09 ms | 1,511,648 |
+| Hierarchy construction, mask loading and full rebuild | 2.30 ms | 2.18 to 2.38 ms | 922,984 |
+| 32 distinct local edits and incremental rebuild | 0.02 ms | 0.01 to 0.35 ms | 0 |
+| 32 distinct dispersed edits and incremental rebuild | 0.18 ms | 0.17 to 0.20 ms | 0 |
+
+The local workload rebuilt 5 leaves, 2 regions and 1 super-chunk; 4/2/1 summaries
+changed. The dispersed workload rebuilt 45/30/14 and changed 32/15/9. These are
+synthetic fixtures, not RimWorld event frequencies. The scalar oracle is a simple
+BFS reference with fresh arrays, not an optimized scalar competitor. Full-build
+allocation is not retained-memory usage. This result validates a small,
+allocation-free incremental operation on this CLR, not an in-game speedup or a
+zero-cost runtime adapter. Raw timestamp reads keep timer allocation outside the
+measurement; garbage collections and allocated bytes are reported separately.
+
+### Runtime shadow observer
+
+`RuntimeContext` owns a `ShadowGridObserver` with weakly keyed, independent map
+states. The experimental build enables it by default; set `FIXWORLD_SHADOW_GRID=0`
+in the launching process to disable it for a control run. Restart to change the
+setting. The startup log reports whether the profiling hooks and observer were
+enabled. The `Shadow grid` diagnostics section reports cumulative observations;
+the existing `[FixWorld.Profile]` log includes the same counters every 30 seconds.
+
+The adapter runs after `ConnectivitySource.ComputeAll` and `UpdateIncrementally`,
+inside RimWorld's synchronous `GatherData` source-worker barrier. First use samples
+the whole map, even if the first callback is incremental. Later full callbacks
+resample the existing grid; incremental callbacks read only valid dirty cells.
+Input duplicates can increase samples, but unchanged bits do not increase the
+changed-cell count. Each map's update completes under its own gate before its
+next update can enter. No gameplay path, native grid, or reachability result is
+written by the observer. Failures disable that map's observation and are reported
+once; other maps continue.
+
+The binary predicate is RimWorld's cached `WalkableByAny`: normal **or**
+fence-blocked path-grid walkability. The prototype uses cardinal connections
+between those cells, not `ConnectivitySource.Data`, whose initial flags are not a
+passability map. This is not pawn-specific reachability. Cost-only changes or a
+door interaction need not change the binary mask. Ordinary vanilla path-cost
+recalculation, terrain, spawn, and despawn notifications feed the dirty list.
+Arbitrary mod writes to raw grids or full grid recalculations without a matching
+notification are not covered by this invalidation contract.
+
+Three existing-profiler slots separate the costs:
+
+- `ShadowGridFull`: whole-map observation, including initial allocation and sample
+  loading when needed.
+- `ShadowGridIncremental`: dirty-cell observation, including sampling and counters.
+- `ShadowGridRebuild`: nested hierarchy rebuild only, already included above.
+
+The original incremental connectivity timer stops before observation begins.
+Outer `GatherData`, `PathFinderTick`, and tick timings still include observer cost
+and parallel waiting. Do not add nested timings, and do not compare observer-on
+outer timings with observer-off timings as if instrumentation were identical.
+
+The live test is a loaded colony followed by ordinary play, blocked/reopened
+routes and map reload. Check full/incremental counts, sampled versus changed
+cells, rebuilt versus changed leaves/regions/super-chunks, and failures. This
+stage measures maintenance work on real inputs. It does not report a vanilla
+reachability match rate, because a gameplay-query comparison is not installed yet.
+
+The observer contract tests link the real adapter with small map/telemetry stubs.
+They cover lazy initialization, full refresh, duplicate/no-op deltas, map isolation,
+edge updates, failure isolation, and a separate disabled process. The local game-
+reference build checks the real API names. Passing stub tests alone does not prove
+Harmony binding or in-game behavior; the live checklist above remains required.
+
+### Live observer checkpoint (2026-09-05)
+
+The loaded-colony run included ordinary play, building walls around food storage,
+waiting, removing the walls, and a reported common-destination pawn movement.
+Player.log recorded one full build (11.2 ms), then 2,599 timed incremental calls
+taking 6.2 ms in total, with zero observer failures. Between the first observed
+wall-change phase and the next phase, 435 updates caused no chunk rebuilds.
+The two phases each recorded 18 changed-cell observations (not necessarily 18
+distinct walls), with 16 leaf, 16 region, and 10 super-chunk rebuilds combined.
+This passes the maintenance smoke test only. Reload/multiple-map live checks,
+observer-off performance comparison, and gameplay reachability equivalence remain
+open. The next slice adds global binary/cardinal connectivity queries, not a
+gameplay replacement or path reuse.
 
 ### Phase 5: Reuse connectivity and routes
 

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net472</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <Nullable>disable</Nullable>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <Deterministic>true</Deterministic>
+        <Optimize>true</Optimize>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472"
+            Version="1.0.3"
+            PrivateAssets="all" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Compile Include="..\..\Source\Runtime\Source\Pathfinding\ShadowConnectivityGrid.cs"
+            Link="Source\ShadowConnectivityGrid.cs" />
+        <Compile Include="..\..\Source\Runtime\Source\Pathfinding\ShadowGridObserver.cs"
+            Link="Source\ShadowGridObserver.cs" />
+    </ItemGroup>
+</Project>

@@ -1,4 +1,5 @@
 using System;
+using FixWorld.Pathfinding;
 using HarmonyLib;
 using Verse;
 
@@ -84,7 +85,12 @@ namespace FixWorld.Integration
                         "[FixWorld] Connectivity union deduplication active.");
                 }
 
-                RuntimeProfilingHookGroup.Install();
+                if (RuntimeProfilingHookGroup.Install())
+                {
+                    Log.Message(ShadowGridObserver.Enabled
+                        ? "[FixWorld] Shadow grid observer active (binary/cardinal, no gameplay queries)."
+                        : "[FixWorld] Shadow grid observer disabled by FIXWORLD_SHADOW_GRID=0.");
+                }
                 return true;
             }
         }

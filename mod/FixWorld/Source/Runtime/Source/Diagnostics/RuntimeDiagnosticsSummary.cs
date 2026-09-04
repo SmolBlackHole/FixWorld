@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using FixWorld.Pathfinding;
 using FixWorld.Profiling;
 using FixWorld.Textures;
 
@@ -155,6 +156,7 @@ namespace FixWorld.Diagnostics
             }
 
             AppendPathfindingDetails(text, profiling.Pathfinding);
+            AppendShadowGridDetails(text, profiling.ShadowGrid);
             return text.ToString().TrimEnd();
         }
 
@@ -274,6 +276,38 @@ namespace FixWorld.Diagnostics
             text.Append(spatial.Chunks16.ToString(CultureInfo.InvariantCulture));
             text.Append(",chunks32:");
             text.Append(spatial.Chunks32.ToString(CultureInfo.InvariantCulture));
+            RuntimeShadowGridSnapshot shadow = profiling.ShadowGrid;
+            text.Append("; shadow=full:");
+            text.Append(shadow.FullUpdates.ToString(CultureInfo.InvariantCulture));
+            text.Append(",incremental:");
+            text.Append(shadow.IncrementalUpdates.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",sampled:");
+            text.Append(shadow.SampledCells.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",changed:");
+            text.Append(shadow.ChangedCells.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",rebuiltLeaves:");
+            text.Append(shadow.RebuiltLeaves.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",changedLeaves:");
+            text.Append(shadow.ChangedLeaves.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",rebuiltRegions:");
+            text.Append(shadow.RebuiltRegions.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",changedRegions:");
+            text.Append(shadow.ChangedRegions.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",rebuiltSuperChunks:");
+            text.Append(shadow.RebuiltSuperChunks.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",changedSuperChunks:");
+            text.Append(shadow.ChangedSuperChunks.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",failures:");
+            text.Append(shadow.Failures.ToString(CultureInfo.InvariantCulture));
             return text.ToString();
         }
 
@@ -450,6 +484,49 @@ namespace FixWorld.Diagnostics
                     "F1",
                     CultureInfo.InvariantCulture) +
                 "% hit rate");
+        }
+
+        private static void AppendShadowGridDetails(
+            StringBuilder text,
+            RuntimeShadowGridSnapshot shadow)
+        {
+            text.AppendLine();
+            text.AppendLine("Shadow grid");
+            text.AppendLine(
+                "  Configured: " +
+                (ShadowGridObserver.Enabled ? "enabled test" : "disabled") +
+                ", binary/cardinal observer only, gameplay unchanged");
+            text.AppendLine(
+                "  Updates: " + shadow.FullUpdates.ToString(
+                    CultureInfo.InvariantCulture) +
+                " full, " + shadow.IncrementalUpdates.ToString(
+                    CultureInfo.InvariantCulture) + " incremental");
+            text.AppendLine(
+                "  Cells: " + shadow.SampledCells.ToString(
+                    CultureInfo.InvariantCulture) + " sampled, " +
+                shadow.ChangedCells.ToString(CultureInfo.InvariantCulture) +
+                " changed");
+            text.AppendLine(
+                "  Leaves: " + shadow.RebuiltLeaves.ToString(
+                    CultureInfo.InvariantCulture) + " rebuilt, " +
+                shadow.ChangedLeaves.ToString(CultureInfo.InvariantCulture) +
+                " changed");
+            text.AppendLine(
+                "  Regions: " + shadow.RebuiltRegions.ToString(
+                    CultureInfo.InvariantCulture) + " rebuilt, " +
+                shadow.ChangedRegions.ToString(CultureInfo.InvariantCulture) +
+                " changed");
+            text.AppendLine(
+                "  Super-chunks: " + shadow.RebuiltSuperChunks.ToString(
+                    CultureInfo.InvariantCulture) + " rebuilt, " +
+                shadow.ChangedSuperChunks.ToString(
+                    CultureInfo.InvariantCulture) + " changed");
+            text.AppendLine(
+                "  Timing: nested Rebuild is included in full/incremental " +
+                "update timing");
+            text.AppendLine(
+                "  Failures: " + shadow.Failures.ToString(
+                    CultureInfo.InvariantCulture));
         }
 
         private static string FormatPawnCategories(long[] counts) =>

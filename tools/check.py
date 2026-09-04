@@ -21,34 +21,41 @@ def check_python() -> None:
     print("Python syntax checks passed.")
 
 
-def check_shared_contracts() -> None:
+def check_contracts() -> None:
     dotnet = find_dotnet_sdk()
     environment = os.environ.copy()
     environment.update({"DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_NOLOGO": "1"})
-    subprocess.run(
-        (
-            dotnet,
-            "run",
-            "--project",
-            ROOT
-            / "mod"
-            / "FixWorld"
-            / "Tests"
-            / "Shared.Contracts"
-            / "FixWorld.Shared.Contracts.csproj",
-            "--configuration",
-            "Release",
-        ),
-        cwd=ROOT,
-        env=environment,
-        check=True,
-    )
+    for suite, arguments, shadow_mode in (
+        ("Shared.Contracts", (), "1"),
+        ("Pathfinding.Contracts", (), "1"),
+        ("Pathfinding.Contracts", ("--", "--observer-disabled"), "0"),
+    ):
+        environment["FIXWORLD_SHADOW_GRID"] = shadow_mode
+        subprocess.run(
+            (
+                dotnet,
+                "run",
+                "--project",
+                ROOT
+                / "mod"
+                / "FixWorld"
+                / "Tests"
+                / suite
+                / f"FixWorld.{suite}.csproj",
+                "--configuration",
+                "Release",
+                *arguments,
+            ),
+            cwd=ROOT,
+            env=environment,
+            check=True,
+        )
 
 
 def main() -> int:
     run_repository_checks(ROOT)
     check_python()
-    check_shared_contracts()
+    check_contracts()
     return 0
 
 

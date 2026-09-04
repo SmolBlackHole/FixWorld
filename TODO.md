@@ -74,6 +74,8 @@ history.
       them FixWorld errors unless attribution is reliable.
 - [ ] Verify the diagnostics window in the main menu and in-game. Closed UI and
       default logging must have no measurable hotpath.
+      Scroll preservation on refresh is implemented and compiled. Manually check
+      live refresh, same-tab clicks, shrinking content, resize, and tab changes.
 
 ## Benchmark and pilot operation
 
@@ -150,6 +152,12 @@ generation-stamped visit map should retain the exact union and call
       exceptions; explicit route outcomes and door cases remain unconfirmed.
 - [ ] Investigate the isolated 30,000 simulation-tick queue-delay sample. Do not
       interpret it as elapsed wall time or a confirmed scheduling stall.
+      Reproduce a debug clock jump with an outstanding request; distinguish
+      requested-start age from actual enqueue latency.
+- [ ] Strengthen the benchmark with A/B/A/B at equal simulated tick counts and
+      matched save, camera, speed, warm-up, instrumentation, and background work.
+      Add a bounded dirty-count breakdown (1, 2-4, 5-16, 17-64, 65+) only for this
+      comparison to distinguish small-update overhead from large-union savings.
 - [ ] Verify lifecycle behavior with colony to menu to the same colony while the
       profiler and DDS workers are active.
 - [ ] Accept only if both runs show a stable end-to-end reduction, the unique
@@ -171,42 +179,63 @@ open another optimization experiment:
 - [ ] Validate the mutually exclusive same-leaf, same-region, same-super-chunk,
       and cross-super-chunk request counters on the frozen save.
 
-#### Experiment B: shadow super-chunk hierarchy, next
+#### Experiment B: shadow super-chunk hierarchy, active foundation
 
 Hypothesis: map changes are spatially local even when their reachability effect
 is not. A Boids-style neighborhood update can rebuild the directly affected
 leaves and boundaries, while component and portal changes propagate through a
 small parent hierarchy only when their summaries actually change.
 
+Current slice: attach the validated cardinal, binary-passability hierarchy to
+RimWorld's connectivity update barrier as a per-map observer. Record full/incremental
+sampling and rebuild costs in the existing profiler, with changed/rebuilt counters
+in the UI and log. No game query consumer, global portal graph, or path reuse yet.
+Experiment A's remaining gameplay and queue-delay checks stay open.
+
+- [ ] For future shadow-vs-game mismatches, retain a bounded reproducer with masks,
+      endpoints, traversal profile, dirty cells, portal data, generations, and both
+      answers. Keep local disconnection distinct from global unreachability;
+      a route can leave and re-enter the endpoints' shared super-chunk.
+
 - [x] Use measured unique expanded cells and 8, 16, and 32-cell chunk counts to
       select the first shadow-model representation and chunk-size candidates.
       Use 8 by 8 bitboard leaves, 16 by 16 regions, and 32 by 32 super-chunks.
-- [ ] Define the shadow data layout without Verse objects on the hot path:
+- [x] Define the shadow data layout without Verse objects on the hot path:
       one `ulong` passability mask per 8-by-8 leaf, four leaves per 16-by-16
       region, and four regions per 32-by-32 super-chunk.
-- [ ] Define coordinate transforms and boundary masks once. Leaf, region, and
+- [x] Define coordinate transforms and boundary masks once. Leaf, region, and
       super-chunk lookup should use shifts and masks rather than division in the
       measured path.
 - [ ] Start with binary passability. Keep topology, traversal restrictions, and
       movement costs as separate layers with explicit generations instead of
       prematurely baking every traversal profile into one structure.
-- [ ] Implement Boids-style dirty-neighbor selection:
+- [x] Implement Boids-style dirty-neighbor selection:
       an interior cell dirties only its leaf, an edge cell adds the adjacent
       leaf, and a corner adds at most three neighbors. Deduplicate the resulting
       leaf set before rebuilding.
-- [ ] Build a scalar reference implementation for local connected components and
+- [x] Build a scalar reference implementation for local connected components and
       boundary portals. It is the oracle for the optimized leaf implementation.
 - [ ] Build the bit-parallel 8-by-8 flood fill with shifts, edge masks, and one
       `ulong` frontier. Explicitly test cardinal, diagonal, map-edge, door, fence,
       water, temporary-blocker, and corner-cutting semantics.
-- [ ] Summarize each leaf's local components and exits. Rebuild a 16-by-16 parent
+      Cardinal binary flood fill and synthetic edges/splits/merges pass the
+      independent scalar oracle. Actual RimWorld traversal semantics remain open.
+- [x] Summarize each leaf's local components and exits. Rebuild a 16-by-16 parent
       only when a child summary changes, and a 32-by-32 super-chunk only when its
       region summary changes.
+      Summary comparisons include perimeter occupancy as well as component IDs.
 - [ ] Publish topology coherently at an update barrier. Readers must observe the
       complete old generation or the complete new generation, never a mixture of
       partially rebuilt leaves and parents.
-- [ ] Feed RimWorld invalidation events into the shadow hierarchy, but keep
+- [x] Feed RimWorld invalidation events into the shadow hierarchy, but keep
       vanilla connectivity and reachability authoritative.
+      Per-map observer is wired after ComputeAll/UpdateIncrementally. Local-reference
+      build and stubbed adapter tests pass. Live ordinary play and wall build/remove
+      passed with zero observer failures; measurements are in docs/pathfinding.md.
+- [ ] Run the live observer on the frozen colony: confirm initial full sampling,
+      ordinary dirty updates, block/unblock changes, reload, and multiple maps.
+      Capture Shadow grid counters and the three profiler slots with zero observer
+      failures. Compare a FIXWORLD_SHADOW_GRID=0 control before claiming speedups.
 - [ ] Compare every shadow reachability answer against RimWorld across empty and
       dense maps, disconnected rooms, one-cell corridors, bridges, doors, map
       edges, component merges, component splits, and multiple active maps.
@@ -214,6 +243,8 @@ small parent hierarchy only when their summaries actually change.
       incremental rebuilds, and all three hierarchy levels. Record wall time,
       allocations, memory, dirty and rebuilt leaves, neighbor visits, changed
       portals, propagation depth, worst case, and mismatch count.
+      Standalone synthetic all-level/full/incremental timings are recorded in
+      docs/pathfinding.md; isolated leaf timing and real-map costs remain open.
 - [ ] Measure actual rebuild cost, not only touched-chunk counts. The existing
       8/16/32 counters describe locality but do not prove useful chunk sizes.
 - [ ] Accept only with zero semantic mismatches and a meaningful measured saving

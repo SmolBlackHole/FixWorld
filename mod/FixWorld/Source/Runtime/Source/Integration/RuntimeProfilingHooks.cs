@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using FixWorld.Diagnostics;
+using FixWorld.Pathfinding;
 using FixWorld.Runtime;
 using HarmonyLib;
 using RimWorld;
@@ -26,6 +27,7 @@ namespace FixWorld.Integration
             typeof(PathFinderFindPathNowPatch),
             typeof(PathFinderGatherMapDataPatch),
             typeof(PathFinderDataSourcePatch),
+            typeof(ConnectivityFullBuildPatch),
             typeof(PathFinderJobBarrierPatch),
             typeof(PathFinderGridSchedulingPatch),
             typeof(PathFinderPathSchedulingPatch),
@@ -554,8 +556,31 @@ namespace FixWorld.Integration
             }
 
             [HarmonyPostfix]
-            private static void Postfix(HotpathState __state) =>
+            private static void Postfix(
+                object __instance,
+                Map ___map,
+                List<IntVec3> __1,
+                HotpathState __state)
+            {
                 End(__state.Hotpath, __state.StartedAt);
+                if (__instance is ConnectivitySource && ShadowGridObserver.Enabled)
+                {
+                    RuntimeHost.ObserveShadowGrid(___map, __1, fullRebuild: false);
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(ConnectivitySource), nameof(ConnectivitySource.ComputeAll))]
+        private static class ConnectivityFullBuildPatch
+        {
+            [HarmonyPostfix]
+            private static void Postfix(Map ___map)
+            {
+                if (ShadowGridObserver.Enabled)
+                {
+                    RuntimeHost.ObserveShadowGrid(___map, null, fullRebuild: true);
+                }
+            }
         }
 
         [HarmonyPatch]

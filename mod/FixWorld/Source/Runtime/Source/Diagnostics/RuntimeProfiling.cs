@@ -278,12 +278,15 @@ namespace FixWorld.Diagnostics
         PathRequestTelemetry,
         PathSpatialTelemetry,
         ReachabilityCanReach,
-        ReachabilityCacheLookup
+        ReachabilityCacheLookup,
+        ShadowGridFull,
+        ShadowGridIncremental,
+        ShadowGridRebuild
     }
 
     internal static class RuntimeHotpathCatalog
     {
-        internal const int Count = 25;
+        internal const int Count = 28;
 
         internal static string GetName(RuntimeHotpath hotpath)
         {
@@ -339,6 +342,12 @@ namespace FixWorld.Diagnostics
                     return "Reachability.CanReach";
                 case RuntimeHotpath.ReachabilityCacheLookup:
                     return "ReachabilityCache.CachedResultFor";
+                case RuntimeHotpath.ShadowGridFull:
+                    return "ShadowGridObserver full update";
+                case RuntimeHotpath.ShadowGridIncremental:
+                    return "ShadowGridObserver incremental update";
+                case RuntimeHotpath.ShadowGridRebuild:
+                    return "ShadowConnectivityGrid.Rebuild";
                 default:
                     throw new ArgumentOutOfRangeException(nameof(hotpath));
             }
@@ -509,17 +518,70 @@ namespace FixWorld.Diagnostics
         internal long MaximumChunks32 { get; }
     }
 
+    internal readonly struct RuntimeShadowGridSnapshot
+    {
+        internal RuntimeShadowGridSnapshot(
+            long fullUpdates,
+            long incrementalUpdates,
+            long sampledCells,
+            long changedCells,
+            long rebuiltLeaves,
+            long changedLeaves,
+            long rebuiltRegions,
+            long changedRegions,
+            long rebuiltSuperChunks,
+            long changedSuperChunks,
+            long failures)
+        {
+            FullUpdates = fullUpdates;
+            IncrementalUpdates = incrementalUpdates;
+            SampledCells = sampledCells;
+            ChangedCells = changedCells;
+            RebuiltLeaves = rebuiltLeaves;
+            ChangedLeaves = changedLeaves;
+            RebuiltRegions = rebuiltRegions;
+            ChangedRegions = changedRegions;
+            RebuiltSuperChunks = rebuiltSuperChunks;
+            ChangedSuperChunks = changedSuperChunks;
+            Failures = failures;
+        }
+
+        internal long FullUpdates { get; }
+
+        internal long IncrementalUpdates { get; }
+
+        internal long SampledCells { get; }
+
+        internal long ChangedCells { get; }
+
+        internal long RebuiltLeaves { get; }
+
+        internal long ChangedLeaves { get; }
+
+        internal long RebuiltRegions { get; }
+
+        internal long ChangedRegions { get; }
+
+        internal long RebuiltSuperChunks { get; }
+
+        internal long ChangedSuperChunks { get; }
+
+        internal long Failures { get; }
+    }
+
     internal readonly struct RuntimeProfilingSnapshot
     {
         internal RuntimeProfilingSnapshot(
             ProfileAggregationMode aggregationMode,
             ProfileSnapshot<RuntimeHotpath> hotpaths,
-            RuntimePathfindingSnapshot pathfinding)
+            RuntimePathfindingSnapshot pathfinding,
+            RuntimeShadowGridSnapshot shadowGrid = default)
         {
             AggregationMode = aggregationMode;
             Hotpaths = hotpaths ??
                 throw new ArgumentNullException(nameof(hotpaths));
             Pathfinding = pathfinding;
+            ShadowGrid = shadowGrid;
         }
 
         internal ProfileAggregationMode AggregationMode { get; }
@@ -527,5 +589,7 @@ namespace FixWorld.Diagnostics
         internal ProfileSnapshot<RuntimeHotpath> Hotpaths { get; }
 
         internal RuntimePathfindingSnapshot Pathfinding { get; }
+
+        internal RuntimeShadowGridSnapshot ShadowGrid { get; }
     }
 }

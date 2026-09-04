@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Runtime.Serialization;
 using System.Threading;
 using FixWorld.Loading;
+using FixWorld.Pathfinding;
 using FixWorld.PlayData;
 using FixWorld.Preloader;
 using FixWorld.Profiling;
@@ -68,6 +69,17 @@ namespace FixWorld.Diagnostics
         private long pathUniqueExpandedCells;
         private long reachabilityCacheHits;
         private long reachabilityCacheMisses;
+        private long shadowChangedCells;
+        private long shadowChangedLeaves;
+        private long shadowChangedRegions;
+        private long shadowChangedSuperChunks;
+        private long shadowFailures;
+        private long shadowFullUpdates;
+        private long shadowIncrementalUpdates;
+        private long shadowRebuiltLeaves;
+        private long shadowRebuiltRegions;
+        private long shadowRebuiltSuperChunks;
+        private long shadowSampledCells;
         private double estimatedDurationMilliseconds;
         private LoadingLiveState liveState;
         private Profiler<PlayDataLoadStage> profiler;
@@ -303,6 +315,38 @@ namespace FixWorld.Diagnostics
             }
         }
 
+        internal void ObserveShadowGrid(
+            bool fullRebuild,
+            int sampledCells,
+            int changedCells,
+            in ShadowRebuildStats stats)
+        {
+            if (fullRebuild)
+            {
+                Interlocked.Increment(ref shadowFullUpdates);
+            }
+            else
+            {
+                Interlocked.Increment(ref shadowIncrementalUpdates);
+            }
+
+            Interlocked.Add(ref shadowSampledCells, sampledCells);
+            Interlocked.Add(ref shadowChangedCells, changedCells);
+            Interlocked.Add(ref shadowRebuiltLeaves, stats.RebuiltLeaves);
+            Interlocked.Add(ref shadowChangedLeaves, stats.ChangedLeaves);
+            Interlocked.Add(ref shadowRebuiltRegions, stats.RebuiltRegions);
+            Interlocked.Add(ref shadowChangedRegions, stats.ChangedRegions);
+            Interlocked.Add(
+                ref shadowRebuiltSuperChunks,
+                stats.RebuiltSuperChunks);
+            Interlocked.Add(
+                ref shadowChangedSuperChunks,
+                stats.ChangedSuperChunks);
+        }
+
+        internal void ObserveShadowGridFailure() =>
+            Interlocked.Increment(ref shadowFailures);
+
         internal RuntimeProfilingSnapshot CaptureRuntimeProfiling(
             bool publish = false) =>
             new(
@@ -344,7 +388,19 @@ namespace FixWorld.Diagnostics
                         Interlocked.Read(ref pathMaximumUniqueExpandedCells),
                         Interlocked.Read(ref pathMaximumChunks8),
                         Interlocked.Read(ref pathMaximumChunks16),
-                        Interlocked.Read(ref pathMaximumChunks32))));
+                        Interlocked.Read(ref pathMaximumChunks32))),
+                new RuntimeShadowGridSnapshot(
+                    Interlocked.Read(ref shadowFullUpdates),
+                    Interlocked.Read(ref shadowIncrementalUpdates),
+                    Interlocked.Read(ref shadowSampledCells),
+                    Interlocked.Read(ref shadowChangedCells),
+                    Interlocked.Read(ref shadowRebuiltLeaves),
+                    Interlocked.Read(ref shadowChangedLeaves),
+                    Interlocked.Read(ref shadowRebuiltRegions),
+                    Interlocked.Read(ref shadowChangedRegions),
+                    Interlocked.Read(ref shadowRebuiltSuperChunks),
+                    Interlocked.Read(ref shadowChangedSuperChunks),
+                    Interlocked.Read(ref shadowFailures)));
 
         internal RuntimeDiagnosticsSnapshot Complete(
             string source,

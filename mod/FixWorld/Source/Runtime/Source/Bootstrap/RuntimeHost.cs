@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using FixWorld.Diagnostics;
@@ -161,6 +162,9 @@ namespace FixWorld.Runtime
         internal static void ObservePathDataUpdate(
             in PathSpatialObservation observation) =>
             Volatile.Read(ref current)?.ObservePathDataUpdate(in observation);
+
+        internal static void ObserveShadowGrid(Map map, List<IntVec3> deltas, bool fullRebuild) =>
+            Volatile.Read(ref current)?.ObserveShadowGrid(map, deltas, fullRebuild);
 
         internal static void ObserveReachabilityCache(bool hit) => Volatile.Read(ref current)?.ObserveReachabilityCache(hit);
 
