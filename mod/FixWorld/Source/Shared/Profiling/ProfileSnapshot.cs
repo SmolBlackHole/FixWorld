@@ -4,7 +4,7 @@ using System.Collections.Generic;
 
 namespace FixWorld.Profiling
 {
-    public sealed class ProfileMeasurement<TKey>
+    public readonly struct ProfileMeasurement<TKey>
     {
         internal ProfileMeasurement(
             TKey key,
@@ -17,12 +17,9 @@ namespace FixWorld.Profiling
             Key = key;
             Calls = calls;
             Failures = failures;
-            TotalTime = TimeSpan.FromTicks(totalTicks);
-            MinimumTime = TimeSpan.FromTicks(minimumTicks);
-            MaximumTime = TimeSpan.FromTicks(maximumTicks);
-            AverageTime = calls == 0L
-                ? TimeSpan.Zero
-                : TimeSpan.FromTicks(totalTicks / calls);
+            TotalStopwatchTicks = totalTicks;
+            MinimumStopwatchTicks = minimumTicks;
+            MaximumStopwatchTicks = maximumTicks;
         }
 
         public TKey Key { get; }
@@ -31,19 +28,32 @@ namespace FixWorld.Profiling
 
         public long Failures { get; }
 
-        public TimeSpan TotalTime { get; }
+        public long TotalStopwatchTicks { get; }
 
-        public TimeSpan MinimumTime { get; }
+        public long MinimumStopwatchTicks { get; }
 
-        public TimeSpan MaximumTime { get; }
+        public long MaximumStopwatchTicks { get; }
 
-        public TimeSpan AverageTime { get; }
+        public long AverageStopwatchTicks =>
+            Calls == 0L ? 0L : TotalStopwatchTicks / Calls;
+
+        public TimeSpan TotalTime =>
+            ProfileTime.ToTimeSpan(TotalStopwatchTicks);
+
+        public TimeSpan MinimumTime =>
+            ProfileTime.ToTimeSpan(MinimumStopwatchTicks);
+
+        public TimeSpan MaximumTime =>
+            ProfileTime.ToTimeSpan(MaximumStopwatchTicks);
+
+        public TimeSpan AverageTime =>
+            ProfileTime.ToTimeSpan(AverageStopwatchTicks);
     }
 
     public sealed class ProfileSnapshot<TKey> :
-        IEnumerable<ProfileMeasurement<TKey>>
+        IReadOnlyList<ProfileMeasurement<TKey>>
     {
-        private readonly Dictionary<TKey, int> indices;
+        private readonly IEqualityComparer<TKey> keyComparer;
         private readonly ProfileMeasurement<TKey>[] measurements;
 
         internal ProfileSnapshot(
@@ -52,40 +62,37 @@ namespace FixWorld.Profiling
         {
             this.measurements = measurements ??
                 throw new ArgumentNullException(nameof(measurements));
-            indices = new Dictionary<TKey, int>(
-                measurements.Length,
-                keyComparer);
-            for (int index = 0; index < measurements.Length; index++)
-            {
-                indices.Add(measurements[index].Key, index);
-            }
+            this.keyComparer = keyComparer ??
+                throw new ArgumentNullException(nameof(keyComparer));
         }
 
         public int Count => measurements.Length;
+
+        public ProfileMeasurement<TKey> this[int index] => measurements[index];
 
         public bool TryGet(
             TKey key,
             out ProfileMeasurement<TKey> measurement)
         {
-            if (indices.TryGetValue(key, out int index))
+            for (int index = 0; index < measurements.Length; index++)
             {
-                measurement = measurements[index];
-                return true;
+                ref readonly ProfileMeasurement<TKey> candidate =
+                    ref measurements[index];
+                if (keyComparer.Equals(candidate.Key, key))
+                {
+                    measurement = candidate;
+                    return true;
+                }
             }
 
-            measurement = null;
+            measurement = default;
             return false;
         }
 
-        public IEnumerator<ProfileMeasurement<TKey>> GetEnumerator()
-        {
-            return ((IEnumerable<ProfileMeasurement<TKey>>)measurements)
-                .GetEnumerator();
-        }
+        public IEnumerator<ProfileMeasurement<TKey>> GetEnumerator() =>
+            ((IEnumerable<ProfileMeasurement<TKey>>)measurements)
+            .GetEnumerator();
 
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return GetEnumerator();
-        }
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

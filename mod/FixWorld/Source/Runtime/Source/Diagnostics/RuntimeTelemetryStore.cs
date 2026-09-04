@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.Serialization;
+using System.Threading;
 using FixWorld.Loading;
 using FixWorld.PlayData;
 using FixWorld.Preloader;
@@ -10,12 +11,14 @@ using FixWorld.Textures;
 
 namespace FixWorld.Diagnostics
 {
-    internal sealed class RuntimeTelemetryStore
+    internal sealed class RuntimeTelemetryStore : IDisposable
     {
-        private readonly object sync = new object();
+        private readonly object sync = new();
 
         private bool active;
         private double estimatedDurationMilliseconds;
+        private LoadingLiveState liveState;
+        private Profiler<PlayDataLoadStage> profiler;
         private ProfileSlot<PlayDataLoadStage>[] stageSlots;
         private PlayDataLoadStage stage;
         private long stageStartedAt;
@@ -33,12 +36,13 @@ namespace FixWorld.Diagnostics
 
                 active = true;
                 stagesComplete = false;
-                Profiler<PlayDataLoadStage> profiler =
-                    new Profiler<PlayDataLoadStage>();
+                profiler = new(
+                    options: ProfilerOptions.Inline);
                 stageSlots = CreateStageSlots(profiler);
                 startedAt = Stopwatch.GetTimestamp();
                 estimatedDurationMilliseconds = LoadingEstimateStore.Read();
                 StartStage(PlayDataLoadStage.Reset, startedAt);
+                PublishLiveState();
                 return true;
             }
         }
@@ -56,6 +60,7 @@ namespace FixWorld.Diagnostics
                 long now = Stopwatch.GetTimestamp();
                 FinishStage(now, succeeded: true);
                 StartStage(next, now);
+                PublishLiveState();
                 return true;
             }
         }
@@ -74,12 +79,14 @@ namespace FixWorld.Diagnostics
                 StartStage(PlayDataLoadStage.Complete, now);
                 FinishStage(Stopwatch.GetTimestamp(), succeeded: true);
                 stagesComplete = true;
+                PublishLiveState();
                 return true;
             }
         }
 
         internal bool Abort()
         {
+            Profiler<PlayDataLoadStage> abandonedProfiler;
             lock (sync)
             {
                 if (!active)
@@ -95,47 +102,50 @@ namespace FixWorld.Diagnostics
                 active = false;
                 stagesComplete = false;
                 stageSlots = null;
+                abandonedProfiler = profiler;
+                profiler = null;
                 startedAt = 0L;
                 stageStartedAt = 0L;
-                return true;
+                Volatile.Write(ref liveState, null);
             }
+
+            abandonedProfiler?.Dispose();
+            return true;
         }
 
         internal bool TryGetLoadingSnapshot(
             out PlayDataLoadingSnapshot snapshot)
         {
-            lock (sync)
+            LoadingLiveState current = Volatile.Read(ref liveState);
+            if (current == null)
             {
-                if (!active)
-                {
-                    snapshot = default;
-                    return false;
-                }
-
-                double elapsed = ToMilliseconds(
-                    Stopwatch.GetTimestamp() - startedAt);
-                bool hasEstimate = estimatedDurationMilliseconds > 0.0;
-                float stageProgress = Math.Max(
-                    0.02f,
-                    Math.Min(
-                        0.98f,
-                        ((int)stage - 0.5f) /
-                        PlayDataLoadStageCatalog.Count));
-                float progress = hasEstimate
-                    ? Math.Max(
-                        stageProgress,
-                        (float)Math.Min(
-                            0.98,
-                            elapsed / estimatedDurationMilliseconds))
-                    : stageProgress;
-                snapshot = new PlayDataLoadingSnapshot(
-                    stage,
-                    elapsed,
-                    progress,
-                    hasEstimate,
-                    estimatedDurationMilliseconds);
-                return true;
+                snapshot = default;
+                return false;
             }
+
+            double elapsed = ToMilliseconds(
+                Stopwatch.GetTimestamp() - current.StartedAt);
+            bool hasEstimate = current.EstimatedDurationMilliseconds > 0.0;
+            float stageProgress = Math.Max(
+                0.02f,
+                Math.Min(
+                    0.98f,
+                    ((int)current.Stage - 0.5f) /
+                    PlayDataLoadStageCatalog.Count));
+            float progress = hasEstimate
+                ? Math.Max(
+                    stageProgress,
+                    (float)Math.Min(
+                        0.98,
+                        elapsed / current.EstimatedDurationMilliseconds))
+                : stageProgress;
+            snapshot = new PlayDataLoadingSnapshot(
+                current.Stage,
+                elapsed,
+                progress,
+                hasEstimate,
+                current.EstimatedDurationMilliseconds);
+            return true;
         }
 
         internal RuntimeDiagnosticsSnapshot Complete(
@@ -145,6 +155,7 @@ namespace FixWorld.Diagnostics
             SystemMemorySnapshot memory)
         {
             PlayDataTelemetrySnapshot loading;
+            Profiler<PlayDataLoadStage> completedProfiler;
             double observedMilliseconds;
             lock (sync)
             {
@@ -156,16 +167,22 @@ namespace FixWorld.Diagnostics
                 long completedAt = Stopwatch.GetTimestamp();
                 observedMilliseconds = ToMilliseconds(
                     Math.Max(0L, completedAt - startedAt));
+                ProfileSnapshot<PlayDataLoadStage> stages =
+                    profiler.Snapshot();
                 loading = new PlayDataTelemetrySnapshot(
                     observedMilliseconds,
-                    CaptureStages());
+                    CaptureStages(stages));
                 active = false;
                 stagesComplete = false;
                 stageSlots = null;
+                completedProfiler = profiler;
+                profiler = null;
                 startedAt = 0L;
                 stageStartedAt = 0L;
+                Volatile.Write(ref liveState, null);
             }
 
+            completedProfiler.Dispose();
             LoadingEstimateStore.Write(observedMilliseconds);
             return new RuntimeDiagnosticsSnapshot(
                 source,
@@ -177,14 +194,16 @@ namespace FixWorld.Diagnostics
                 memory);
         }
 
-        private List<PlayDataStageMeasurement> CaptureStages()
+        public void Dispose() => Abort();
+
+        private static List<PlayDataStageMeasurement> CaptureStages(
+            ProfileSnapshot<PlayDataLoadStage> stages)
         {
             List<PlayDataStageMeasurement> measurements =
-                new List<PlayDataStageMeasurement>(stageSlots.Length);
-            foreach (ProfileSlot<PlayDataLoadStage> slot in stageSlots)
+                new(stages.Count);
+            foreach (ProfileMeasurement<PlayDataLoadStage> stage in stages)
             {
-                measurements.Add(
-                    new PlayDataStageMeasurement(slot.Snapshot()));
+                measurements.Add(new PlayDataStageMeasurement(stage));
             }
 
             return measurements;
@@ -198,30 +217,53 @@ namespace FixWorld.Diagnostics
 
         private void FinishStage(long now, bool succeeded)
         {
-            TimeSpan elapsed = TimeSpan.FromSeconds(
-                (double)Math.Max(0L, now - stageStartedAt) /
-                Stopwatch.Frequency);
-            stageSlots[(int)stage - 1].Observe(elapsed, succeeded);
+            stageSlots[(int)stage - 1].ObserveStopwatchTicks(
+                Math.Max(0L, now - stageStartedAt),
+                succeeded);
         }
+
+        private void PublishLiveState() =>
+            Volatile.Write(
+                ref liveState,
+                new LoadingLiveState(
+                    stage,
+                    startedAt,
+                    estimatedDurationMilliseconds));
 
         private static ProfileSlot<PlayDataLoadStage>[] CreateStageSlots(
             Profiler<PlayDataLoadStage> profiler)
         {
-            ProfileSlot<PlayDataLoadStage>[] slots =
+            var slots =
                 new ProfileSlot<PlayDataLoadStage>[
                     PlayDataLoadStageCatalog.Count];
             for (int number = 1; number <= slots.Length; number++)
             {
-                PlayDataLoadStage stage = (PlayDataLoadStage)number;
+                var stage = (PlayDataLoadStage)number;
                 slots[number - 1] = profiler.GetSlot(stage);
             }
 
             return slots;
         }
 
-        private static double ToMilliseconds(long ticks)
+        private static double ToMilliseconds(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
+
+        private sealed class LoadingLiveState
         {
-            return ticks * 1000.0 / Stopwatch.Frequency;
+            internal LoadingLiveState(
+                PlayDataLoadStage stage,
+                long startedAt,
+                double estimatedDurationMilliseconds)
+            {
+                Stage = stage;
+                StartedAt = startedAt;
+                EstimatedDurationMilliseconds = estimatedDurationMilliseconds;
+            }
+
+            internal PlayDataLoadStage Stage { get; }
+
+            internal long StartedAt { get; }
+
+            internal double EstimatedDurationMilliseconds { get; }
         }
     }
 

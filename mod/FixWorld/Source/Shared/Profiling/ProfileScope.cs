@@ -1,50 +1,39 @@
-using System;
-using System.Diagnostics;
-using System.Threading;
+using System.Runtime.CompilerServices;
 
 namespace FixWorld.Profiling
 {
-    public sealed class ProfileScope<TKey> : IDisposable
+    public ref struct ProfileScope<TKey>
     {
         private readonly ProfileSlot<TKey> slot;
-        private readonly long startedAt;
-        private int completed;
+        private long startedAt;
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal ProfileScope(ProfileSlot<TKey> slot)
         {
             this.slot = slot;
-            startedAt = Stopwatch.GetTimestamp();
+            startedAt = slot.StartTimestamp();
         }
 
-        public void Complete()
-        {
-            Finish(succeeded: true);
-        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Complete() => Finish(succeeded: true);
 
-        public void Fail()
-        {
-            Finish(succeeded: false);
-        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Fail() => Finish(succeeded: false);
 
-        public void Dispose()
-        {
-            Complete();
-        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Dispose() => Complete();
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void Finish(bool succeeded)
         {
-            if (Interlocked.Exchange(ref completed, 1) != 0)
+            long current = startedAt;
+            if (current == ProfileSlot<TKey>.InactiveTimestamp)
             {
                 return;
             }
 
-            long elapsedTicks = Math.Max(
-                0L,
-                Stopwatch.GetTimestamp() - startedAt);
-            slot.Observe(
-                TimeSpan.FromSeconds(
-                    (double)elapsedTicks / Stopwatch.Frequency),
-                succeeded);
+            startedAt = ProfileSlot<TKey>.InactiveTimestamp;
+            slot.StopTimestamp(current, succeeded);
         }
     }
 }

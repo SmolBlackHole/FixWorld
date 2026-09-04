@@ -28,6 +28,9 @@ internal static class Program
             ProfilingSlotsAreReusable();
             ProfileScopesCompleteExactlyOnce();
             ProfilingIsThreadSafe();
+            BufferedProfilingPublishesSnapshots();
+            ProfilingCanBeDisabled();
+            ProfilerOptionsRejectInvalidValues();
             EventBusKeepsChannelsTypedAndBounded();
             EventBusCoalescesLatestValues();
             EventBusAcceptsConcurrentPublishers();
@@ -149,13 +152,13 @@ internal static class Program
     private static void RimWorldRestartPreservesArguments()
     {
         string[] values =
-        {
+        [
             string.Empty,
             "plain",
             "two words",
             "quoted \"value\"",
             @"C:\RimWorld Mods\FixWorld\"
-        };
+        ];
         foreach (string value in values)
         {
             Assert(
@@ -170,7 +173,7 @@ internal static class Program
         Assert(
             string.Equals(
                 RimWorldRestart.BuildCommandLine(
-                    new[] { "plain", "two words", string.Empty }),
+                    ["plain", "two words", string.Empty]),
                 "plain \"two words\" \"\"",
                 StringComparison.Ordinal),
             "The coordinated restart command line is malformed.");
@@ -210,7 +213,7 @@ internal static class Program
             File.WriteAllText(bundledDoorstop, "doorstop fixture");
             File.WriteAllText(bundledPreloader, "preloader fixture");
             string doorstopHash = FileHash(bundledDoorstop);
-            PreloaderInstallationPaths paths =
+            var paths =
                 new PreloaderInstallationPaths(
                     gameRoot,
                     bundledDoorstop,
@@ -231,7 +234,7 @@ internal static class Program
                 movedRoot,
                 "FixWorld.Preloader.dll");
             File.Copy(bundledPreloader, movedPreloader);
-            PreloaderInstallationPaths movedPaths =
+            var movedPaths =
                 new PreloaderInstallationPaths(
                     gameRoot,
                     bundledDoorstop,
@@ -253,7 +256,7 @@ internal static class Program
                 movedRoot,
                 "FixWorld.Preloader.Updated.dll");
             File.WriteAllText(updatedPreloader, "updated preloader fixture");
-            PreloaderInstallationPaths updatedPaths =
+            var updatedPaths =
                 new PreloaderInstallationPaths(
                     gameRoot,
                     bundledDoorstop,
@@ -295,23 +298,21 @@ internal static class Program
 
     private static string FileHash(string path)
     {
-        using (SHA256 sha256 = SHA256.Create())
-        using (FileStream stream = File.OpenRead(path))
-        {
-            return BitConverter.ToString(sha256.ComputeHash(stream))
-                .Replace("-", string.Empty);
-        }
+        using var sha256 = SHA256.Create();
+        using FileStream stream = File.OpenRead(path);
+        return BitConverter.ToString(sha256.ComputeHash(stream))
+            .Replace("-", string.Empty);
     }
 
     private static void CacheSnapshotsAreImmutable()
     {
-        Dictionary<string, CacheEntry<string, int>> initial =
+        var initial =
             new Dictionary<string, CacheEntry<string, int>>(
                 StringComparer.Ordinal)
             {
                 ["a"] = new CacheEntry<string, int>("one", 1)
             };
-        SnapshotCache<string, string, int> cache =
+        var cache =
             new SnapshotCache<string, string, int>(
                 initial,
                 StringComparer.Ordinal);
@@ -358,7 +359,7 @@ internal static class Program
 
     private static void ProfilingAggregatesImmutableSnapshots()
     {
-        Profiler<string> profiler = new Profiler<string>(
+        var profiler = new Profiler<string>(
             StringComparer.OrdinalIgnoreCase);
         profiler.Observe("parse", TimeSpan.FromMilliseconds(10));
         profiler.Observe(
@@ -408,7 +409,7 @@ internal static class Program
 
     private static void ProfileScopesCompleteExactlyOnce()
     {
-        Profiler<string> profiler = new Profiler<string>(StringComparer.Ordinal);
+        var profiler = new Profiler<string>(StringComparer.Ordinal);
         using (profiler.Measure("success"))
         {
         }
@@ -445,7 +446,7 @@ internal static class Program
 
     private static void ProfilingSlotsAreReusable()
     {
-        Profiler<string> profiler = new Profiler<string>(StringComparer.Ordinal);
+        var profiler = new Profiler<string>(StringComparer.Ordinal);
         ProfileSlot<string> first = profiler.GetSlot("load");
         ProfileSlot<string> second = profiler.GetSlot("load");
         Assert(
@@ -464,15 +465,22 @@ internal static class Program
     {
         const int ThreadCount = 4;
         const int ObservationsPerThread = 250;
-        Profiler<int> profiler = new Profiler<int>();
-        Thread[] threads = new Thread[ThreadCount];
-        for (int threadIndex = 0; threadIndex < threads.Length; threadIndex++)
+        using Profiler<int> profiler = new(
+                   options: new ProfilerOptions(
+                       ProfileAggregationMode.Buffered));
+        ProfileSlot<int> slot = profiler.GetSlot(1);
+        var threads = new Thread[ThreadCount];
+        for (int threadIndex = 0;
+             threadIndex < threads.Length;
+             threadIndex++)
         {
             threads[threadIndex] = new Thread(() =>
             {
-                for (int index = 0; index < ObservationsPerThread; index++)
+                for (int index = 0;
+                     index < ObservationsPerThread;
+                     index++)
                 {
-                    profiler.Observe(1, TimeSpan.FromTicks(1L));
+                    slot.Observe(TimeSpan.FromTicks(1L));
                 }
             });
             threads[threadIndex].Start();
@@ -486,227 +494,291 @@ internal static class Program
         Assert(
             profiler.Snapshot().TryGet(
                 1,
-                out ProfileMeasurement<int> measurement) &&
+            out ProfileMeasurement<int> measurement) &&
             measurement.Calls == ThreadCount * ObservationsPerThread &&
             measurement.TotalTime == TimeSpan.FromTicks(
                 ThreadCount * ObservationsPerThread),
-            "Concurrent profile observations were lost.");
+            "Concurrent buffered profile observations were lost.");
+    }
+
+    private static void BufferedProfilingPublishesSnapshots()
+    {
+        using Profiler<string> profiler = new(
+                   StringComparer.Ordinal,
+                   new ProfilerOptions(
+                       ProfileAggregationMode.Buffered,
+                       publishInterval: TimeSpan.FromMilliseconds(10)));
+        ProfileSlot<string> slot = profiler.GetSlot("tick");
+        slot.ObserveStopwatchTicks(StopwatchFrequency());
+        Assert(
+            SpinWait.SpinUntil(
+                () => profiler.PublishedSnapshot.TryGet(
+                    "tick",
+                    out ProfileMeasurement<string> current) &&
+                    current.Calls == 1L,
+                TimeSpan.FromSeconds(2)),
+            "The buffered profiler did not publish on its cadence.");
+
+        ProfileSnapshot<string> published = profiler.PublishedSnapshot;
+        slot.ObserveStopwatchTicks(1L);
+        Assert(
+            ReferenceEquals(profiler.PublishedSnapshot, published) &&
+            published.TryGet(
+                "tick",
+                out ProfileMeasurement<string> unchanged) &&
+            unchanged.Calls == 1L,
+            "A producer mutated an already published profile snapshot.");
+
+        ProfileSnapshot<string> refreshed = profiler.PublishSnapshot();
+        Assert(
+            ReferenceEquals(profiler.PublishedSnapshot, refreshed) &&
+            refreshed.TryGet(
+                "tick",
+                out ProfileMeasurement<string> changed) &&
+            changed.Calls == 2L &&
+            changed.TotalStopwatchTicks == StopwatchFrequency() + 1L,
+            "An explicit buffered flush omitted a profile sample.");
+    }
+
+    private static void ProfilingCanBeDisabled()
+    {
+        using Profiler<string> profiler = new(
+                   options: new ProfilerOptions(
+                       ProfileAggregationMode.Buffered,
+                       enabled: false));
+        ProfileSlot<string> slot = profiler.GetSlot("optional");
+        long startedAt = slot.StartTimestamp();
+        slot.StopTimestamp(startedAt);
+        slot.ObserveStopwatchTicks(1L);
+        Assert(
+            slot.Snapshot().Calls == 0L,
+            "A disabled profile slot recorded work.");
+
+        profiler.SetEnabled(true);
+        slot.ObserveStopwatchTicks(1L, succeeded: false);
+        profiler.SetEnabled(false);
+        ProfileMeasurement<string> measurement = slot.Snapshot();
+        Assert(
+            measurement.Calls == 1L &&
+            measurement.Failures == 1L,
+            "A re-enabled profile slot did not record work.");
+    }
+
+    private static long StopwatchFrequency() =>
+        System.Diagnostics.Stopwatch.Frequency;
+
+    private static void ProfilerOptionsRejectInvalidValues()
+    {
+        AssertThrows<ArgumentOutOfRangeException>(() =>
+            new ProfilerOptions((ProfileAggregationMode)int.MaxValue));
+        AssertThrows<ArgumentOutOfRangeException>(() =>
+            new ProfilerOptions(
+                ProfileAggregationMode.Buffered,
+                publishInterval: TimeSpan.Zero));
     }
 
     private static void SchedulerDeduplicatesAndReusesKeys()
     {
-        using (JobScheduler scheduler = Scheduler(1))
-        using (ManualResetEventSlim release = new ManualResetEventSlim(false))
-        {
-            JobHandle<int> first = scheduler.Schedule(
-                new Job<int>("same", _ =>
-                {
-                    release.Wait();
-                    return 1;
-                }));
-            JobHandle<int> duplicate = scheduler.Schedule(
-                new Job<int>("same", _ => 99));
-            Assert(
-                ReferenceEquals(first, duplicate),
-                "An active key was not deduplicated.");
-            release.Set();
-            Assert(first.Result == 1, "The original job result changed.");
+        using JobScheduler scheduler = Scheduler(1);
+        using var release = new ManualResetEventSlim(false);
+        JobHandle<int> first = scheduler.Schedule(
+            new Job<int>("same", _ =>
+            {
+                release.Wait();
+                return 1;
+            }));
+        JobHandle<int> duplicate = scheduler.Schedule(
+            new Job<int>("same", _ => 99));
+        Assert(
+            ReferenceEquals(first, duplicate),
+            "An active key was not deduplicated.");
+        release.Set();
+        Assert(first.Result == 1, "The original job result changed.");
 
-            JobHandle<int> replacement = scheduler.Schedule(
-                new Job<int>("same", _ => 2));
-            Assert(
-                !ReferenceEquals(first, replacement),
-                "A terminal key was not reusable.");
-            Assert(replacement.Result == 2, "Replacement job did not run.");
-        }
+        JobHandle<int> replacement = scheduler.Schedule(
+            new Job<int>("same", _ => 2));
+        Assert(
+            !ReferenceEquals(first, replacement),
+            "A terminal key was not reusable.");
+        Assert(replacement.Result == 2, "Replacement job did not run.");
     }
 
     private static void SchedulerHonorsDependencies()
     {
-        using (JobScheduler scheduler = Scheduler(2))
-        {
-            List<string> order = new List<string>();
-            JobHandle<int> parent = scheduler.Schedule(
-                new Job<int>("parent", _ =>
+        using JobScheduler scheduler = Scheduler(2);
+        var order = new List<string>();
+        JobHandle<int> parent = scheduler.Schedule(
+            new Job<int>("parent", _ =>
+            {
+                lock (order)
+                {
+                    order.Add("parent");
+                }
+
+                return 1;
+            }));
+        JobHandle<int> child = scheduler.Schedule(
+            new Job<int>(
+                "child",
+                _ =>
                 {
                     lock (order)
                     {
-                        order.Add("parent");
+                        order.Add("child");
                     }
 
-                    return 1;
-                }));
-            JobHandle<int> child = scheduler.Schedule(
-                new Job<int>(
-                    "child",
-                    _ =>
-                    {
-                        lock (order)
-                        {
-                            order.Add("child");
-                        }
+                    return 2;
+                },
+                dependencies: [parent]));
 
-                        return 2;
-                    },
-                    dependencies: new JobHandle[] { parent }));
-
-            Assert(child.Result == 2, "Dependent job did not run.");
-            lock (order)
-            {
-                Assert(
-                    order.Count == 2 &&
-                    order[0] == "parent" &&
-                    order[1] == "child",
-                    "A dependent job ran before its prerequisite.");
-            }
+        Assert(child.Result == 2, "Dependent job did not run.");
+        lock (order)
+        {
+            Assert(
+                order.Count == 2 &&
+                order[0] == "parent" &&
+                order[1] == "child",
+                "A dependent job ran before its prerequisite.");
         }
     }
 
     private static void FailedDependenciesCancelChildren()
     {
-        using (JobScheduler scheduler = Scheduler(2))
-        {
-            int childRuns = 0;
-            JobHandle<int> failed = scheduler.Schedule(
-                new Job<int>(
-                    "failed",
-                    _ => throw new InvalidOperationException("expected")));
-            JobHandle<int> child = scheduler.Schedule(
-                new Job<int>(
-                    "cancelled-child",
-                    _ => Interlocked.Increment(ref childRuns),
-                    dependencies: new JobHandle[] { failed }));
+        using JobScheduler scheduler = Scheduler(2);
+        int childRuns = 0;
+        JobHandle<int> failed = scheduler.Schedule(
+            new Job<int>(
+                "failed",
+                _ => throw new InvalidOperationException("expected")));
+        JobHandle<int> child = scheduler.Schedule(
+            new Job<int>(
+                "cancelled-child",
+                _ => Interlocked.Increment(ref childRuns),
+                dependencies: [failed]));
 
-            failed.Wait();
-            child.Wait();
-            Assert(failed.State == JobState.Failed, "Failure was not recorded.");
-            Assert(
-                child.State == JobState.Cancelled,
-                "A failed dependency did not cancel its child.");
-            Assert(childRuns == 0, "A cancelled child executed.");
-            Assert(child.Error != null, "Dependency failure was not retained.");
-        }
+        failed.Wait();
+        child.Wait();
+        Assert(failed.State == JobState.Failed, "Failure was not recorded.");
+        Assert(
+            child.State == JobState.Cancelled,
+            "A failed dependency did not cancel its child.");
+        Assert(childRuns == 0, "A cancelled child executed.");
+        Assert(child.Error != null, "Dependency failure was not retained.");
     }
 
     private static void SchedulerHonorsPriority()
     {
-        using (JobScheduler scheduler = Scheduler(1))
-        using (ManualResetEventSlim blockerStarted = new ManualResetEventSlim(false))
-        using (ManualResetEventSlim release = new ManualResetEventSlim(false))
-        {
-            List<string> order = new List<string>();
-            JobHandle<int> blocker = scheduler.Schedule(
-                new Job<int>("priority-blocker", _ =>
+        using JobScheduler scheduler = Scheduler(1);
+        using var blockerStarted = new ManualResetEventSlim(false);
+        using var release = new ManualResetEventSlim(false);
+        var order = new List<string>();
+        JobHandle<int> blocker = scheduler.Schedule(
+            new Job<int>("priority-blocker", _ =>
+            {
+                blockerStarted.Set();
+                release.Wait();
+                return 0;
+            }));
+        blockerStarted.Wait();
+        JobHandle<int> low = scheduler.Schedule(
+            new Job<int>(
+                "low",
+                _ =>
                 {
-                    blockerStarted.Set();
-                    release.Wait();
-                    return 0;
-                }));
-            blockerStarted.Wait();
-            JobHandle<int> low = scheduler.Schedule(
-                new Job<int>(
-                    "low",
-                    _ =>
-                    {
-                        order.Add("low");
-                        return 1;
-                    },
-                    priority: JobPriority.Low));
-            JobHandle<int> high = scheduler.Schedule(
-                new Job<int>(
-                    "high",
-                    _ =>
-                    {
-                        order.Add("high");
-                        return 2;
-                    },
-                    priority: JobPriority.High));
+                    order.Add("low");
+                    return 1;
+                },
+                priority: JobPriority.Low));
+        JobHandle<int> high = scheduler.Schedule(
+            new Job<int>(
+                "high",
+                _ =>
+                {
+                    order.Add("high");
+                    return 2;
+                },
+                priority: JobPriority.High));
 
-            release.Set();
-            blocker.Wait();
-            high.Wait();
-            low.Wait();
-            Assert(
-                order.Count == 2 &&
-                order[0] == "high" &&
-                order[1] == "low",
-                "Priority did not control ready-job selection.");
-        }
+        release.Set();
+        blocker.Wait();
+        high.Wait();
+        low.Wait();
+        Assert(
+            order.Count == 2 &&
+            order[0] == "high" &&
+            order[1] == "low",
+            "Priority did not control ready-job selection.");
     }
 
     private static void SchedulerAppliesBackpressure()
     {
-        JobSchedulerOptions options = new JobSchedulerOptions(
+        var options = new JobSchedulerOptions(
             workerCount: 4,
             ioConcurrency: 4,
             queueCapacity: 16,
             activeByteLimit: 100L,
             workerNamePrefix: "Backpressure Test");
-        using (JobScheduler scheduler = new JobScheduler(options))
+        using var scheduler = new JobScheduler(options);
+        int active = 0;
+        int maximum = 0;
+        var handles = new JobHandle<int>[4];
+        for (int index = 0; index < handles.Length; index++)
         {
-            int active = 0;
-            int maximum = 0;
-            JobHandle<int>[] handles = new JobHandle<int>[4];
-            for (int index = 0; index < handles.Length; index++)
-            {
-                int captured = index;
-                handles[index] = scheduler.Schedule(
-                    new Job<int>(
-                        "bytes-" + captured,
-                        _ =>
-                        {
-                            int current = Interlocked.Increment(ref active);
-                            UpdateMaximum(ref maximum, current);
-                            Thread.Sleep(40);
-                            Interlocked.Decrement(ref active);
-                            return captured;
-                        },
-                        estimatedBytes: 70L));
-            }
-
-            foreach (JobHandle<int> handle in handles)
-            {
-                handle.Wait();
-            }
-
-            Assert(maximum == 1, "The active-byte limit was exceeded.");
+            int captured = index;
+            handles[index] = scheduler.Schedule(
+                new Job<int>(
+                    "bytes-" + captured,
+                    _ =>
+                    {
+                        int current = Interlocked.Increment(ref active);
+                        UpdateMaximum(ref maximum, current);
+                        Thread.Sleep(40);
+                        Interlocked.Decrement(ref active);
+                        return captured;
+                    },
+                    estimatedBytes: 70L));
         }
+
+        foreach (JobHandle<int> handle in handles)
+        {
+            handle.Wait();
+        }
+
+        Assert(maximum == 1, "The active-byte limit was exceeded.");
     }
 
     private static void CancelledQueuedJobsHaveNoExecutionTime()
     {
-        using (JobScheduler scheduler = Scheduler(1))
-        using (ManualResetEventSlim blockerStarted = new ManualResetEventSlim(false))
-        using (ManualResetEventSlim release = new ManualResetEventSlim(false))
-        {
-            JobHandle<int> blocker = scheduler.Schedule(
-                new Job<int>("cancel-blocker", _ =>
-                {
-                    blockerStarted.Set();
-                    release.Wait();
-                    return 0;
-                }));
-            blockerStarted.Wait();
-            JobHandle<int> cancelled = scheduler.Schedule(
-                new Job<int>("cancelled", _ => 1));
-            scheduler.Cancel(cancelled);
-            cancelled.Wait();
+        using JobScheduler scheduler = Scheduler(1);
+        using var blockerStarted = new ManualResetEventSlim(false);
+        using var release = new ManualResetEventSlim(false);
+        JobHandle<int> blocker = scheduler.Schedule(
+            new Job<int>("cancel-blocker", _ =>
+            {
+                blockerStarted.Set();
+                release.Wait();
+                return 0;
+            }));
+        blockerStarted.Wait();
+        JobHandle<int> cancelled = scheduler.Schedule(
+            new Job<int>("cancelled", _ => 1));
+        scheduler.Cancel(cancelled);
+        cancelled.Wait();
 
-            Assert(
-                cancelled.State == JobState.Cancelled,
-                "A queued cancellation was not terminal.");
-            Assert(
-                cancelled.ExecutionTime == TimeSpan.Zero,
-                "A never-started job reported execution time.");
-            release.Set();
-            blocker.Wait();
-        }
+        Assert(
+            cancelled.State == JobState.Cancelled,
+            "A queued cancellation was not terminal.");
+        Assert(
+            cancelled.ExecutionTime == TimeSpan.Zero,
+            "A never-started job reported execution time.");
+        release.Set();
+        blocker.Wait();
     }
 
     private static void SchedulerShutdownIsTerminal()
     {
         JobScheduler scheduler = Scheduler(1);
-        using (ManualResetEventSlim started = new ManualResetEventSlim(false))
+        using (var started = new ManualResetEventSlim(false))
         {
             JobHandle<int> running = scheduler.Schedule(
                 new Job<int>("shutdown", token =>
@@ -733,84 +805,78 @@ internal static class Program
 
     private static void MainThreadQueueIsFifoAndIsolatesErrors()
     {
-        List<int> values = new List<int>();
-        List<string> errors = new List<string>();
-        using (MainThreadQueue queue = new MainThreadQueue(
+        var values = new List<int>();
+        var errors = new List<string>();
+        using var queue = new MainThreadQueue(
                    4,
-                   (name, _) => errors.Add(name)))
-        {
-            queue.BindCurrentThread();
-            queue.Post("first", () => values.Add(1));
-            queue.Post("failure", () =>
-                throw new InvalidOperationException("expected"));
-            queue.Post("second", () => values.Add(2));
-            int pumped = queue.Pump(4, TimeSpan.FromSeconds(1));
+                   (name, _) => errors.Add(name));
+        queue.BindCurrentThread();
+        queue.Post("first", () => values.Add(1));
+        queue.Post("failure", () =>
+            throw new InvalidOperationException("expected"));
+        queue.Post("second", () => values.Add(2));
+        int pumped = queue.Pump(4, TimeSpan.FromSeconds(1));
 
-            Assert(pumped == 3, "Main-thread queue omitted an action.");
-            Assert(
-                values.Count == 2 && values[0] == 1 && values[1] == 2,
-                "Main-thread queue was not FIFO.");
-            Assert(
-                errors.Count == 1 && errors[0] == "failure",
-                "Main-thread action failure was not isolated.");
-            Assert(queue.PendingCount == 0, "Pumped actions remained queued.");
-        }
+        Assert(pumped == 3, "Main-thread queue omitted an action.");
+        Assert(
+            values.Count == 2 && values[0] == 1 && values[1] == 2,
+            "Main-thread queue was not FIFO.");
+        Assert(
+            errors.Count == 1 && errors[0] == "failure",
+            "Main-thread action failure was not isolated.");
+        Assert(queue.PendingCount == 0, "Pumped actions remained queued.");
     }
 
     private static void EventBusKeepsChannelsTypedAndBounded()
     {
-        List<int> numbers = new List<int>();
-        List<string> messages = new List<string>();
-        using (EventBus bus = new EventBus())
-        {
-            bus.Register<int>(2);
-            bus.Register<string>(2);
-            bus.Subscribe<int>(numbers.Add);
-            bus.Subscribe<string>(messages.Add);
+        var numbers = new List<int>();
+        var messages = new List<string>();
+        using var bus = new EventBus();
+        bus.Register<int>(2);
+        bus.Register<string>(2);
+        bus.Subscribe<int>(numbers.Add);
+        bus.Subscribe<string>(messages.Add);
 
-            bus.Publish(1);
-            bus.Publish("message");
-            bus.Publish(2);
-            bus.Publish(3);
+        bus.Publish(1);
+        bus.Publish("message");
+        bus.Publish(2);
+        bus.Publish(3);
 
-            Assert(bus.Pump() == 3, "Event pump count is incorrect.");
-            Assert(
-                numbers.Count == 2 && numbers[0] == 1 && numbers[1] == 2,
-                "An event channel did not preserve FIFO order or its limit.");
-            Assert(
-                messages.Count == 1 && messages[0] == "message",
-                "Typed event channels leaked or omitted an event.");
-            Assert(
-                bus.Pump() == 1 && numbers.Count == 3 && numbers[2] == 3,
-                "A bounded event remained unavailable on the next pump.");
-        }
+        Assert(bus.Pump() == 3, "Event pump count is incorrect.");
+        Assert(
+            numbers.Count == 2 && numbers[0] == 1 && numbers[1] == 2,
+            "An event channel did not preserve FIFO order or its limit.");
+        Assert(
+            messages.Count == 1 && messages[0] == "message",
+            "Typed event channels leaked or omitted an event.");
+        Assert(
+            bus.Pump() == 1 && numbers.Count == 3 && numbers[2] == 3,
+            "A bounded event remained unavailable on the next pump.");
     }
 
     private static void EventBusCoalescesLatestValues()
     {
-        List<int> values = new List<int>();
-        using (EventBus bus = new EventBus())
-        {
-            bus.Register<int>(4);
-            bus.Subscribe<int>(values.Add);
+        var values = new List<int>();
+        using var bus = new EventBus();
+        bus.Register<int>(4);
+        bus.Subscribe<int>(values.Add);
 
-            bus.PublishLatest("first", 1);
-            bus.PublishLatest("second", 2);
-            bus.PublishLatest("first", 3);
+        bus.PublishLatest("first", 1);
+        bus.PublishLatest("second", 2);
+        bus.PublishLatest("first", 3);
 
-            Assert(bus.Pump() == 2, "Coalesced event count is incorrect.");
-            Assert(
-                values.Count == 2 && values[0] == 3 && values[1] == 2,
-                "Latest events lost their value or stable key order.");
-            Assert(bus.Pump() == 0, "Coalesced events were delivered twice.");
-        }
+        Assert(bus.Pump() == 2, "Coalesced event count is incorrect.");
+        Assert(
+            values.Count == 2 && values[0] == 3 && values[1] == 2,
+            "Latest events lost their value or stable key order.");
+        Assert(bus.Pump() == 0, "Coalesced events were delivered twice.");
     }
 
     private static void EventBusIsolatesSubscribersAndStopsTerminally()
     {
         int errors = 0;
         int observed = 0;
-        EventBus bus = new EventBus();
+        var bus = new EventBus();
         bus.Register<int>(4, _ => errors++);
         IDisposable failing = bus.Subscribe<int>(_ =>
             throw new InvalidOperationException("expected"));
@@ -836,39 +902,37 @@ internal static class Program
     {
         int observed = 0;
         int sum = 0;
-        using (EventBus bus = new EventBus())
+        using var bus = new EventBus();
+        bus.Register<int>(512);
+        bus.Subscribe<int>(value =>
         {
-            bus.Register<int>(512);
-            bus.Subscribe<int>(value =>
-            {
-                observed++;
-                sum += value;
-            });
+            observed++;
+            sum += value;
+        });
 
-            Thread[] publishers = new Thread[4];
-            for (int publisher = 0; publisher < publishers.Length; publisher++)
+        var publishers = new Thread[4];
+        for (int publisher = 0; publisher < publishers.Length; publisher++)
+        {
+            int first = publisher * 100;
+            publishers[publisher] = new Thread(() =>
             {
-                int first = publisher * 100;
-                publishers[publisher] = new Thread(() =>
+                for (int offset = 0; offset < 100; offset++)
                 {
-                    for (int offset = 0; offset < 100; offset++)
-                    {
-                        bus.Publish(first + offset);
-                    }
-                });
-                publishers[publisher].Start();
-            }
-
-            foreach (Thread publisher in publishers)
-            {
-                publisher.Join();
-            }
-
-            Assert(bus.Pump() == 400, "Concurrent events were lost.");
-            Assert(
-                observed == 400 && sum == 79800,
-                "Concurrent publishers produced an invalid event set.");
+                    bus.Publish(first + offset);
+                }
+            });
+            publishers[publisher].Start();
         }
+
+        foreach (Thread publisher in publishers)
+        {
+            publisher.Join();
+        }
+
+        Assert(bus.Pump() == 400, "Concurrent events were lost.");
+        Assert(
+            observed == 400 && sum == 79800,
+            "Concurrent publishers produced an invalid event set.");
     }
 
     private static JobScheduler Scheduler(int workers)

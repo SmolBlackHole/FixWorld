@@ -22,8 +22,6 @@ namespace FixWorld.Runtime
         private readonly IDisposable lifecycleSubscription;
         private readonly RuntimeTelemetryStore telemetry;
         private object attachedMod;
-        private string diagnosticsText =
-            "No completed startup diagnostics are available yet.";
         private bool disposed;
 
         internal RuntimeContext()
@@ -54,17 +52,11 @@ namespace FixWorld.Runtime
 
         internal int WorkerCount => scheduler.WorkerCount;
 
-        internal string DiagnosticsText => diagnosticsText;
+        internal string DiagnosticsText { get; private set; } = "No completed startup diagnostics are available yet.";
 
-        internal string ClearDdsCache()
-        {
-            return Textures.ClearCache();
-        }
+        internal string ClearDdsCache() => Textures.ClearCache();
 
-        internal string RetryFailedDdsBuilds()
-        {
-            return Textures.RetryFailedBuilds();
-        }
+        internal string RetryFailedDdsBuilds() => Textures.RetryFailedBuilds();
 
         internal void AttachMod(RuntimeModAttachmentSnapshot attachment)
         {
@@ -104,15 +96,9 @@ namespace FixWorld.Runtime
             Textures.BeginIndex();
         }
 
-        internal bool TransitionStage(PlayDataLoadStage stage)
-        {
-            return telemetry.Transition(stage);
-        }
+        internal bool TransitionStage(PlayDataLoadStage stage) => telemetry.Transition(stage);
 
-        internal void BeginTextureDiscovery()
-        {
-            Textures.BeginTextureDiscovery();
-        }
+        internal void BeginTextureDiscovery() => Textures.BeginTextureDiscovery();
 
         internal void PrepareTextures()
         {
@@ -195,10 +181,7 @@ namespace FixWorld.Runtime
         }
 
         internal bool TryGetLoadingSnapshot(
-            out PlayDataLoadingSnapshot snapshot)
-        {
-            return telemetry.TryGetLoadingSnapshot(out snapshot);
-        }
+            out PlayDataLoadingSnapshot snapshot) => telemetry.TryGetLoadingSnapshot(out snapshot);
 
         public void Dispose()
         {
@@ -230,6 +213,7 @@ namespace FixWorld.Runtime
 
             mainThread.Dispose();
             events.Dispose();
+            telemetry.Dispose();
         }
 
         private void ConsumeLifecycleEvent(
@@ -271,7 +255,7 @@ namespace FixWorld.Runtime
                 return false;
             }
 
-            diagnosticsText = RuntimeDiagnosticsSummary.FormatDetails(diagnostics);
+            DiagnosticsText = RuntimeDiagnosticsSummary.FormatDetails(diagnostics);
             Log.Message(RuntimeDiagnosticsSummary.Format(diagnostics));
             BenchmarkExporter.Write(diagnostics);
             return true;

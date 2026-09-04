@@ -24,18 +24,13 @@ history.
 
 ## Active order
 
-1. [x] Remove the generic `DefDatabase<ThingCategoryDef>` Harmony hook that caused
-   100 `ThingDef.ResolveIcon()` failures. The replacement boundary passed with all
-   90 active mods, both with DDS enabled and disabled.
-2. [x] Verify the colony-to-menu transition while DDS background work is active.
-   A cold-cache run loaded a colony and returned to the main menu without a
-   crash. Disabling FixWorld also leaves RimWorld on its original loading path.
-3. [x] Fix DDS background completion after pack and index publication. A normal
-   90-mod cold-cache run published 10,468 entries with 0 failures and emitted
-   the benchmark completion report after 343.7 seconds of background work.
-4. Capture a named darker texture and validate DDS sampling, alpha, and mipmaps.
-5. Reduce and throttle DDS background work from measured resource pressure.
-6. Re-run the second mod pack now that Royalty and Ideology are installed;
+1. Validate the shared profiler under Unity Mono and expose its published runtime
+   snapshot through the existing diagnostics UI.
+2. Measure the frozen complex save twice, then instrument the dominant tick path.
+   Start with RimWorld's existing pathfinding jobs if the baseline confirms them.
+3. Capture a named darker texture and validate DDS sampling, alpha, and mipmaps.
+4. Reduce and throttle DDS background work from measured resource pressure.
+5. Re-run the second mod pack now that Royalty and Ideology are installed;
    verify the fixture's complete DLC set before treating the result as valid.
 
 ## Release engineering
@@ -49,28 +44,7 @@ history.
 
 ## DDS texture cache
 
-- [x] A/B the 100 `ThingDef.ResolveIcon()` null-reference failures reported by
-      `ExecuteToExecuteWhenFinished()`. DDS was not responsible. A Harmony patch
-      on the static generic
-      `DefDatabase<ThingCategoryDef>.ResolveAllReferences()` method corrupted Def
-      resolution under Mono; a non-generic `ResetStaticDataPre()` boundary fixes it.
-- [x] Isolate frames yielded between per-mod content reloads. The unrestricted
-      pump produced 401 missing textures and 138 Vehicle Framework graphic
-      failures because RimWorld's normal long-event UI observed partially
-      reloaded content. The isolated pump suppresses that UI while a queued
-      `ModContentPack.ReloadContent()` action remains and draws only FixWorld's
-      prewarmed overlay. A 25-mod Combat Extended and Vehicle Framework run
-      completed with 0 relevant errors. The 257-mod no-Anomaly run reached the
-      menu with a stable mod list and exactly the same known mod errors as the
-      atomic baseline, with no new missing textures or Vehicle failures.
-- [x] Verify the reported colony-to-menu transition while DDS background work is
-      active. A cold-cache run loaded a colony and returned to the main menu
-      without a crash. The previously captured failure remains attributable to
-      MapModeFramework background cache work rather than the DDS worker.
 - [ ] Throttle or pause background conversion from CPU, I/O, RAM, and TPS budgets.
-- [x] Verify DDS background completion after pack and index publication. The
-      90-mod cold-cache run created 10,468 entries with 0 failures and emitted
-      its typed completion report.
 - [ ] Expose background progress and remaining assets to UI, logs, and benchmarks.
 - [ ] Capture a named darker texture in-game, then validate Unity sampling, alpha,
       color space, and generated mip levels.
@@ -84,14 +58,8 @@ history.
 - [ ] Compare the packed store with an OBST container plus sidecar index only if
       current pack lookup or maintenance is measured as a problem.
 
-## Stage diagnostics and UI
+## Runtime lifecycle and UI
 
-- [ ] Verify all 17 passive boundaries across normal startup and RimWorld's
-      recovery load. No stage hook may skip or reorder the original operation.
-- [ ] Verify the isolated deferred frame pump across recovery and nested
-      `ExecuteWhenFinished()` registration. RimWorld must retain the list, action
-      order, and exception handling. While a mod-content reload remains pending,
-      the normal RimWorld long-event UI must stay suppressed.
 - [ ] Verify `MainMenuReady` across menu, game, menu, and second-game transitions.
 - [ ] Verify coordinated restart from the Mods tab and from a clean first
       Doorstop installation. Each path must close the old process before one
@@ -103,32 +71,21 @@ history.
 - [ ] Verify the diagnostics window in the main menu and in-game. Closed UI and
       default logging must have no measurable hotpath.
 
-## Targeted RimWorld loading optimizations
-
-- [x] End the direct-loader replacement experiment. The 89-mod fixture showed no
-      material warm-start gain. The 260-mod fixture recovered from 259 expected
-      mods to 5 and produced 4,893 relevant errors. Keep the prototype only on
-      `experiments/direct-loader`.
-- [x] Profile `GlobalTextureAtlasManager.BakeStaticAtlases()` by internal phase.
-      Two warm-DDS runs took 653 ms and 674 ms, dominated by GPU color blitting.
-      Do not replace it without new evidence on a representative slow system.
-- [x] Measure repeated `ModContentPack.GetAllFilesForMod()` texture calls. The
-      90-mod fixture made 180 equivalent calls; 90 repeated scans cost 68.2 ms.
-- [x] Remove the duplicate FixWorld scan. RimWorld still performs the canonical
-      discovery at its original deferred boundary, and DDS consumes that exact
-      dictionary in a postfix. A warm 90-mod run retained 10,468 DDS hits with
-      0 relevant errors and reduced `IndexTextureSources` to 0 ms.
-- [ ] Profile the next largest individual RimWorld method after file discovery.
-      Patch it only when the measured saving exceeds the compatibility surface.
-
 ## Benchmark and pilot operation
 
 - [ ] Make preloader state explicit per benchmark instead of inheriting installed
       state.
 - [ ] Add a fixture capability check for required DLCs before launching RimWorld.
 
-## In-game performance, later
+## In-game performance
 
+- [x] Build a shared profiler with cached slots, raw timestamps, allocation-free
+      scopes, inline and sharded aggregation, immutable published snapshots, and
+      a Release benchmark harness.
+- [ ] Validate profiler cost and snapshot publication inside Unity Mono. Desktop
+      CLR measurements are not a substitute for the actual game runtime.
+- [ ] Surface profiler mode, publication age, and measured hotpaths in the
+      diagnostics UI without formatting on the recording path.
 - [ ] Measure the frozen complex save twice and identify the dominant tick path.
 - [ ] Separate `TickManager`, `MapPreTick`, `MapPostTick`, Unity Jobs, FixWorld
       workers, and main-thread time.
