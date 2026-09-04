@@ -95,11 +95,11 @@ Deduplicating their union would remove 80.8% of the measured inner-loop visits
 before accounting for the set construction itself. This is a direct reason to
 run the Phase 1 patch rather than an estimate derived only from wall-clock time.
 
-Invalidations were strongly local. A 16 by 16 chunk model touched 3.65 chunks
-per update on average. It is the primary shadow-model baseline, with 8 by 8 and
-32 by 32 retained as benchmark controls. The 32 by 32 model reduced the chunk
-count by only 25% relative to 16 by 16 while making each full local rebuild four
-times larger.
+Invalidations were strongly local. The three measured sizes form a fixed spatial
+hierarchy rather than competing as one exclusive chunk size. An 8 by 8 leaf
+stores one 64-bit cell mask, four leaves form a 16 by 16 region, and four regions
+form a 32 by 32 super-chunk. Parent levels store aggregated components, portals,
+and generations rather than rebuilding a second copy of all child cells.
 
 Most requests were short, so hierarchical routing must retain a cheap local
 path for same-chunk and nearby destinations. The 96 requests beyond 64 cells
@@ -107,14 +107,94 @@ still provide a real sample for portal-graph and corridor experiments.
 
 The bounded target-history tracker reported 106 repeats within 600 ticks, but
 also 914 direct-map collisions. The repeat count is therefore only a lower
-bound and cannot yet justify or reject path reuse. The tracker must be widened
-or made set-associative before reuse rate is treated as a decision metric.
+bound and cannot yet justify or reject path reuse. The next instrumented build
+uses four-way set associativity and treats only replacement of four still-live
+entries as a collision.
 
 The request observer consumed 2.6 ms total and the spatial observer 41.1 ms
 total. Combined, that is about 0.10% of the recorded 43,380.6 ms tick time. The
 spatial observer added about 1.95% relative to the measured connectivity time,
 so it is suitable for bounded experiments but should not remain permanently
 enabled at this detail without sampling or a cheaper counter path.
+
+### Connectivity-union candidate, controlled runs
+
+Both runs with the generation-stamped dense visit map started from the same
+frozen save and bound the optional patch successfully. Run 2 used a fresh
+RimWorld process and subtracted the paused one-tick loading snapshot. The
+explicit topology fixtures are still required before the patch is accepted.
+
+| Measurement | Baseline run 2 | Patched run 1 | Patched run 2 |
+| --- | ---: | ---: | ---: |
+| Observed ticks | 2,814 | 4,423 | 2,204 |
+| Total tick time | 8.486 ms/tick | 5.829 ms/tick | 6.458 ms/tick |
+| `MapPreTick` | 1.992 ms/tick | 0.346 ms/tick | 0.317 ms/tick |
+| `PathFinderTick` | 1.741 ms/tick | 0.098 ms/tick | 0.087 ms/tick |
+| `PathFinderMapData.GatherData` | 1.664 ms/tick | 0.048 ms/tick | 0.067 ms/tick |
+| `ConnectivitySource` | 1.624 ms/tick | 0.015 ms/tick | 0.027 ms/tick |
+| `ConnectivitySource` total | 4,570.6 ms | 67.4 ms | 58.6 ms |
+
+Run 1 contained 1,000 `ConnectivitySource` calls. Run 2 contained 517 calls,
+663,741 raw expansion visits, and 108,410 unique expanded cells. Its 555,331
+duplicate visits were 83.7% of the raw inner-loop candidates. The normalized
+run-2 reductions against baseline were 23.9% for total tick time, 84.1% for
+`MapPreTick`, 95.0% for `PathFinderTick`, 96.0% for `GatherData`, and 98.4% for
+`ConnectivitySource`.
+
+The two candidate runs cost 0.549 and 0.541 microseconds per unique expanded
+cell respectively, a difference of about 1.5%. This stable unit cost matters
+more than the different per-tick totals because run 2 performed substantially
+more connectivity work per update. The window move may have affected timings;
+its contribution was not isolated. `ConnectivitySource` retained its separate 1.3 ms
+maximum and no relevant runtime exception was logged.
+
+The same process then ran at higher game speeds. These are delta windows from
+successive paused snapshots, so totals and call counts are isolated while the
+cumulative maximum values are not:
+
+| Measurement | 2x delta | 3x delta |
+| --- | ---: | ---: |
+| Observed ticks | 8,067 | 9,729 |
+| Total tick time | 5.208 ms/tick | 3.039 ms/tick |
+| `PathFinderTick` | 0.0248 ms/tick | 0.0090 ms/tick |
+| `GatherData` | 0.0134 ms/tick | 0.0035 ms/tick |
+| Connectivity calls | 1,205 | 328 |
+| Connectivity total | 14.4 ms | 5.2 ms |
+| Connectivity average | 0.0120 ms/call | 0.0159 ms/call |
+| Raw expansion visits | 40,722 | 17,496 |
+| Unique expanded cells | 23,846 | 8,564 |
+| Duplicate visits | 16,876 (41.4%) | 8,932 (51.1%) |
+| Path requests observed | 1,315 | 333 |
+| Target-history collisions | 0 | 0 |
+
+The 3x window occurred later in the colony and contained far less path demand,
+so the two speed windows must not be treated as a direct throughput comparison.
+They do show that the candidate remained stable under faster ticking. No matching
+FixWorld, Harmony, index, null-reference, or root-level exception was present in
+the run log. A cumulative 1,909.8 ms tick spike appeared during the speed tests,
+while the cumulative connectivity maximum stayed at 1.1 ms; the spike therefore
+was not inside the measured connectivity source.
+
+### Wall and ordinary-play smoke checks
+
+After run 2 the user walled off parts of a food store and continued ordinary
+play. The first interval contained 1,529 connectivity updates taking 47.7 ms
+and 87,462 unique expanded cells. The subsequent interval contained 427 updates
+taking 9.9 ms and 16,027 unique expanded cells. No matching runtime exception
+was logged. These intervals include unrelated simulation work and are not
+isolated construction benchmarks. Explicit blocked/reopened route verification,
+door cases, and the repeat-load lifecycle check remain open.
+
+One request in the subsequent interval reported 30,000 simulation ticks between
+`TickStart` and scheduling. The cause is unresolved. A wall-clock freeze alone
+does not establish that many simulated ticks elapsed. Queue-delay data from that
+point needs investigation; independently measured connectivity durations remain
+available.
+
+The candidate also removes a `HashSet.Clear()` inside every dirty-cell iteration,
+on a set constructed with capacity 160,000. The measured gain combines removing
+that clearing cost, changing membership representation, and deduplicating the
+union. The 80.8% duplicate count is not a measured attribution of runtime savings.
 
 ## Current integration boundaries
 
@@ -174,8 +254,19 @@ enough to keep resident if their update and composition costs are proven.
 
 ## Map tiling and local search
 
-Split the map into fixed-size chunks. Candidate sizes such as 8 by 8, 16 by 16,
-and 32 by 32 must be benchmarked rather than selected by intuition.
+Split the map into a fixed three-level hierarchy:
+
+```text
+32 by 32 super-chunk
+  -> 4 x 16 by 16 regions
+       -> 4 x 8 by 8 bitboard leaves
+            -> 64 cells in one ulong
+```
+
+The 8 by 8 leaf is the cell-level storage and rebuild unit. A 16 by 16 region
+aggregates four leaves. A 32 by 32 super-chunk aggregates four regions and 16
+leaves. Benchmarks still decide whether every level earns its retained memory
+and update cost, but they no longer require one size to own every operation.
 
 Each chunk owns:
 
@@ -188,6 +279,18 @@ Each chunk owns:
 A changed tile marks its own chunk. A change at a boundary also marks the
 affected neighboring edge. Most updates should then inspect one chunk and a
 small, bounded neighbor set instead of the whole map.
+
+Map coordinates identify their leaf and parents directly. A change inside a
+leaf touches no neighboring leaf. A north-edge change considers only the north
+neighbor, while a corner change considers at most the three adjacent leaves.
+Changed component or portal summaries propagate upward. Unchanged summaries
+stop propagation immediately. This is the concrete boids-style neighborhood
+rule used by invalidation, not merely an analogy to spatial partitioning.
+
+Within an 8 by 8 leaf, cardinal frontier expansion uses shifts by one and eight
+plus edge masks. Cross-leaf expansion transfers only boundary bits to the
+corresponding neighbor. Diagonal movement uses the same representation with its
+corner-cutting semantics kept explicit and verified against RimWorld.
 
 This is the boids-style reduction: first identify the spatial bucket, then
 consider only nearby candidates that can change the result.
@@ -282,6 +385,33 @@ validation before use.
 This favors dependency-based invalidation over one global map generation, which
 would discard unrelated work whenever any door or wall changes.
 
+## Applicable chess-engine concepts
+
+Several chess-engine techniques map cleanly to the spatial hierarchy when their
+invariants are translated rather than their names copied:
+
+- A transposition table becomes a bounded cache of reachability answers, portal
+  routes, corridors, and path suffixes keyed by traversal inputs and referenced
+  generations.
+- A principal variation becomes the last successful portal route or chunk
+  corridor. Compatible requests validate and try it before a new graph search.
+- Move ordering prioritizes portals using geometric cost, cached routes, and
+  measured successful exits. With a correct A-star cost model it changes search
+  effort and tie-breaking, not reachability.
+- Iterative deepening becomes iterative corridor widening: search the local leaf
+  or region first, then admit neighboring regions and finally the super-chunk
+  graph only when the bounded search cannot answer the request.
+- Quiescence becomes a publication boundary, not a minimax search. Dirty leaves,
+  portals, and parents settle before a new immutable spatial snapshot is made
+  visible to queries.
+- Zobrist-style incremental hashes may later recognize a topology that returns
+  to an earlier state. Generation counters remain the primary validity rule;
+  hashes cannot be the sole correctness guard because collisions exist.
+
+Alpha-beta pruning has no direct role in shortest-path search because there is
+no adversarial minimax tree. It is excluded unless a separate AI decision model
+introduces that structure.
+
 ## Bit-parallel connectivity experiment
 
 Before implementing graph repair machinery, benchmark a full connected-component
@@ -337,9 +467,16 @@ site.
 
 `ConnectivitySource.UpdateIncrementally` currently clears its scratch set for
 each dirty cell before enumerating the surrounding 3 by 3 rectangle. That set
-cannot suppress overlap between neighboring dirty cells. Test a direct patch
-that deduplicates the union of expanded dirty cells using thread-local scratch
-storage. Compare two frozen-save runs with the recorded baseline.
+cannot suppress overlap between neighboring dirty cells. The experimental
+transpiler preserves RimWorld's loop and connectivity computation but replaces
+the scratch `HashSet<IntVec3>` with a dense generation-stamped cell map owned per
+`ConnectivitySource`. Each update advances the generation, and each expanded
+cell becomes one array lookup and comparison. There is no per-update allocation,
+hash calculation, or full-array clear during normal operation.
+
+The transpiler requires the exact expected `Clear` and `Add` IL pattern. If that
+pattern changes, the optional hook rejects the patch and leaves the original
+method active. Compare two frozen-save runs with the recorded baseline.
 
 This patch is useful on its own and establishes an A/B harness for later spatial
 work. It is not the endpoint of this track.
@@ -353,18 +490,20 @@ needs a deeper think, movement, needs, or health breakdown.
 The passive counters are now attached to the canonical `CreateRequest` overload,
 which covers queued and immediate searches without probing every pawn tick. They
 record fixed distributions for pawn category, traversal mode, end mode, target
-kind, distance, and constraints. A bounded tracker records repeated targets
-within 600 ticks. Connectivity updates additionally report raw and unique 3 by 3
-expansion work plus affected chunk counts for the three candidate chunk sizes.
+kind, distance, spatial locality, and constraints. A bounded tracker records
+repeated targets within 600 ticks. Connectivity updates additionally report raw
+and unique 3 by 3 expansion work plus affected chunk counts for the three
+hierarchy levels.
 The real-save run above validates this passive attribution path. Its repeat
 tracker remains deliberately excluded from reuse decisions until its collision
 rate is reduced.
 
 ### Phase 3: Build the shadow spatial model
 
-Maintain layered passability masks and generation counters from observed map
-events. Build complete and chunk-local components without answering gameplay
-queries. Measure update cost, memory, and dirty-set size.
+Maintain layered 8 by 8 passability masks and generation counters from observed
+map events. Aggregate them through 16 by 16 regions and 32 by 32 super-chunks.
+Build components without answering gameplay queries. Measure update cost,
+memory, dirty-set size, neighbor visits, and upward propagation depth.
 
 ### Phase 4: Add the portal graph
 
@@ -412,7 +551,9 @@ known mismatches across the frozen fixtures and representative mod packs.
   existing pathfinder.
 - Direct patches of measured RimWorld methods are allowed.
 - Topology, dynamic restrictions, and traversal costs have separate validity.
-- Chunk size is selected by benchmark, not hard-coded by assumption.
+- The shadow model starts with 8 by 8 bitboard leaves, 16 by 16 regions, and
+  32 by 32 super-chunks. Benchmarks decide which queries and summaries belong at
+  each level.
 - Detailed high-frequency profiling is sampled and temporary. Coarse profiler
   boundaries remain always on.
 - RimWorld is the shadow-mode correctness oracle until a replacement is proven.

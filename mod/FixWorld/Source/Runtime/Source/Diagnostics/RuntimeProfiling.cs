@@ -52,6 +52,15 @@ namespace FixWorld.Diagnostics
         Over128
     }
 
+    internal enum PathRequestLocality : byte
+    {
+        SameLeaf,
+        SameRegion,
+        SameSuperChunk,
+        CrossSuperChunk,
+        Invalid
+    }
+
     [Flags]
     internal enum PathRequestConstraint : ushort
     {
@@ -74,6 +83,7 @@ namespace FixWorld.Diagnostics
         internal const int EndModeCount = 6;
         internal const int TargetKindCount = 4;
         internal const int DistanceBucketCount = 5;
+        internal const int LocalityCount = 5;
         internal const int ConstraintCount = 9;
 
         internal static string GetName(PathRequestPawnCategory category) =>
@@ -140,6 +150,18 @@ namespace FixWorld.Diagnostics
                 _ => throw new ArgumentOutOfRangeException(nameof(bucket))
             };
 
+        internal static string GetName(PathRequestLocality locality) =>
+            locality switch
+            {
+                PathRequestLocality.SameLeaf => "same 8x8 leaf",
+                PathRequestLocality.SameRegion => "same 16x16 region only",
+                PathRequestLocality.SameSuperChunk =>
+                    "same 32x32 super-chunk only",
+                PathRequestLocality.CrossSuperChunk => "cross super-chunk",
+                PathRequestLocality.Invalid => "invalid",
+                _ => throw new ArgumentOutOfRangeException(nameof(locality))
+            };
+
         internal static string GetName(PathRequestConstraint constraint) =>
             constraint switch
             {
@@ -166,7 +188,8 @@ namespace FixWorld.Diagnostics
             PathRequestPawnCategory pawnCategory,
             PathRequestTraversalMode traversalMode,
             PathRequestEndMode endMode,
-            PathRequestTargetKind targetKind)
+            PathRequestTargetKind targetKind,
+            PathRequestLocality locality)
         {
             TargetKey = targetKey;
             Tick = tick;
@@ -176,6 +199,7 @@ namespace FixWorld.Diagnostics
             TraversalMode = traversalMode;
             EndMode = endMode;
             TargetKind = targetKind;
+            Locality = locality;
         }
 
         internal long TargetKey { get; }
@@ -193,6 +217,8 @@ namespace FixWorld.Diagnostics
         internal PathRequestEndMode EndMode { get; }
 
         internal PathRequestTargetKind TargetKind { get; }
+
+        internal PathRequestLocality Locality { get; }
     }
 
     internal readonly struct PathSpatialObservation
@@ -391,6 +417,7 @@ namespace FixWorld.Diagnostics
             long[] endModes,
             long[] targetKinds,
             long[] distanceBuckets,
+            long[] localities,
             long[] constraints)
         {
             Observations = observations;
@@ -408,6 +435,8 @@ namespace FixWorld.Diagnostics
                 throw new ArgumentNullException(nameof(targetKinds));
             DistanceBuckets = distanceBuckets ??
                 throw new ArgumentNullException(nameof(distanceBuckets));
+            Localities = localities ??
+                throw new ArgumentNullException(nameof(localities));
             Constraints = constraints ??
                 throw new ArgumentNullException(nameof(constraints));
         }
@@ -431,6 +460,8 @@ namespace FixWorld.Diagnostics
         internal long[] TargetKinds { get; }
 
         internal long[] DistanceBuckets { get; }
+
+        internal long[] Localities { get; }
 
         internal long[] Constraints { get; }
     }

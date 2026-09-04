@@ -13,8 +13,11 @@ namespace FixWorld.Diagnostics
 {
     internal sealed class RuntimeTelemetryStore : IDisposable
     {
-        private const int TargetHistoryCapacity = 1024;
-        private const int TargetHistoryMask = TargetHistoryCapacity - 1;
+        private const int TargetHistorySetCount = 1024;
+        private const int TargetHistoryWays = 4;
+        private const int TargetHistoryCapacity =
+            TargetHistorySetCount * TargetHistoryWays;
+        private const int TargetHistorySetMask = TargetHistorySetCount - 1;
         private const int TargetReuseWindowTicks = 600;
 
         private readonly object sync = new();
@@ -26,6 +29,8 @@ namespace FixWorld.Diagnostics
             new long[PathRequestCatalog.DistanceBucketCount];
         private readonly long[] pathEndModes =
             new long[PathRequestCatalog.EndModeCount];
+        private readonly long[] pathLocalities =
+            new long[PathRequestCatalog.LocalityCount];
         private readonly long[] pathPawnCategories =
             new long[PathRequestCatalog.PawnCategoryCount];
         private readonly long[] pathTargetHistoryKeys =
@@ -240,6 +245,8 @@ namespace FixWorld.Diagnostics
                 ref pathEndModes[(int)observation.EndMode]);
             Interlocked.Increment(
                 ref pathTargetKinds[(int)observation.TargetKind]);
+            Interlocked.Increment(
+                ref pathLocalities[(int)observation.Locality]);
 
             int distance = Math.Max(0, observation.Distance);
             Interlocked.Add(ref pathTotalDistance, distance);
@@ -326,6 +333,7 @@ namespace FixWorld.Diagnostics
                         CaptureCounters(pathEndModes),
                         CaptureCounters(pathTargetKinds),
                         CaptureCounters(pathDistanceBuckets),
+                        CaptureCounters(pathLocalities),
                         CaptureCounters(pathConstraintCounts)),
                     new RuntimeSpatialSnapshot(
                         Interlocked.Read(ref pathExpandedCellVisits),
@@ -459,32 +467,63 @@ namespace FixWorld.Diagnostics
 
         private void ObserveTargetReuse(long targetKey, int tick)
         {
-            int index = (int)((ulong)targetKey ^
-                              ((ulong)targetKey >> 32)) &
-                        TargetHistoryMask;
-            long previousKey = Interlocked.Read(
-                ref pathTargetHistoryKeys[index]);
-            if (previousKey == targetKey)
+            int firstIndex = ((int)((ulong)targetKey ^
+                                    ((ulong)targetKey >> 32)) &
+                              TargetHistorySetMask) * TargetHistoryWays;
+            int reusableIndex = -1;
+            int oldestIndex = firstIndex;
+            int oldestElapsed = int.MinValue;
+
+            for (int way = 0; way < TargetHistoryWays; way++)
             {
-                int previousTick = Interlocked.Exchange(
-                    ref pathTargetHistoryTicks[index],
-                    tick);
-                int elapsed = tick - previousTick;
-                if (elapsed >= 0 && elapsed <= TargetReuseWindowTicks)
+                int index = firstIndex + way;
+                long previousKey = Interlocked.Read(
+                    ref pathTargetHistoryKeys[index]);
+                int previousTick = Volatile.Read(
+                    ref pathTargetHistoryTicks[index]);
+                if (previousKey == targetKey)
                 {
-                    Interlocked.Increment(ref pathRepeatedTargets);
+                    previousTick = Interlocked.Exchange(
+                        ref pathTargetHistoryTicks[index],
+                        tick);
+                    int repeatedElapsed = tick - previousTick;
+                    if (repeatedElapsed >= 0 &&
+                        repeatedElapsed <= TargetReuseWindowTicks)
+                    {
+                        Interlocked.Increment(ref pathRepeatedTargets);
+                    }
+
+                    return;
                 }
 
-                return;
+                int elapsed = tick - previousTick;
+                if (reusableIndex < 0 &&
+                    (previousKey == 0L || elapsed < 0 ||
+                     elapsed > TargetReuseWindowTicks))
+                {
+                    reusableIndex = index;
+                }
+
+                if (elapsed > oldestElapsed)
+                {
+                    oldestElapsed = elapsed;
+                    oldestIndex = index;
+                }
             }
 
-            if (previousKey != 0L)
+            int replacementIndex = reusableIndex;
+            if (replacementIndex < 0)
             {
                 Interlocked.Increment(ref pathTargetTrackerCollisions);
+                replacementIndex = oldestIndex;
             }
 
-            Interlocked.Exchange(ref pathTargetHistoryKeys[index], targetKey);
-            Volatile.Write(ref pathTargetHistoryTicks[index], tick);
+            Volatile.Write(
+                ref pathTargetHistoryTicks[replacementIndex],
+                tick);
+            Interlocked.Exchange(
+                ref pathTargetHistoryKeys[replacementIndex],
+                targetKey);
         }
 
         private static PathRequestDistanceBucket GetDistanceBucket(

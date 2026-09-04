@@ -108,10 +108,13 @@ in the same structured line.
 
 Pathfinding demand is observed once when RimWorld creates a `PathRequest`, not
 from every pawn tick. Fixed counters record pawn category, traversal mode, end
-mode, target kind, Manhattan-distance bucket, and active path constraints. A
-bounded 1,024-slot tracker counts the same map target and end mode appearing
-again within 600 game ticks. Tracker collisions are exposed with the result so
-the repetition rate is not presented as exact when the table is saturated.
+mode, target kind, Manhattan-distance bucket, mutually exclusive 8 by 8, 16 by
+16, and 32 by 32 locality, and active path constraints. A
+bounded four-way set-associative tracker with 4,096 slots counts the same map
+target and end mode appearing again within 600 game ticks. Expired entries are
+reused without counting a collision. Tracker collisions mean all four entries
+in the selected set were still live, so the repetition rate remains explicitly
+approximate when the table is saturated.
 
 Connectivity invalidation is sampled from the final dirty-cell list passed to
 `ConnectivitySource`. FixWorld counts the raw 3 by 3 cell visits, the unique

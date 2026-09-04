@@ -251,6 +251,8 @@ namespace FixWorld.Diagnostics
             text.Append(FormatTargetKinds(demand.TargetKinds));
             text.Append(",distance:");
             text.Append(FormatDistanceBuckets(demand.DistanceBuckets));
+            text.Append(",locality:");
+            text.Append(FormatLocalities(demand.Localities));
             text.Append(",repeated600:");
             text.Append(demand.RepeatedTargets.ToString(
                 CultureInfo.InvariantCulture));
@@ -369,6 +371,9 @@ namespace FixWorld.Diagnostics
                 "  End modes: " + FormatEndModes(demand.EndModes));
             text.AppendLine(
                 "  Targets: " + FormatTargetKinds(demand.TargetKinds));
+            text.AppendLine(
+                "  Request locality: " +
+                FormatLocalities(demand.Localities));
             double averageDistance = demand.Observations == 0L
                 ? 0.0
                 : demand.TotalDistance / (double)demand.Observations;
@@ -476,6 +481,12 @@ namespace FixWorld.Diagnostics
                 counts,
                 index => PathRequestCatalog.GetName(
                     (PathRequestDistanceBucket)index));
+
+        private static string FormatLocalities(long[] counts) =>
+            FormatCounts(
+                counts,
+                index => PathRequestCatalog.GetName(
+                    (PathRequestLocality)index));
 
         private static string FormatConstraints(long[] counts) =>
             FormatCounts(

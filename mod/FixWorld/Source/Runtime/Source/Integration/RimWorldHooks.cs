@@ -34,6 +34,12 @@ namespace FixWorld.Integration
                 OwnerPrefix + ".profiling",
                 RuntimeProfilingHooks.PatchTypes,
                 required: false);
+        private static readonly HookGroup PathfindingOptimizationHookGroup =
+            new(
+                "pathfinding optimization",
+                OwnerPrefix + ".pathfinding",
+                PathfindingOptimizationHooks.PatchTypes,
+                required: false);
         internal static bool InstallBootstrap()
         {
             lock (Sync)
@@ -72,6 +78,12 @@ namespace FixWorld.Integration
                     return false;
                 }
 
+                if (PathfindingOptimizationHookGroup.Install())
+                {
+                    Log.Message(
+                        "[FixWorld] Connectivity union deduplication active.");
+                }
+
                 RuntimeProfilingHookGroup.Install();
                 return true;
             }
@@ -90,6 +102,7 @@ namespace FixWorld.Integration
             lock (Sync)
             {
                 RuntimeProfilingHookGroup.Uninstall();
+                PathfindingOptimizationHookGroup.Uninstall();
                 LifecycleHookGroup.Uninstall();
                 LoadingUiHookGroup.Uninstall();
                 TextureHookGroup.Uninstall();

@@ -175,7 +175,8 @@ namespace FixWorld.Integration
                 Classify(pawn),
                 Classify(traversal.mode),
                 Classify(request.EndMode),
-                Classify(target));
+                Classify(target),
+                Classify(request.Start, target));
         }
 
         private static PathRequestPawnCategory Classify(Pawn pawn)
@@ -258,6 +259,42 @@ namespace FixWorld.Integration
             return target.HasThing
                 ? PathRequestTargetKind.Thing
                 : PathRequestTargetKind.Cell;
+        }
+
+        private static PathRequestLocality Classify(
+            IntVec3 start,
+            LocalTargetInfo target)
+        {
+            if (!start.IsValid || !target.IsValid)
+            {
+                return PathRequestLocality.Invalid;
+            }
+
+            IntVec3 destination = target.Cell;
+            if (!destination.IsValid)
+            {
+                return PathRequestLocality.Invalid;
+            }
+
+            if ((start.x >> 3) == (destination.x >> 3) &&
+                (start.z >> 3) == (destination.z >> 3))
+            {
+                return PathRequestLocality.SameLeaf;
+            }
+
+            if ((start.x >> 4) == (destination.x >> 4) &&
+                (start.z >> 4) == (destination.z >> 4))
+            {
+                return PathRequestLocality.SameRegion;
+            }
+
+            if ((start.x >> 5) == (destination.x >> 5) &&
+                (start.z >> 5) == (destination.z >> 5))
+            {
+                return PathRequestLocality.SameSuperChunk;
+            }
+
+            return PathRequestLocality.CrossSuperChunk;
         }
 
         private static long GetTargetKey(
