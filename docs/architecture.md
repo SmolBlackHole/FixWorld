@@ -26,7 +26,7 @@ RimWorldWin64.exe
      -> install the DDS texture-load detour
   -> RimWorld PlayDataLoader.DoPlayLoad()
      -> execute the original loader and deferred actions
-     -> FixWorld yields RimWorld's deferred list across frames
+     -> FixWorld yields deferred work through an isolated loading overlay
   -> FixWorld.Mod.dll
      -> attach settings and ModContentPack to the running runtime
 ```
@@ -56,9 +56,12 @@ FixWorld does not replace `PlayDataLoader.DoPlayLoad()` or
 `LongEventHandler.ExecuteWhenFinished()`. It records transitions at selected
 RimWorld method boundaries and presents them as 17 technical stages grouped into
 Boot, Content, Definitions, and Finalize. RimWorld retains the deferred action
-list and its ordering; FixWorld exposes that same list as an enumerator so Unity
-can render between batches. FixWorld does not own mod order, XML processing, Def
-construction, or deferred action contents.
+list and its ordering. FixWorld exposes the actions through RimWorld's existing
+time-sliced long-event enumerator so the loading UI can redraw. While per-mod
+content reloads remain pending, FixWorld suppresses RimWorld's normal long-event
+UI and draws only its already initialized overlay. This prevents the normal UI
+from resolving assets against a partially reloaded content set. FixWorld does
+not own mod order, XML processing, Def construction, or deferred action contents.
 
 The authoritative stage list and measurement boundary are documented in the
 [play-data pipeline](play-data-pipeline.md).

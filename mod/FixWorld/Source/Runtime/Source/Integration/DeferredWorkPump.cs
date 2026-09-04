@@ -11,12 +11,17 @@ namespace FixWorld.Integration
 {
     internal static class DeferredWorkPump
     {
+        private static volatile bool isolateLoadingFrame;
+
         private static readonly FieldInfo EventEnumeratorField =
             RequireEventEnumeratorField();
         private static readonly FieldInfo ExecutingField = RequireField(
             "executingToExecuteWhenFinished");
         private static readonly FieldInfo WorkField = RequireField(
             "toExecuteWhenFinished");
+
+        internal static bool RequiresIsolatedLoadingFrame =>
+            isolateLoadingFrame;
 
         internal static bool TryBegin(object queuedEvent)
         {
@@ -65,7 +70,9 @@ namespace FixWorld.Integration
         private sealed class DeferredWorkEnumerator : IEnumerator
         {
             private readonly List<Action> work;
+            private int contentBarrier = -1;
             private int index;
+            private int knownWorkCount;
             private bool finished;
             private bool profiling;
             private bool started;
@@ -73,6 +80,8 @@ namespace FixWorld.Integration
             internal DeferredWorkEnumerator(List<Action> work)
             {
                 this.work = work;
+                RefreshContentBarrier();
+                UpdateLoadingFrameIsolation();
             }
 
             public object Current => null;
@@ -84,23 +93,76 @@ namespace FixWorld.Integration
                     return false;
                 }
 
-                if (!started)
-                {
-                    started = true;
-                    profiling = DeepProfiler.enabled && Prefs.LogVerbose;
-                    if (profiling)
-                    {
-                        DeepProfiler.Start(
-                            "ExecuteToExecuteWhenFinished()");
-                    }
-                }
-
+                BeginProfiling();
                 if (index >= work.Count)
                 {
                     Finish();
                     return false;
                 }
 
+                RefreshContentBarrier();
+                ExecuteNext();
+                RefreshContentBarrier();
+                UpdateLoadingFrameIsolation();
+
+                return true;
+            }
+
+            public void Reset()
+            {
+                throw new NotSupportedException();
+            }
+
+            private void BeginProfiling()
+            {
+                if (started)
+                {
+                    return;
+                }
+
+                started = true;
+                profiling = DeepProfiler.enabled && Prefs.LogVerbose;
+                if (profiling)
+                {
+                    DeepProfiler.Start(
+                        "ExecuteToExecuteWhenFinished()");
+                }
+            }
+
+            private void RefreshContentBarrier()
+            {
+                int count = work.Count;
+                for (int candidate = knownWorkCount;
+                     candidate < count;
+                     candidate++)
+                {
+                    if (IsContentReload(work[candidate]))
+                    {
+                        contentBarrier = candidate;
+                    }
+                }
+
+                knownWorkCount = count;
+            }
+
+            private void UpdateLoadingFrameIsolation()
+            {
+                isolateLoadingFrame = index <= contentBarrier;
+            }
+
+            private static bool IsContentReload(Action action)
+            {
+                MethodInfo method = action?.Method;
+                Type declaringType = method?.DeclaringType;
+                return declaringType != null &&
+                       declaringType.DeclaringType == typeof(ModContentPack) &&
+                       method.Name.IndexOf(
+                           "<ReloadContent>",
+                           StringComparison.Ordinal) >= 0;
+            }
+
+            private void ExecuteNext()
+            {
                 Action action = work[index++];
                 if (profiling)
                 {
@@ -125,13 +187,6 @@ namespace FixWorld.Integration
                         DeepProfiler.End();
                     }
                 }
-
-                return true;
-            }
-
-            public void Reset()
-            {
-                throw new NotSupportedException();
             }
 
             private void Finish()
@@ -142,6 +197,7 @@ namespace FixWorld.Integration
                 }
 
                 finished = true;
+                isolateLoadingFrame = false;
                 work.Clear();
                 ExecutingField.SetValue(null, false);
                 if (profiling)

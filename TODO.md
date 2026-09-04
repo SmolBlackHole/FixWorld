@@ -3,10 +3,10 @@
 Parent: [Project README](README.md)
 
 FixWorld is under a **feature freeze**. RimWorld owns its original play-data
-loader and deferred work list. FixWorld keeps passive stage diagnostics, pumps
-that list across frames for a responsive loading UI, and owns the DDS texture
-optimization. Do not rebuild loader internals without a measured bottleneck and
-a smaller replacement with a clear compatibility gain.
+loader and deferred work list. FixWorld keeps passive stage diagnostics, exposes
+that list through an isolated frame pump for the loading UI, and owns the DDS
+texture optimization. Do not rebuild loader internals without a measured
+bottleneck and a smaller replacement with a clear compatibility gain.
 
 Implemented behavior belongs in the [documentation](docs/README.md), raw
 measurements belong in `data/benchmarks`, and completed migrations belong in Git
@@ -48,10 +48,19 @@ history.
 ## DDS texture cache
 
 - [x] A/B the 100 `ThingDef.ResolveIcon()` null-reference failures reported by
-      `ExecuteToExecuteWhenFinished()`. DDS and the deferred frame pump were not
-      responsible. A Harmony patch on the static generic
+      `ExecuteToExecuteWhenFinished()`. DDS was not responsible. A Harmony patch
+      on the static generic
       `DefDatabase<ThingCategoryDef>.ResolveAllReferences()` method corrupted Def
       resolution under Mono; a non-generic `ResetStaticDataPre()` boundary fixes it.
+- [x] Isolate frames yielded between per-mod content reloads. The unrestricted
+      pump produced 401 missing textures and 138 Vehicle Framework graphic
+      failures because RimWorld's normal long-event UI observed partially
+      reloaded content. The isolated pump suppresses that UI while a queued
+      `ModContentPack.ReloadContent()` action remains and draws only FixWorld's
+      prewarmed overlay. A 25-mod Combat Extended and Vehicle Framework run
+      completed with 0 relevant errors. The 257-mod no-Anomaly run reached the
+      menu with a stable mod list and exactly the same known mod errors as the
+      atomic baseline, with no new missing textures or Vehicle failures.
 - [ ] Reproduce the reported colony-to-menu crash with DDS enabled and disabled.
       The captured stack points to MapModeFramework background cache work after
       teardown, so do not attribute it to DDS without an A/B result.
@@ -76,9 +85,10 @@ history.
 
 - [ ] Verify all 17 passive boundaries across normal startup and RimWorld's
       recovery load. No stage hook may skip or reorder the original operation.
-- [ ] Verify the deferred frame pump across normal startup, recovery, and nested
-      `ExecuteWhenFinished()` registration. RimWorld's list and action order must
-      remain authoritative.
+- [ ] Verify the isolated deferred frame pump across recovery and nested
+      `ExecuteWhenFinished()` registration. RimWorld must retain the list, action
+      order, and exception handling. While a mod-content reload remains pending,
+      the normal RimWorld long-event UI must stay suppressed.
 - [ ] Verify `MainMenuReady` across menu, game, menu, and second-game transitions.
 - [ ] Add measured worker utilization after the scheduler exposes busy and queued
       intervals.

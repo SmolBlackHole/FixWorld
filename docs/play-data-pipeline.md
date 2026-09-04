@@ -42,10 +42,14 @@ Stages 03 and 04 are the only FixWorld-owned work in this sequence. They open
 the DDS pack cache and index effective texture sources after RimWorld has
 initialized the active mod list. All other stages measure elapsed time between
 stable RimWorld calls. Stage 16 starts when RimWorld's
-`ExecuteWhenFinished()` list becomes ready. FixWorld iterates that same list in
-RimWorld's original order through its existing long-event enumerator path. This
-allows a frame at least every 100 ms between actions without copying delegates or
-reconstructing closures. A single long-running action can still block one frame.
+`ExecuteWhenFinished()` list starts draining. FixWorld retains the original list
+and action order but exposes it through RimWorld's existing time-sliced
+long-event enumerator. While a `ModContentPack.ReloadContent()` action remains
+pending, RimWorld's normal long-event UI is suppressed and only FixWorld's
+already initialized overlay is drawn. This lets the overlay redraw without
+resolving normal UI assets against a partially reloaded content set. Actions run
+in their original order with a frame opportunity at least every 100 ms. A single
+long-running action can still block one frame.
 
 The boundaries intentionally describe useful phases rather than individual
 method timings. For example, `Load and patch XML` includes RimWorld's discovery,
@@ -59,11 +63,11 @@ wall time, call count, and failure count for every stage. The loading UI reads
 the current state directly while the diagnostics window retains all 17 completed
 rows.
 
-The hooks do not call `SetCurrentEventText()`, alter mod order, copy delegates, or
-reconstruct closures. Per-action exceptions retain RimWorld's log-and-continue
-behavior. Other exceptions remain under RimWorld's normal recovery logic.
-FixWorld aborts only its current telemetry session and starts a fresh one if
-RimWorld retries the load.
+The hooks do not call `SetCurrentEventText()`, alter mod order, copy delegates,
+or reconstruct closures. Per-action exceptions retain RimWorld's
+log-and-continue behavior. Other exceptions remain under RimWorld's normal
+recovery logic. FixWorld aborts only its current telemetry session and starts a
+fresh one if RimWorld retries the load.
 
 Open measurement and DDS work is tracked in the [TODO](../TODO.md). Raw selected
 benchmarks remain in `data/benchmarks`.
