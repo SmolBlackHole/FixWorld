@@ -853,6 +853,7 @@ namespace FixWorld
                 pack.EntryName = assemblyContentPacks[Assembly.GetCallingAssembly()]?.Name ?? "FixWorld";
                 UpdateFeatures.RegisterSettings(pack);
                 LogPublisher.RegisterSettings(pack);
+                Dds?.RegisterSettings(pack);
             }
             catch (Exception e)
             {

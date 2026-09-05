@@ -2,12 +2,12 @@
 
 Parent: [Documentation index](README.md)
 
-## Current fork
+## Runtime
 
 `FixWorldController` owns `LibraryDiagnostics`, its profiler and `TelemetryStore`.
 Modules register typed, versioned contracts and publish immutable snapshots.
-The same presenter supplies local JSONL capture, log text and the diagnostics
-window, without a second DTO hierarchy or a legacy-report parser.
+The presenter supplies local JSONL capture and log text. Structured UI pages read
+the same snapshots directly, without a second DTO hierarchy or a log parser.
 See [Telemetry](telemetry.md) and the [Python harness](harness.md).
 
 The restored loading screen keeps the centered dark panel, cyan rails and native
@@ -26,14 +26,27 @@ windows. Omitting that background caused the reported brief blank image.
 
 The `FixWorld` main-bar entry toggles a resizable native diagnostics window.
 `Options -> Mod options -> FixWorld` opens the same diagnostics window, including
-from the main menu. Its `Settings` button opens the underlying library settings
-directly, without routing back to diagnostics. Other mods keep their own settings.
-It shows an overview and a section per telemetry registration. Values refresh
-every 500 ms while drawn, preserving scroll position. Section changes reset it.
-`Settings` opens the existing fork settings. `Write to log` writes locally only.
-DDS maintenance buttons return with DDS, not ahead of their implementation.
+from the main menu. Navigation provides Overview, DDS cache, Settings and Technical
+details. General settings are embedded; DDS limits and reserve are on the DDS page.
+Both use the same SettingsPanel as the standalone settings dialog, including
+validation, hover info/context icons and reset. Valid text edits commit and save
+when leaving the page or closing the window. Other mods keep their own settings.
+
+Overview and DDS show labeled values with units. Technical details exposes all
+registered telemetry, with an optional contract selector. Only this page formats
+raw text periodically. Each page retains its scroll position across refreshes and
+navigation. Settings controls are retained rather than recreated on refresh.
+`Write to log` exports the complete current snapshot locally, regardless of page.
+
+UiTheme shares dark/cyan colors with the loading screen. Early rendering does not
+load settings icons or access the later window stack. There is no theme editor.
 
 ### Current verification
+
+15 settings-panel contracts exercise the production renderer with stubbed Unity
+drawing: typed validation, pending-edit commit, filtered reset, value refresh,
+scroll retention and event unsubscription. Native layout and interaction with
+the new embedded panels are not yet verified.
 
 32 loading-model/tip contracts and 14 production deferred-pump checks pass.
 Native run `temp/ui-background-20260905-214555/Player.log` reached the main menu;

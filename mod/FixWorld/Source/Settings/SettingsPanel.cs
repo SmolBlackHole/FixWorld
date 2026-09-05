@@ -1,0 +1,538 @@
+// SPDX-License-Identifier: MPL-2.0
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using RimWorld;
+using UnityEngine;
+using Verse;
+
+namespace FixWorld.Settings
+{
+    /// <summary>
+    /// Reusable settings controls backed by the pack's actual typed handles.
+    /// </summary>
+    public sealed class SettingsPanel : IDisposable
+    {
+        private delegate bool SettingsHandleDrawer(SettingHandle handle, Rect inRect, HandleControlInfo info);
+
+        private const float ModEntryLabelHeight = 40f;
+        private const float ModEntryLabelPadding = 4f;
+        private const float HandleEntryPadding = 3f;
+        private const float HandleEntryHeight = 34f;
+        private const float ScrollBarWidthMargin = 18f;
+
+        private readonly ModSettingsPack currentPack;
+        private readonly TextMeasurementCache textMeasurements;
+        private readonly string currentPackName;
+        private readonly Color ModEntryLineColor = new Color(0.3f, 0.3f, 0.3f);
+        private readonly Color BadValueOutlineColor = new Color(.9f, .1f, .1f, 1f);
+        private readonly List<SettingHandle> handles = new List<SettingHandle>();
+        private readonly Dictionary<SettingHandle, HandleControlInfo> handleControlInfo =
+            new Dictionary<SettingHandle, HandleControlInfo>();
+        private readonly SettingsHandleDrawer defaultHandleDrawer;
+        private readonly Dictionary<Type, SettingsHandleDrawer> handleDrawers;
+
+        private Vector2 scrollPosition;
+        private float totalContentHeight;
+        private readonly Predicate<SettingHandle> include;
+        private bool disposed;
+        public float ScrollY { get => scrollPosition.y; set => scrollPosition.y = value; }
+
+
+        public SettingsPanel(ModSettingsPack pack, Predicate<SettingHandle> include = null)
+        {
+            this.include = include;
+            currentPack = pack ?? throw new ArgumentNullException(nameof(pack));
+            textMeasurements = FixWorldController.Instance.TextMeasurements;
+            currentPackName = pack.EntryName.NullOrEmpty()
+                ? "FixWorld_setting_unnamed_mod".Translate().ToString()
+                : pack.EntryName;
+            defaultHandleDrawer = DrawHandleInputText;
+            // these pairs specify which type of input field will be drawn for handles of this type. defaults to the string input
+            handleDrawers = new Dictionary<Type, SettingsHandleDrawer> {
+                { typeof(int), DrawHandleInputSpinner },
+                { typeof(bool), DrawHandleInputCheckbox },
+                { typeof(Enum), DrawHandleInputEnum }
+            };
+            RefreshSettingsHandles();
+            PopulateControlInfo();
+        }
+
+        /// <summary>Draw a scrollable panel without a separate settings window.</summary>
+        public void Draw(Rect inRect, bool showHeader = true)
+        {
+            GUI.BeginGroup(inRect);
+            var visible = new Rect(0, 0, inRect.width, inRect.height);
+            var content = new Rect(0, 0, visible.width - ScrollBarWidthMargin, totalContentHeight);
+            Widgets.BeginScrollView(visible, ref scrollPosition, content);
+            try
+            { totalContentHeight = DrawRows(content.width, visible.height, showHeader); }
+            finally { Widgets.EndScrollView(); GUI.EndGroup(); }
+        }
+
+        /// <summary>Draw in a host-owned scroll view; returns the occupied height.</summary>
+        public float DrawContents(Rect inRect, bool showHeader = false)
+        {
+            GUI.BeginGroup(inRect);
+            try
+            { return DrawRows(inRect.width, float.MaxValue, showHeader); }
+            finally { GUI.EndGroup(); }
+        }
+
+        private float DrawRows(float width, float visibleHeight, bool showHeader)
+        {
+            float y = 0;
+            if (showHeader)
+                DrawModEntryHeader(width, ref y);
+            var bounds = new Rect(0, 0, width, visibleHeight);
+            foreach (var handle in handles)
+            {
+                try
+                { if (handle.VisibilityPredicate != null && !handle.VisibilityPredicate()) continue; }
+                catch (Exception e)
+                { FixWorldController.Logger.ReportException(e, currentPackName, true, "SettingsHandle.VisibilityPredicate"); }
+                DrawHandleEntry(handle, bounds, ref y, visibleHeight);
+            }
+            return y;
+        }
+
+        public void ResetToDefaults()
+        {
+            CommitPending();
+            ShowResetPrompt("FixWorld_settings_resetMod_prompt".Translate(currentPackName),
+                currentPack.Handles.Where(h => include == null || include(h)));
+        }
+
+        // Switching pages/closing via X must commit exactly like leaving a text field.
+        public void CommitPending()
+        {
+            foreach (var handle in handles)
+            {
+                var info = handleControlInfo[handle];
+                if (info.ValidationScheduled)
+                    CommitInput(handle, info);
+            }
+        }
+
+        public void Dispose()
+        {
+            if (disposed)
+                return;
+            CommitPending();
+            foreach (var handle in handles)
+                handle.ValueChanged -= OnHandleValueChanged;
+            disposed = true;
+        }
+
+        // draws the header with the name of the mod
+        private void DrawModEntryHeader(float width, ref float curY)
+        {
+            var entryTitleRect = new Rect(0f, curY, width, ModEntryLabelHeight);
+            var mouseOverTitle = Mouse.IsOver(entryTitleRect);
+            if (mouseOverTitle)
+            {
+                Widgets.DrawHighlight(entryTitleRect);
+            }
+            var labelRect = entryTitleRect.ContractedBy(ModEntryLabelPadding);
+            Text.Font = GameFont.Medium;
+            Widgets.Label(labelRect, currentPackName);
+            Text.Font = GameFont.Small;
+
+            var entryButtonsTopRight = new Vector2(width, curY);
+            DrawFloatMenuButton(new Vector2(entryButtonsTopRight.x, entryButtonsTopRight.y));
+
+            curY += ModEntryLabelHeight;
+            var color = GUI.color;
+            GUI.color = ModEntryLineColor;
+            Widgets.DrawLineHorizontal(0f, curY, width);
+            GUI.color = color;
+            curY += ModEntryLabelPadding;
+
+            void DrawFloatMenuButton(Vector2 topRight)
+            {
+                var hasMenuEntries = currentPack.ContextMenuEntries != null;
+                if (!hasMenuEntries)
+                    return;
+                var buttonTopRight = new Vector2(topRight.x - ModEntryLabelPadding,
+                    topRight.y + (ModEntryLabelHeight - ModSettingsWidgets.HoverMenuHeight) / 2f);
+                var hasContextMenuEntries = currentPack.ContextMenuEntries != null;
+                if (ModSettingsWidgets.DrawHoverMenuButton(buttonTopRight, hasContextMenuEntries, true))
+                {
+                    OpenModEntryContextMenu();
+                }
+
+                void OpenModEntryContextMenu()
+                {
+                    ModSettingsWidgets.OpenExtensibleContextMenu(null, delegate
+                    { }, delegate
+                    { },
+                        currentPack.ContextMenuEntries);
+                }
+            }
+        }
+
+        // draws the label and appropriate input for a single setting
+        private void DrawHandleEntry(SettingHandle handle, Rect parentRect, ref float curY, float scrollViewHeight)
+        {
+            var entryHeight = HandleEntryHeight;
+            var anyCustomDrawer = handle.CustomDrawerFullWidth ?? handle.CustomDrawer;
+            if (anyCustomDrawer != null && handle.CustomDrawerHeight > entryHeight)
+            {
+                entryHeight = handle.CustomDrawerHeight + HandleEntryPadding * 2;
+            }
+            var skipDrawing = curY - scrollPosition.y + entryHeight < 0f || curY - scrollPosition.y > scrollViewHeight;
+            if (!skipDrawing)
+            {
+                var entryRect = new Rect(parentRect.x, parentRect.y + curY, parentRect.width, entryHeight);
+                var mouseOverEntry = Mouse.IsOver(entryRect);
+                if (mouseOverEntry)
+                    Widgets.DrawHighlight(entryRect);
+                var trimmedEntryRect = entryRect.ContractedBy(HandleEntryPadding);
+                bool valueChanged = false;
+                if (handle.CustomDrawerFullWidth != null)
+                {
+                    try
+                    {
+                        valueChanged = handle.CustomDrawerFullWidth(trimmedEntryRect);
+                    }
+                    catch (Exception e)
+                    {
+                        FixWorldController.Logger.ReportException(e, currentPackName, true,
+                            $"{nameof(SettingHandle)}.{nameof(SettingHandle.CustomDrawerFullWidth)}");
+                    }
+                }
+                else
+                {
+                    valueChanged = DrawDefaultHandleEntry(handle, trimmedEntryRect, mouseOverEntry);
+                }
+                if (valueChanged)
+                {
+                    if (handle.ValueType.IsClass)
+                    {
+                        // required for SettingHandleConvertible values to be eligible for saving,
+                        // since changes in reference-type values can't be automatically detected
+                        handle.HasUnsavedChanges = true;
+                    }
+                }
+            }
+            curY += entryHeight;
+        }
+
+        private bool DrawDefaultHandleEntry(SettingHandle handle, Rect trimmedEntryRect, bool mouseOverEntry)
+        {
+            var controlRect = new Rect(trimmedEntryRect.x + trimmedEntryRect.width / 2f, trimmedEntryRect.y,
+                trimmedEntryRect.width / 2f, trimmedEntryRect.height);
+            GenUI.SetLabelAlign(TextAnchor.MiddleLeft);
+            var leftHalfRect = new Rect(trimmedEntryRect.x, trimmedEntryRect.y,
+                trimmedEntryRect.width / 2f - HandleEntryPadding, trimmedEntryRect.height);
+            // give full width to the label if custom control drawer is used- this allows handle titles to be used as section titles
+            var labelRect = handle.CustomDrawer == null ? leftHalfRect : trimmedEntryRect;
+            // reduce text size if label is long and wraps over to the second line
+            var controlInfo = handleControlInfo[handle];
+            if (textMeasurements.Height(handle.Title, labelRect.width, GameFont.Small) > labelRect.height)
+            {
+                Text.Font = GameFont.Tiny;
+                labelRect = new Rect(labelRect.x, labelRect.y - 1f, labelRect.width, labelRect.height + 2f);
+            }
+            else
+            {
+                Text.Font = GameFont.Small;
+            }
+            Widgets.Label(labelRect, handle.Title);
+            Text.Font = GameFont.Small;
+            GenUI.ResetLabelAlign();
+            var valueChanged = false;
+            if (handle.CustomDrawer == null)
+            {
+                var handleType = handle.ValueType;
+                if (handleType.IsEnum)
+                    handleType = typeof(Enum);
+                handleDrawers.TryGetValue(handleType, out var drawer);
+                if (drawer == null)
+                    drawer = defaultHandleDrawer;
+                valueChanged = drawer(handle, controlRect, controlInfo);
+            }
+            else
+            {
+                try
+                {
+                    valueChanged = handle.CustomDrawer(controlRect);
+                }
+                catch (Exception e)
+                {
+                    FixWorldController.Logger.ReportException(e, currentPackName, true,
+                        $"{nameof(SettingHandle)}.{nameof(SettingHandle.CustomDrawer)}");
+                }
+            }
+            if (mouseOverEntry)
+            {
+                DrawEntryHoverMenu(trimmedEntryRect, handle);
+            }
+            return valueChanged;
+        }
+
+        private void DrawEntryHoverMenu(Rect entryRect, SettingHandle handle)
+        {
+            var topRight = new Vector2(
+                entryRect.x + entryRect.width / 2f - HandleEntryPadding,
+                entryRect.y + entryRect.height / 2f - ModSettingsWidgets.HoverMenuHeight / 2f
+            );
+            var includeResetEntry = handle.CanBeReset && !handle.Unsaved;
+            var menuHasExtraOptions = handle.ContextMenuEntries != null;
+            var menuEnabled = includeResetEntry || menuHasExtraOptions;
+            var menuButtonClicked = ModSettingsWidgets.DrawHandleHoverMenu(
+                topRight, handle.Description, menuEnabled, menuHasExtraOptions);
+            if (menuButtonClicked)
+            {
+                OpenHandleContextMenu();
+            }
+
+            void OpenHandleContextMenu()
+            {
+                var resetOptionLabel = handle.CanBeReset ? "FixWorld_settings_resetValue".Translate() : null;
+                ModSettingsWidgets.OpenExtensibleContextMenu(resetOptionLabel,
+                    () => ResetSettingHandles(handle), delegate
+                    { }, handle.ContextMenuEntries);
+            }
+        }
+
+        // draws the input control for string settings
+        private bool DrawHandleInputText(SettingHandle handle, Rect controlRect, HandleControlInfo info)
+        {
+            var evt = Event.current;
+            GUI.SetNextControlName(info.ControlName);
+            info.InputValue = Widgets.TextField(controlRect, info.InputValue);
+            var focused = GUI.GetNameOfFocusedControl() == info.ControlName;
+            if (focused)
+            {
+                info.ValidationScheduled = true;
+                if (evt.type == EventType.KeyUp
+                    && (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter))
+                {
+                    focused = false;
+                }
+            }
+            var changed = false;
+            if (info.ValidationScheduled && !focused)
+                changed = CommitInput(handle, info);
+            if (info.BadInput)
+            {
+                DrawBadTextValueOutline(controlRect);
+            }
+            return changed;
+        }
+
+        private bool CommitInput(SettingHandle handle, HandleControlInfo info)
+        {
+            bool changed = false;
+            try
+            {
+                if (handle.Validator != null && !handle.Validator(info.InputValue))
+                {
+                    info.BadInput = true;
+                }
+                else
+                {
+                    info.BadInput = false;
+                    handle.StringValue = info.InputValue;
+                    changed = true;
+                }
+            }
+            catch (Exception e)
+            {
+                FixWorldController.Logger.ReportException(e, currentPackName, false, "SettingsHandle.Validator");
+            }
+            info.ValidationScheduled = false;
+            return changed;
+        }
+
+        // draws the input control for integer settings
+        private bool DrawHandleInputSpinner(SettingHandle handle, Rect controlRect, HandleControlInfo info)
+        {
+            var buttonSize = controlRect.height;
+            var leftButtonRect = new Rect(controlRect.x, controlRect.y, buttonSize, buttonSize);
+            var rightButtonRect = new Rect(controlRect.x + controlRect.width - buttonSize, controlRect.y, buttonSize,
+                buttonSize);
+            var changed = false;
+            if (Widgets.ButtonText(leftButtonRect, "-"))
+            {
+                if (int.TryParse(info.InputValue, out var parsed))
+                {
+                    info.InputValue = (parsed - handle.SpinnerIncrement).ToString();
+                }
+                info.ValidationScheduled = true;
+                changed = true;
+            }
+            if (Widgets.ButtonText(rightButtonRect, "+"))
+            {
+                if (int.TryParse(info.InputValue, out var parsed))
+                {
+                    info.InputValue = (parsed + handle.SpinnerIncrement).ToString();
+                }
+                info.ValidationScheduled = true;
+                changed = true;
+            }
+            var textRect = new Rect(controlRect.x + buttonSize + 1, controlRect.y,
+                controlRect.width - buttonSize * 2 - 2f, controlRect.height);
+            if (DrawHandleInputText(handle, textRect, info))
+            {
+                changed = true;
+            }
+            return changed;
+        }
+
+        // draws the input control for boolean settings
+        private bool DrawHandleInputCheckbox(SettingHandle handle, Rect controlRect, HandleControlInfo info)
+        {
+            const float defaultCheckboxHeight = 24f;
+            var checkOn = bool.Parse(info.InputValue);
+            Widgets.Checkbox(controlRect.x, controlRect.y + (controlRect.height - defaultCheckboxHeight) / 2,
+                ref checkOn);
+            if (checkOn != bool.Parse(info.InputValue))
+            {
+                handle.StringValue = info.InputValue = checkOn.ToString();
+                return true;
+            }
+            return false;
+        }
+
+        // draws the input control for Enum settings
+        private bool DrawHandleInputEnum(SettingHandle handle, Rect controlRect, HandleControlInfo info)
+        {
+            if (info.EnumNames == null)
+                return false;
+            var readableValue = (handle.EnumStringPrefix + info.InputValue).Translate();
+            if (Widgets.ButtonText(controlRect, readableValue))
+            {
+                var floatOptions = new List<FloatMenuOption>();
+                foreach (var valueName in info.EnumNames)
+                {
+                    var name = valueName;
+                    var readableOption = (handle.EnumStringPrefix + name).Translate();
+                    floatOptions.Add(new FloatMenuOption(readableOption, () =>
+                    {
+                        handle.StringValue = info.InputValue = name;
+                        info.ValidationScheduled = true;
+                    }));
+                }
+                ModSettingsWidgets.OpenFloatMenu(floatOptions);
+            }
+            if (info.ValidationScheduled)
+            {
+                info.ValidationScheduled = false;
+                return true;
+            }
+            return false;
+        }
+
+        private void DrawBadTextValueOutline(Rect rect)
+        {
+            var prevColor = GUI.color;
+            GUI.color = BadValueOutlineColor;
+            Widgets.DrawBox(rect);
+            GUI.color = prevColor;
+        }
+
+        private static void ShowResetPrompt(string message, IEnumerable<SettingHandle> resetHandles)
+        {
+            var resetHandlesArr = resetHandles.ToArray();
+            Find.WindowStack.Add(new Utils.Dialog_Confirm(message, OnConfirmReset, true));
+
+            void OnConfirmReset()
+            {
+                ResetSettingHandles(resetHandlesArr.ToArray());
+            }
+        }
+
+        private static void ResetSettingHandles(params SettingHandle[] resetHandles)
+        {
+            var resetCount = 0;
+            foreach (var handle in resetHandles)
+            {
+                if (handle == null || !handle.CanBeReset || handle.HasDefaultValue())
+                    continue;
+                try
+                {
+                    handle.ResetToDefault();
+                    resetCount++;
+                }
+                catch (Exception e)
+                {
+                    FixWorldController.Logger.Error(
+                        $"Failed to reset handle {handle.ParentPack.ModId}.{handle.Name}: {e}");
+                }
+            }
+            if (resetCount > 0)
+            {
+                Messages.Message("FixWorld_settings_resetSuccessMessage".Translate(resetCount),
+                    MessageTypeDefOf.TaskCompletion);
+            }
+        }
+
+        private void ResetHandleControlInfo(SettingHandle handle)
+        {
+            handleControlInfo[handle] = new HandleControlInfo(handle);
+        }
+
+        // updated the settings handles for current mod
+        private void RefreshSettingsHandles()
+        {
+            handles.Clear();
+            handles.AddRange(currentPack.Handles
+                .Where(h => !h.NeverVisible && (include == null || include(h)))
+                .OrderBy(h => h.DisplayOrder)
+            );
+            foreach (var handle in handles)
+            {
+                handle.ValueChanged -= OnHandleValueChanged;
+                handle.ValueChanged += OnHandleValueChanged;
+            }
+        }
+
+        private void OnHandleValueChanged(SettingHandle handle)
+        {
+            ResetHandleControlInfo(handle);
+        }
+
+        // prepares support objects to store data for settings handle controls
+        private void PopulateControlInfo()
+        {
+            handleControlInfo.Clear();
+            foreach (var handle in handles)
+            {
+                handleControlInfo.Add(handle, new HandleControlInfo(handle));
+            }
+        }
+
+        // support data for each settings handle to allow gui controls to properly display and validate
+        private class HandleControlInfo
+        {
+            public readonly string ControlName;
+            public readonly List<string> EnumNames;
+            public bool BadInput;
+            public string InputValue;
+            public bool ValidationScheduled;
+
+            public HandleControlInfo(SettingHandle handle)
+            {
+                ControlName = "control" + handle.GetHashCode();
+                InputValue = handle.StringValue;
+                EnumNames = TryGetEnumNames(handle);
+            }
+
+            private List<string> TryGetEnumNames(SettingHandle handle)
+            {
+                var valueType = handle.ValueType;
+                if (!valueType.IsEnum)
+                    return null;
+                var values = Enum.GetValues(valueType);
+                var result = new List<string>(values.Length);
+                foreach (var value in values)
+                {
+                    result.Add(Enum.GetName(valueType, value));
+                }
+                return result;
+            }
+        }
+    }
+}

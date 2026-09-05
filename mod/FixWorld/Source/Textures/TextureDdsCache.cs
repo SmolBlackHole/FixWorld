@@ -22,14 +22,7 @@ namespace FixWorld.Textures
     {
 
 
-        private const string MaxCacheGiBEnvironmentVariable =
-            "FIXWORLD_DDS_CACHE_MAX_GIB";
-        private const string MinimumFreeGiBEnvironmentVariable =
-            "FIXWORLD_DDS_CACHE_MIN_FREE_GIB";
-
-
-        private const long DefaultMinimumFreeBytes =
-            10L * 1024L * 1024L * 1024L;
+        private const int MaintenanceIntervalSeconds = 30;
 
         private readonly object sync = new object();
         private readonly CacheStore caches;
@@ -39,7 +32,13 @@ namespace FixWorld.Textures
         private readonly ProfileSlot<ProfileKey> loadProfile, discoveryProfile, buildProfile;
         private readonly ConcurrentQueue<DdsBuildResult> completions = new();
         private readonly CancellationTokenSource cancellation = new();
-        private Task worker;
+        private bool workerActive;
+        private int maintenanceRequested = 1;
+        private long nextMaintenanceTimestamp;
+        private long availableFreeBytes = -1;
+        private long effectiveBudgetBytes;
+        private string reserveWarning;
+        private bool maximumOverridden, minimumFreeOverridden;
         private bool readersBound;
         private string lastError;
         private readonly HashSet<ModContentPack> observedTextureMods =
@@ -90,8 +89,6 @@ namespace FixWorld.Textures
         private long workerPreparedMods;
         private long workerAppliedMods;
         private long workerFallbackMods;
-        private TextureDdsCacheSnapshot lastSnapshot =
-            TextureDdsCacheSnapshot.Disabled(workerCount: 0);
 
         internal TextureDdsCache(CacheStore caches, LibraryDiagnostics diagnostics)
         {
@@ -110,11 +107,47 @@ namespace FixWorld.Textures
             Publish();
         }
 
-        internal bool Busy { get { lock (sync) return worker != null && !worker.IsCompleted; } }
+        internal DdsSettings Settings { get; private set; }
+        internal TextureDdsCacheSnapshot PublishedSnapshot => telemetry.Snapshot;
+        internal void RegisterSettings(FixWorld.Settings.ModSettingsPack pack)
+        {
+            if (Settings != null)
+                return;
+            Settings = new DdsSettings(pack, ApplySettings);
+            ApplySettings();
+        }
+
+        private void ApplySettings()
+        {
+            try
+            {
+                long maximum = Settings.EffectiveMaximumBytes;
+                long reserve = Settings.EffectiveMinimumFreeBytes;
+                Interlocked.Exchange(ref maximumCacheBytes, maximum);
+                Interlocked.Exchange(ref minimumFreeBytes, reserve);
+                maximumOverridden = Settings.MaximumOverridden;
+                minimumFreeOverridden = Settings.MinimumFreeOverridden;
+                Interlocked.Exchange(ref maintenanceRequested, 1);
+            }
+            catch (Exception error) { lastError = error.Message; }
+        }
+
+        internal bool Busy { get { lock (sync) return workerActive; } }
         internal bool CanMaintain { get { lock (sync) return IsRunning && backgroundStarted && !Busy; } }
         internal void BeginBackgroundIfReady()
         {
-            if (backgroundStarted || !attached || !IsRunning) return;
+            if (!attached || !IsRunning)
+                return;
+            if (backgroundStarted)
+            {
+                lock (sync)
+                {
+                    if (!workerActive && (Volatile.Read(ref maintenanceRequested) != 0 ||
+                        Stopwatch.GetTimestamp() >= nextMaintenanceTimestamp))
+                        ScheduleBuilds(Array.Empty<DdsModPlan>());
+                }
+                return;
+            }
             try
             {
                 CompleteLoading();
@@ -132,30 +165,22 @@ namespace FixWorld.Textures
         }
         internal void Publish()
         {
-            while (completions.TryDequeue(out var result)) CompleteBuild(result);
+            while (completions.TryDequeue(out var result))
+                CompleteBuild(result);
             telemetry.Publish(GetSnapshot());
         }
 
-        internal void Attach(string modRoot, float ddsCacheMaxGiB)
+        internal void Attach(string modRoot)
         {
             lock (sync)
             {
                 if (attached)
                 {
-                    maximumCacheBytes = ReadGiBLimit(
-                        MaxCacheGiBEnvironmentVariable,
-                        GiBToBytes(ddsCacheMaxGiB));
-                    if (store != null)
-                    {
-                        AddInvalidated(store.EnforceBudget(maximumCacheBytes));
-                        SetCacheBytes(store.CurrentBytes);
-                    }
-
                     return;
                 }
 
                 attached = true;
-                if (!Configure(ddsCacheMaxGiB))
+                if (!Configure())
                 {
                     Log.Message("[FixWorld] DDS pack cache disabled.");
                     return;
@@ -174,7 +199,6 @@ namespace FixWorld.Textures
                         cacheRoot,
                         DdsCacheContract.CacheIdentityVersion);
                     SetCacheBytes(store.CurrentBytes);
-                    lastSnapshot = GetSnapshotCore(enabled: true);
                     LogConfiguration();
                 }
                 catch (Exception exception)
@@ -199,7 +223,8 @@ namespace FixWorld.Textures
                     return;
                 }
 
-                if (backgroundStarted || discoverySnapshot != null) return;
+                if (backgroundStarted || discoverySnapshot != null)
+                    return;
                 ResetDiscovery();
                 discoverySnapshot = store.Snapshot();
                 foreach (ModContentPack mod in
@@ -362,6 +387,7 @@ namespace FixWorld.Textures
             {
                 FinalizeDiscovery();
                 DisposeStartupReaders();
+                startupHits.Clear();
             }
         }
 
@@ -369,9 +395,7 @@ namespace FixWorld.Textures
         {
             lock (sync)
             {
-                return IsRunning
-                    ? GetSnapshotCore(enabled: true)
-                    : lastSnapshot;
+                return GetSnapshotCore(IsRunning);
             }
         }
 
@@ -379,22 +403,14 @@ namespace FixWorld.Textures
         {
             lock (sync)
             {
-                if (!CanMaintain) return "Wait until loading and DDS background work have finished.";
+                if (!CanMaintain)
+                    return "Wait until loading and DDS background work have finished.";
                 try
                 {
                     DisposeStartupReaders();
                     startupHits.Clear();
-                    // Delete only packs owned by this index, never a recursively supplied root.
-                    long bytes = store.CurrentBytes;
-                    store.RemoveInactivePackages(new HashSet<string>(StringComparer.Ordinal));
-                    store.Save();
-                    store.SweepOrphans();
-                    SetCacheBytes(store.CurrentBytes);
-                    failedBuildPlans.Clear();
-                    lastError = null;
-                    Publish();
-                    return "DDS cache cleared (" + ToMiB(bytes).ToString("N1", CultureInfo.InvariantCulture)
-                        + " MiB). Restart RimWorld to rebuild it.";
+                    ScheduleBuilds(Array.Empty<DdsModPlan>(), clearCache: true);
+                    return "DDS cache cleanup queued. Restart RimWorld after it finishes to rebuild the cache.";
                 }
                 catch (Exception error)
                 {
@@ -408,7 +424,8 @@ namespace FixWorld.Textures
         {
             lock (sync)
             {
-                if (!CanMaintain) return "Wait until loading and DDS background work have finished.";
+                if (!CanMaintain)
+                    return "Wait until loading and DDS background work have finished.";
 
                 if (Busy)
                 {
@@ -437,10 +454,11 @@ namespace FixWorld.Textures
         {
             lock (sync)
             {
-                if (stopped) return;
+                if (stopped)
+                    return;
                 stopped = true;
+                Settings?.Dispose();
                 cancellation.Cancel();
-                lastSnapshot = GetSnapshotCore(false);
                 startupHits.Clear();
                 DisposeStartupReaders();
                 ResetDiscovery();
@@ -448,13 +466,15 @@ namespace FixWorld.Textures
                 startupReaders.Dispose();
                 // A worker may still be unwinding texconv/IO. It owns final store
                 // disposal in its finally block, never race it with a timeout.
-                if (worker == null || worker.IsCompleted) DisposeStore();
+                if (!workerActive)
+                    DisposeStore();
             }
         }
 
         private void DisposeStore()
         {
-            try { store?.Dispose(); }
+            try
+            { store?.Dispose(); }
             finally { store = null; cancellation.Dispose(); }
         }
 
@@ -504,8 +524,10 @@ namespace FixWorld.Textures
 
         private void DisposeStartupReaders()
         {
-            if (readersBound) startupReaders.Clear();
-            foreach (var reader in ownedReaders) reader.Dispose();
+            if (readersBound)
+                startupReaders.Clear();
+            foreach (var reader in ownedReaders)
+                reader.Dispose();
             ownedReaders.Clear();
         }
 
@@ -592,30 +614,49 @@ namespace FixWorld.Textures
                 estimatedBytes);
         }
 
-        private void ScheduleBuilds(IReadOnlyList<DdsModPlan> buildPlans)
+        private void ScheduleBuilds(IReadOnlyList<DdsModPlan> buildPlans, bool clearCache = false)
         {
+            if (workerActive)
+                throw new InvalidOperationException("DDS worker is already active.");
             scheduledBuilds = buildPlans.Count;
             completedBuilds = 0;
             lastError = null;
             var plans = buildPlans.ToArray();
-            worker = Task.Factory.StartNew(() =>
+            workerActive = true;
+            Task.Factory.StartNew(() =>
             {
                 try
                 {
                     Thread.CurrentThread.Priority = System.Threading.ThreadPriority.BelowNormal;
+                    if (clearCache)
+                    {
+                        store.RemoveInactivePackages(new HashSet<string>(StringComparer.Ordinal));
+                        store.Save();
+                        store.SweepOrphans();
+                        lock (sync)
+                            failedBuildPlans.Clear();
+                    }
+                    MaintainStore();
                     foreach (var plan in plans)
                     {
                         cancellation.Token.ThrowIfCancellationRequested();
+                        if (Volatile.Read(ref maintenanceRequested) != 0)
+                            MaintainStore();
                         BuildAndPublish(plan, cancellation.Token);
                     }
                     MaintainStore();
-                    if (plans.Length == 0) PostCompletion(new DdsBuildResult(0, 0, 0, null));
                 }
                 catch (OperationCanceledException) { }
                 catch (Exception error) { completions.Enqueue(new DdsBuildResult(0, 1, 0, error.Message)); }
                 finally
                 {
-                    lock (sync) { if (stopped) DisposeStore(); }
+                    lock (sync)
+                    {
+                        workerActive = false;
+                        nextMaintenanceTimestamp = Stopwatch.GetTimestamp() + MaintenanceIntervalSeconds * Stopwatch.Frequency;
+                        if (stopped)
+                            DisposeStore();
+                    }
                 }
             }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
@@ -651,8 +692,8 @@ namespace FixWorld.Textures
                 long availableBytes = new DriveInfo(
                         Path.GetPathRoot(cacheRoot))
                     .AvailableFreeSpace;
-                if (plan.EstimatedPackBytes > maximumCacheBytes ||
-                    availableBytes - temporaryBytes < minimumFreeBytes)
+                if (plan.EstimatedPackBytes > Interlocked.Read(ref maximumCacheBytes) ||
+                    availableBytes - temporaryBytes < Interlocked.Read(ref minimumFreeBytes))
                 {
                     Interlocked.Add(ref budgetSkipped, plan.MissingCount);
                     DdsBuildResult skipped = new DdsBuildResult(
@@ -669,18 +710,10 @@ namespace FixWorld.Textures
                     cancellationToken,
                     out stagingRoot);
                 cancellationToken.ThrowIfCancellationRequested();
+                store.Publish(pack);
+                MaintainStore();
                 lock (sync)
-                {
-                    if (!IsRunning)
-                    {
-                        throw new OperationCanceledException();
-                    }
-
-                    store.Publish(pack);
-                    store.EnforceBudget(maximumCacheBytes);
-                    SetCacheBytes(store.CurrentBytes);
                     failedBuildPlans.Remove(plan.PackageId);
-                }
 
                 DdsBuildResult result = new DdsBuildResult(
                     plan.MissingCount,
@@ -692,28 +725,19 @@ namespace FixWorld.Textures
             }
             catch (OperationCanceledException)
             {
-                lock (sync)
-                {
-                    store?.Discard(pack);
-                    if (pack == null)
-                    {
-                        store?.DiscardStaging(stagingRoot);
-                    }
-
-                }
+                store?.Discard(pack);
+                if (pack == null)
+                    store?.DiscardStaging(stagingRoot);
 
                 throw;
             }
             catch (Exception exception)
             {
+                store?.Discard(pack);
+                if (pack == null)
+                    store?.DiscardStaging(stagingRoot);
                 lock (sync)
                 {
-                    store?.Discard(pack);
-                    if (pack == null)
-                    {
-                        store?.DiscardStaging(stagingRoot);
-                    }
-
                     if (IsRunning)
                     {
                         failedBuildPlans[plan.PackageId] = plan;
@@ -793,10 +817,7 @@ namespace FixWorld.Textures
             CancellationToken cancellationToken,
             out string stagingRoot)
         {
-            lock (sync)
-            {
-                stagingRoot = store.CreateStagingRoot(plan.PackageId);
-            }
+            stagingRoot = store.CreateStagingRoot(plan.PackageId);
 
             Dictionary<DdsPackItem, string> converted =
                 ConvertMissing(plan, stagingRoot, cancellationToken);
@@ -973,18 +994,23 @@ namespace FixWorld.Textures
 
         private int MaintainStore()
         {
-            lock (sync)
-            {
-                if (!IsRunning)
-                {
-                    return 0;
-                }
-
-                AddInvalidated(store.EnforceBudget(maximumCacheBytes));
-                int removed = store.SweepOrphans();
-                SetCacheBytes(store.CurrentBytes);
-                return removed;
-            }
+            cancellation.Token.ThrowIfCancellationRequested();
+            Interlocked.Exchange(ref maintenanceRequested, 0);
+            int removed = store.SweepOrphans();
+            long reserve = Interlocked.Read(ref minimumFreeBytes);
+            DriveInfo drive = new DriveInfo(Path.GetPathRoot(cacheRoot));
+            long effective = DdsBudget.EffectiveMaximum(Interlocked.Read(ref maximumCacheBytes),
+                store.CurrentBytes, drive.AvailableFreeSpace, reserve);
+            AddInvalidated(store.EnforceBudget(effective));
+            long free = drive.AvailableFreeSpace;
+            SetCacheBytes(store.CurrentBytes);
+            Interlocked.Exchange(ref availableFreeBytes, free);
+            Interlocked.Exchange(ref effectiveBudgetBytes, DdsBudget.EffectiveMaximum(
+                Interlocked.Read(ref maximumCacheBytes), store.CurrentBytes, free, reserve));
+            Volatile.Write(ref reserveWarning, free < reserve
+                ? "Drive space is below the free-space reserve. DDS cannot reclaim enough space from its cache alone."
+                : null);
+            return removed;
         }
 
         private void PostCompletion(DdsBuildResult result) => completions.Enqueue(result);
@@ -1019,14 +1045,17 @@ namespace FixWorld.Textures
                 Interlocked.Read(ref failed),
                 Interlocked.Read(ref buildMilliseconds),
                 Interlocked.Read(ref cacheBytes),
-                maximumCacheBytes,
+                Interlocked.Read(ref maximumCacheBytes),
                 workerCount,
                 Interlocked.Read(ref workerPreparedMods),
                 Interlocked.Read(ref workerAppliedMods),
-                Interlocked.Read(ref workerFallbackMods), Busy, failedBuildPlans.Count, lastError, cacheRoot);
+                Interlocked.Read(ref workerFallbackMods), Busy, failedBuildPlans.Count, lastError, cacheRoot,
+                Interlocked.Read(ref minimumFreeBytes), Interlocked.Read(ref availableFreeBytes),
+                Interlocked.Read(ref effectiveBudgetBytes), Volatile.Read(ref reserveWarning),
+                maximumOverridden, minimumFreeOverridden, Volatile.Read(ref maintenanceRequested) != 0);
         }
 
-        private bool Configure(float ddsCacheMaxGiB)
+        private bool Configure()
         {
 
             if (string.Equals(
@@ -1052,12 +1081,12 @@ namespace FixWorld.Textures
             cacheRoot = Path.GetFullPath(cacheRoot);
             Directory.CreateDirectory(cacheRoot);
 
-            maximumCacheBytes = ReadGiBLimit(
-                MaxCacheGiBEnvironmentVariable,
-                GiBToBytes(ddsCacheMaxGiB));
-            minimumFreeBytes = ReadGiBLimit(
-                MinimumFreeGiBEnvironmentVariable,
-                DefaultMinimumFreeBytes);
+            maximumCacheBytes = DdsSettings.ReadOverride(DdsSettings.MaximumEnvironmentVariable,
+                Settings?.MaximumGiB.Value ?? DdsSettings.DefaultMaximumGiB);
+            minimumFreeBytes = DdsSettings.ReadOverride(DdsSettings.MinimumFreeEnvironmentVariable,
+                Settings?.MinimumFreeGiB.Value ?? DdsSettings.DefaultMinimumFreeGiB);
+            maximumOverridden = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(DdsSettings.MaximumEnvironmentVariable));
+            minimumFreeOverridden = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(DdsSettings.MinimumFreeEnvironmentVariable));
             return true;
         }
 
@@ -1126,49 +1155,6 @@ namespace FixWorld.Textures
             return bytes / (1024.0 * 1024.0 * 1024.0);
         }
 
-        private static double ToMiB(long bytes)
-        {
-            return bytes / (1024.0 * 1024.0);
-        }
-
-
-
-        private static long ReadGiBLimit(
-            string environmentVariable,
-            long defaultBytes)
-        {
-            string value = Environment.GetEnvironmentVariable(
-                environmentVariable);
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return defaultBytes;
-            }
-
-            if (!double.TryParse(
-                    value,
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out double gibibytes) ||
-                    double.IsNaN(gibibytes) || gibibytes <= 0.0)
-            {
-                throw new InvalidOperationException(
-                    "Invalid positive GiB value in " +
-                    environmentVariable + ": " + value);
-            }
-
-            return GiBToBytes(gibibytes);
-        }
-
-        private static long GiBToBytes(double gibibytes)
-        {
-            double bytes = gibibytes * 1024.0 * 1024.0 * 1024.0;
-            if (double.IsNaN(gibibytes) || gibibytes <= 0.0 || bytes > long.MaxValue)
-            {
-                throw new ArgumentOutOfRangeException(nameof(gibibytes));
-            }
-
-            return (long)Math.Floor(bytes);
-        }
     }
 
     internal sealed class DdsModPlan
@@ -1394,10 +1380,23 @@ namespace FixWorld.Textures
             int workerCount,
             long workerPreparedMods,
             long workerAppliedMods,
-            long workerFallbackMods, bool busy = false, int retryMods = 0, string error = null, string root = null)
+            long workerFallbackMods, bool busy = false, int retryMods = 0, string error = null, string root = null,
+            long minimumFreeBytes = 0, long availableFreeBytes = -1, long effectiveBudgetBytes = 0,
+            string reserveWarning = null, bool maximumOverridden = false, bool minimumFreeOverridden = false,
+            bool maintenancePending = false)
         {
             Enabled = enabled;
-            Busy = busy; RetryMods = retryMods; Error = error; Root = root;
+            Busy = busy;
+            RetryMods = retryMods;
+            Error = error;
+            Root = root;
+            MinimumFreeBytes = minimumFreeBytes;
+            AvailableFreeBytes = availableFreeBytes;
+            EffectiveBudgetBytes = effectiveBudgetBytes;
+            ReserveWarning = reserveWarning;
+            MaximumOverridden = maximumOverridden;
+            MinimumFreeOverridden = minimumFreeOverridden;
+            MaintenancePending = maintenancePending;
             Hits = hits;
             Misses = misses;
             Created = created;
@@ -1419,17 +1418,38 @@ namespace FixWorld.Textures
         internal int RetryMods { get; }
         internal string Error { get; }
         internal string Root { get; }
+        internal long MinimumFreeBytes { get; }
+        internal long AvailableFreeBytes { get; }
+        internal long EffectiveBudgetBytes { get; }
+        internal string ReserveWarning { get; }
+        internal bool MaximumOverridden { get; }
+        internal bool MinimumFreeOverridden { get; }
+        internal bool MaintenancePending { get; }
         internal static TelemetryContract<TextureDdsCacheSnapshot> Contract { get; } = new("fixworld.dds", 1, (data, writer) =>
         {
-            writer.Value("enabled", data.Enabled); writer.Value("worker_running", data.Busy);
-            writer.Value("cache_root", data.Root); writer.Value("last_error", data.Error);
+            writer.Value("enabled", data.Enabled);
+            writer.Value("worker_running", data.Busy);
+            writer.Value("cache_root", data.Root);
+            writer.Value("last_error", data.Error);
             writer.Value("failed_mods_retryable", data.RetryMods);
-            writer.Counter("cache_hits", data.Hits); writer.Counter("cache_misses", data.Misses);
-            writer.Counter("created", data.Created); writer.Counter("failed", data.Failed);
-            writer.Counter("invalidated", data.Invalidated); writer.Counter("excluded", data.Excluded);
-            writer.Counter("unsupported", data.Unsupported); writer.Counter("budget_skipped", data.BudgetSkipped);
-            writer.Counter("build_ms", data.BuildMilliseconds); writer.Value("cache_bytes", data.CacheBytes);
+            writer.Counter("cache_hits", data.Hits);
+            writer.Counter("cache_misses", data.Misses);
+            writer.Counter("created", data.Created);
+            writer.Counter("failed", data.Failed);
+            writer.Counter("invalidated", data.Invalidated);
+            writer.Counter("excluded", data.Excluded);
+            writer.Counter("unsupported", data.Unsupported);
+            writer.Counter("budget_skipped", data.BudgetSkipped);
+            writer.Counter("build_ms", data.BuildMilliseconds);
+            writer.Value("cache_bytes", data.CacheBytes);
             writer.Value("max_cache_bytes", data.MaxCacheBytes);
+            writer.Value("minimum_free_bytes", data.MinimumFreeBytes);
+            writer.Value("available_free_bytes", data.AvailableFreeBytes);
+            writer.Value("effective_budget_bytes", data.EffectiveBudgetBytes);
+            writer.Value("reserve_warning", data.ReserveWarning);
+            writer.Value("maximum_environment_override", data.MaximumOverridden);
+            writer.Value("minimum_free_environment_override", data.MinimumFreeOverridden);
+            writer.Value("maintenance_pending", data.MaintenancePending);
             writer.Value("workers", data.WorkerCount);
         });
 

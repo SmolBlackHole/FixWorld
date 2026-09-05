@@ -276,7 +276,9 @@ namespace FixWorld.Textures
 
         internal int EnforceBudget(long maximumBytes)
         {
-            if (maximumBytes <= 0L || currentBytes <= maximumBytes)
+            if (maximumBytes < 0L)
+                throw new ArgumentOutOfRangeException(nameof(maximumBytes));
+            if (currentBytes <= maximumBytes)
             {
                 return 0;
             }

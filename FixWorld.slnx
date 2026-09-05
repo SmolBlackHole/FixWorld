@@ -7,5 +7,6 @@
     <Project Path="mod/FixWorld/Tests/Caching.Contracts/FixWorld.Caching.Contracts.csproj" />
     <Project Path="mod/FixWorld/Tests/News.Contracts/FixWorld.News.Contracts.csproj" />
     <Project Path="mod/FixWorld/Tests/Dds.Contracts/FixWorld.Dds.Contracts.csproj" />
+    <Project Path="mod/FixWorld/Tests/Settings.Contracts/FixWorld.Settings.Contracts.csproj" />
     <Project Path="mod/FixWorld/Tests/FixWorldTests.csproj" />
 </Solution>

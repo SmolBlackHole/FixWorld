@@ -3,6 +3,7 @@ using System;
 using System.Globalization;
 using UnityEngine;
 using Verse;
+using static FixWorld.UI.UiTheme;
 
 namespace FixWorld.UI
 {
@@ -10,10 +11,6 @@ namespace FixWorld.UI
     // Operate: make the current stage legible; retain the dry tips without a side stripe.
     internal static class LoadingProgressUi
     {
-        internal static readonly Color Accent = new(0.25f, 0.73f, 0.90f);
-        internal static readonly Color Completed = new(0.16f, 0.48f, 0.68f);
-        internal static readonly Color Row = new(1f, 1f, 1f, 0.035f);
-        private static readonly Color Pending = new(1f, 1f, 1f, 0.14f);
         private static float nextMemoryRefresh;
         private static string memory = "";
         internal static void Draw(LoadingProgress loading)

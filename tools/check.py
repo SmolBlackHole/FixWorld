@@ -20,19 +20,36 @@ def check_python() -> None:
     for path in sorted((ROOT / "tools").glob("*.py")):
         py_compile.compile(str(path), doraise=True)
     print("Python syntax checks passed.")
-    subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tools", "-p", "test_*.py"], cwd=ROOT, check=True)
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tools",
+            "-p",
+            "test_*.py",
+        ],
+        cwd=ROOT,
+        check=True,
+    )
 
 
 def check_contracts() -> None:
     dotnet = find_dotnet_sdk()
     environment = os.environ.copy()
     environment.update({"DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_NOLOGO": "1"})
-    run_build(MOD / "RestartHelper" / "FixWorld.Restart.csproj", (f"-p:OutputPath={OUTPUT.as_posix()}/",))
+    run_build(
+        MOD / "RestartHelper" / "FixWorld.Restart.csproj",
+        (f"-p:OutputPath={OUTPUT.as_posix()}/",),
+    )
     for suite, arguments in (
         ("Telemetry.Contracts", ()),
         ("Caching.Contracts", ()),
         ("News.Contracts", ()),
         ("Dds.Contracts", ()),
+        ("Settings.Contracts", ()),
         ("Bootstrap.Contracts", ("--", str(OUTPUT / "FixWorld.Restart.exe"))),
     ):
         subprocess.run(

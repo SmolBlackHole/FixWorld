@@ -8,19 +8,11 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472"
             Version="1.0.3" PrivateAssets="all" />
-        <Compile Include="../../Source/Textures/DdsCacheContract.cs" Link="DdsCacheContract.cs" />
-        <Compile Include="../../Source/Textures/DdsPackStore.cs" Link="DdsPackStore.cs" />
-        <Compile Include="../../Source/Textures/DdsIndexFile.cs" Link="DdsIndexFile.cs" />
-        <Compile Include="../../Source/Textures/TextureDimensions.cs" Link="TextureDimensions.cs" />
-        <Compile Include="../../Source/Textures/DdsPayload.cs" Link="DdsPayload.cs" />
-        <Compile Include="../../Source/Textures/DdsBudget.cs" Link="DdsBudget.cs" />
-        <Compile Include="../../Source/Textures/DdsSettings.cs" Link="DdsSettings.cs" />
+        <Compile Include="../../Source/Settings/SettingsPanel.cs" Link="SettingsPanel.cs" />
         <Compile Include="../../Source/Settings/ModSettingsPack.cs" Link="ModSettingsPack.cs" />
         <Compile Include="../../Source/Settings/SettingHandle.cs" Link="SettingHandle.cs" />
         <Compile Include="../../Source/Settings/SettingHandleConvertible.cs"
             Link="SettingHandleConvertible.cs" />
         <Compile Include="../../Source/Settings/Validators.cs" Link="Validators.cs" />
-        <Compile Include="../../Source/Textures/TexconvProcess.cs" Link="TexconvProcess.cs" />
-        <Reference Include="System.Runtime.Serialization" />
     </ItemGroup>
 </Project>

@@ -245,3 +245,17 @@ No archived runtime/scheduler, read-ahead transport or legacy migration imported
 loaded 10,471 cached textures and generated 5 missing entries, with zero DDS
 failures. Long-build colony/menu transitions and native maintenance-button
 actions remain unverified. Details and evidence: [DDS cache](dds-cache.md).
+
+## UI/settings
+
+Reuse SettingsPanel in both settings and diagnostics windows. Keep typed
+handles, validation, tooltips, reset and persistence. Overview and DDS read
+published snapshots; raw telemetry remains under Technical details. Refresh
+must retain scroll and input state. Share colors with the early loading screen
+without loading content-dependent icons there.
+
+DDS settings default to a 6 GiB cache limit and 10 GiB free-space reserve.
+Reserve takes priority, with background eviction and a warning if the cache
+cannot reclaim enough space. Renderer and budget contracts cover this slice;
+native interaction remains a separate check. Profiling tables and expanded
+loading views follow later.

@@ -8,19 +8,19 @@ mipmap generation and runtime compression. RimWorld still owns discovery,
 content order and the resulting textures. Shipped DDS files keep RimWorld's
 native loader; failed or unsupported cache entries use the source texture.
 
-## Fork ownership
+## Components
 
 - `TextureHooks` installs one early Harmony adapter for content discovery and
   texture loading. Normal mod attachment does not install a second copy.
 - `TextureDdsCache` owns discovery plans, the process-lifetime serial background
-  task and maintenance. It does not depend on the archived loader or scheduler.
+  task and maintenance.
 - The shared `CacheStore` caches mapped pack readers on Unity's main thread.
   The DDS service owns their disposal, releases all mappings before background
   publication and does not own/destroy textures already given to RimWorld.
 - `DdsPackStore` owns the persistent disk index and immutable discovery snapshots.
   This is file-format state, not a second general-purpose cache framework.
 - `fixworld.dds` publishes typed snapshots through the shared telemetry store.
-  The same presenter feeds the diagnostics window, logs and JSONL capture.
+  The diagnostics view reads them directly; the presenter supplies logs and JSONL.
   Cached profiler slots measure discovery, uploads and completed build durations.
 
 Only the main thread uses Unity. The worker handles files and the external
@@ -48,45 +48,57 @@ lacking BC7 support also leaves source texture loading to RimWorld.
 
 ## Background builds and controls
 
-Missing entries are prepared after the fork reaches Ready. One below-normal
+Missing entries are prepared after the runtime reaches Ready. One below-normal
 worker invokes one converter at a time, using the established BC7_UNORM,
 ignore-sRGB, vertical-flip and mip-count settings. Existing cache hits remain
 usable if texconv is unavailable. Budget maintenance also runs on warm starts
 with no conversions. There is no automatic migration/deletion of the old loose
 `dds-v1` cache and no archived FixWorld.Tool dependency.
 
-Open **Mod Options -> FixWorld -> dds**, or the in-game FixWorld main-bar entry:
+Open **Mod Options -> FixWorld -> DDS cache**, or the in-game FixWorld main-bar entry:
 
-- **Clear DDS cache** asks for confirmation, removes generated packs, and leaves
+- **Clear DDS cache** asks for confirmation, queues removal of generated packs, and leaves
   source textures and already loaded game textures alone. Restart to rebuild.
 - **Retry DDS builds** restarts failed mod builds. Both controls are unavailable
   during startup or while the worker is active.
 
-Defaults: 6 GiB cache budget and 10 GiB minimum free space. Current overrides:
+The page embeds persistent settings with validation, info icons and reset:
+
+- Cache limit: **6 GiB** by default. Zero removes the packs and prevents new writes.
+- Free-drive reserve: **10 GiB** by default. This takes priority over the limit,
+  even if the cache must shrink below it or be emptied.
+
+Maintenance runs on the serial worker after startup, on settings changes and
+every 30 seconds. It reports a warning when deleting the cache cannot free enough
+space. Drive measurements and eviction never run while drawing the UI. An active
+conversion finishes before changed limits are enforced. Other applications can
+consume disk space between checks, so this is not a filesystem quota.
+
+Environment overrides take precedence over saved values and are marked in the UI:
 
 | Variable | Meaning |
 | --- | --- |
 | `FIXWORLD_DDS_CACHE=0` | Disable the DDS cache |
 | `FIXWORLD_DDS_CACHE_ROOT` | Dedicated cache directory |
-| `FIXWORLD_DDS_CACHE_MAX_GIB` | Positive cache budget |
-| `FIXWORLD_DDS_CACHE_MIN_FREE_GIB` | Positive free-space reserve |
+| `FIXWORLD_DDS_CACHE_MAX_GIB` | Non-negative cache budget |
+| `FIXWORLD_DDS_CACHE_MIN_FREE_GIB` | Non-negative free-space reserve |
 | `FIXWORLD_TEXCONV_PATH` | Explicit converter executable |
 
-The fork does not yet expose a cache-size settings slider. Use a dedicated
-directory for a root override, never a directory containing unrelated files.
+Use a dedicated directory for a root override, never one containing unrelated files.
 
 The Windows package contains the pinned DirectXTex texconv executable and MIT
 license. SHA-256: `DCFDEC10244E02CF5037FBA089C55FB7E1326B1C8181742D77D15FA5CB5EEF06`.
 See [third-party notices](../THIRD_PARTY_NOTICES.md). Linux creation is unverified.
 
-## Verification, 2026-09-05
+## Verification
 
-79 net472 contracts cover disk-index roundtrips, freshness, writer exclusion,
+98 net472 contracts cover disk-index roundtrips, freshness, writer exclusion,
 backup recovery, malformed slices, publication, eviction/clear, exact BC7
 payload sizes, converter arguments, Unicode paths, Windows quoting and actual
-child-process cancellation. These tests use a converter fixture, not Unity.
+child-process cancellation, zero budgets, reserve priority and actual settings
+validation/reset/XML persistence. These tests use a converter fixture, not Unity.
 
-Native fork run: `temp/dds-fork-native/Player.log`, PID 39152,
+Native cache run before the settings UI change: `temp/dds-fork-native/Player.log`,
 telemetry session `d681f13b7578488ea9f49b1bf36a2a0f`:
 
 - 10,471 successful DDS uploads from 63 mapped packs, zero DDS failures.

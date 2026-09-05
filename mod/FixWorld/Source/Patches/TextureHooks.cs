@@ -21,7 +21,8 @@ namespace FixWorld.Patches
 
         internal static void Install(TextureDdsCache value)
         {
-            if (harmony != null) return;
+            if (harmony != null)
+                return;
             cache = value;
             harmony = new Harmony(Owner);
             try
@@ -49,14 +50,16 @@ namespace FixWorld.Patches
         }
         private static void Prepare()
         {
-            if (prepared) return;
+            if (prepared)
+                return;
             var mod = LoadedModManager.RunningModsListForReading.FirstOrDefault(item =>
                 string.Equals(item.PackageId, BootEnvironment.PackageId, StringComparison.OrdinalIgnoreCase));
-            if (mod == null) return;
+            if (mod == null)
+                return;
             prepared = true;
             try
             {
-                cache.Attach(mod.RootDir, 6f);
+                cache.Attach(mod.RootDir);
                 cache.Prepare();
                 cache.BeginTextureDiscovery();
                 // Add after LoadModContent has queued all mod texture callbacks,
@@ -68,13 +71,16 @@ namespace FixWorld.Patches
             Func<string, bool> validateExtension, List<string> foldersToLoadDebug,
             Dictionary<string, FileInfo> __result)
         {
-            try { cache.ObserveTextureFiles(mod, contentPath, validateExtension, foldersToLoadDebug, __result); }
+            try
+            { cache.ObserveTextureFiles(mod, contentPath, validateExtension, foldersToLoadDebug, __result); }
             catch (Exception error) { Log.Warning("[FixWorld] DDS discovery fell back for " + mod?.PackageId + ": " + error.Message); }
         }
         private static bool Load(VirtualFile file, ref Texture2D __result)
         {
-            if (!Prefs.TextureCompression || !SystemInfo.SupportsTextureFormat(TextureFormat.BC7)) return true;
-            if (!cache.TryLoad(file, out var texture)) return true;
+            if (!Prefs.TextureCompression || !SystemInfo.SupportsTextureFormat(TextureFormat.BC7))
+                return true;
+            if (!cache.TryLoad(file, out var texture))
+                return true;
             __result = texture;
             return false;
         }

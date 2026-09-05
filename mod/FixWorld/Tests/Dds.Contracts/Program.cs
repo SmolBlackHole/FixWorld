@@ -10,7 +10,8 @@ internal static class Program
 
     private static void Main(string[] args)
     {
-        if (ConverterContracts.TryRunFixture(args)) return;
+        if (ConverterContracts.TryRunFixture(args))
+            return;
         string root = Path.Combine(Path.GetTempPath(), "FixWorld-Dds-Contracts-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try
@@ -19,6 +20,7 @@ internal static class Program
             IndexWrite(root);
             Dimensions(root);
             Payload();
+            BudgetAndSettingsContracts.Run(root, Check);
             ConverterContracts.Run(root, Check);
         }
         finally { Directory.Delete(root, true); }
@@ -27,13 +29,15 @@ internal static class Program
 
     private static void Check(bool condition, string message)
     {
-        if (!condition) throw new InvalidOperationException(message);
+        if (!condition)
+            throw new InvalidOperationException(message);
         checks++;
     }
 
     private static void Throws<T>(Action action, string message) where T : Exception
     {
-        try { action(); }
+        try
+        { action(); }
         catch (T) { checks++; return; }
         throw new InvalidOperationException(message);
     }
@@ -162,8 +166,12 @@ internal static class Program
     {
         string path = Path.Combine(root, "dimensions.png");
         byte[] png = new byte[24];
-        png[0] = 137; png[1] = 80; png[2] = 78; png[3] = 71;
-        png[19] = 64; png[23] = 32;
+        png[0] = 137;
+        png[1] = 80;
+        png[2] = 78;
+        png[3] = 71;
+        png[19] = 64;
+        png[23] = 32;
         File.WriteAllBytes(path, png);
         Check(TextureDimensions.TryRead(new FileInfo(path), out TextureDimensions dimensions), "PNG dimensions read without decoding");
         Check(dimensions.Width == 64 && dimensions.Height == 32, "PNG dimensions values");
