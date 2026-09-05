@@ -98,7 +98,8 @@ def package_files(content: Path, output: Path) -> dict[str, Path]:
                 ".xml", ".png", ".jpg", ".jpeg", ".txt", ".json"
             }:
                 files[path.relative_to(content).as_posix()] = path
-    for name in ("LoadFolders.xml", "Tools/Doorstop-4.4.0/winhttp.dll"):
+    for name in ("LoadFolders.xml", "Tools/Doorstop-4.4.0/winhttp.dll",
+                 "Tools/Windows-x64/texconv.exe", "Tools/DirectXTex-LICENSE.txt"):
         files[name] = content / name
     for name in ("FixWorld.dll", "FixWorld.Bootstrap.dll"):
         files[f"v1.6/Assemblies/{name}"] = output / name

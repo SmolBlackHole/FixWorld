@@ -236,3 +236,12 @@ telemetry/capture checks. Existing cache/News checks pass. Bootstrap now has
 bootstrap update without accepting changed proxy/config files. Local Release
 build has zero warnings/errors. Native main-bar interaction/scrolling and the
 constructor cross-reference guard remain open before closing the UI slice.
+
+DDS continuation: the explicit "Bring DDS back" order starts this slice without
+waiting for the remaining UI interaction checks. The fork owns one serial DDS
+worker, typed telemetry and cached profiler slots; mapped readers use CacheStore.
+No archived runtime/scheduler, read-ahead transport or legacy migration imported.
+79 DDS contracts and full local/portable Release builds pass. Native PID 39152
+loaded 10,471 cached textures and generated 5 missing entries, with zero DDS
+failures. Long-build colony/menu transitions and native maintenance-button
+actions remain unverified. Details and evidence: [DDS cache](dds-cache.md).

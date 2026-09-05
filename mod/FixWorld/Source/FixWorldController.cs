@@ -105,6 +105,8 @@ namespace FixWorld
                     BootstrapIntegration.RegisterTelemetry(controller.Diagnostics);
                     controller.Loading = new UI.LoadingProgress(controller.Diagnostics.Store);
                     Patches.LoadingHooks.Install(controller.Loading);
+                    controller.Dds = new Textures.TextureDdsCache(controller.Caches, controller.Diagnostics);
+                    Patches.TextureHooks.Install(controller.Dds);
                     controller.StartCapture();
                 }
                 catch { controller.DisposeCore(); throw; }
@@ -179,6 +181,7 @@ namespace FixWorld
         public LibraryDiagnostics Diagnostics { get; private set; }
         public CacheStore Caches { get; private set; }
         internal UI.LoadingProgress Loading { get; private set; }
+        internal Textures.TextureDdsCache Dds { get; private set; }
         internal TextMeasurementCache TextMeasurements { get; private set; }
 
         public ModSettingsManager Settings { get; private set; }
@@ -350,6 +353,7 @@ namespace FixWorld
             using var measurement = Diagnostics.Update.Measure();
             try
             {
+                Dds?.BeginBackgroundIfReady();
                 DoLater?.OnUpdate();
                 for (int i = 0; i < initializedMods.Count; i++)
                 {
@@ -375,7 +379,10 @@ namespace FixWorld
                 try
                 {
                     if (Diagnostics.PublishIfDue(Stopwatch.GetTimestamp(), captureLibraryState))
+                    {
                         Caches.Publish();
+                        Dds?.Publish();
+                    }
                 }
                 catch (Exception error) { Logger.ReportException(error, "telemetry publication", true); }
             }
@@ -530,6 +537,8 @@ namespace FixWorld
         private void DisposeCore()
         {
             telemetryCapture?.Dispose();
+            Patches.TextureHooks.Uninstall();
+            Dds?.Dispose();
             Patches.LoadingHooks.Uninstall();
             Loading?.Dispose();
             // Failed attachment precedes cache thread binding. Normal quit is on

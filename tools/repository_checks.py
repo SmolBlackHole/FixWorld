@@ -65,6 +65,7 @@ TEXT_SUFFIXES = frozenset(
 ALLOWED_TRACKED_BINARIES = frozenset(
     {
         Path("mod/FixWorld/Mods/FixWorld/Tools/Doorstop-4.4.0/winhttp.dll"),
+        Path("mod/FixWorld/Mods/FixWorld/Tools/Windows-x64/texconv.exe"),
     }
 )
 FORBIDDEN_TRACKED_SUFFIXES = frozenset(

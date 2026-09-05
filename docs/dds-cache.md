@@ -2,103 +2,117 @@
 
 Parent: [Documentation index](README.md)
 
-FixWorld caches eligible mod textures as BC7 DDS so later launches can skip
-repeated PNG or JPEG decoding, mipmap generation, and runtime compression. A
-cache failure must never change game content or prevent the original texture
-from loading.
+FixWorld caches eligible PNG/JPEG mod textures as BC7 DDS packs. A later launch
+loads their compressed mip data directly into Unity, avoiding image decoding,
+mipmap generation and runtime compression. RimWorld still owns discovery,
+content order and the resulting textures. Shipped DDS files keep RimWorld's
+native loader; failed or unsupported cache entries use the source texture.
 
-## Measured pilot baseline
+## Fork ownership
 
-The current 88-mod reference list contains 10,460 reusable DDS entries in 62
-per-mod packs. Recent fully warm runs spend about 0.3 seconds in texture loading
-and about 0.1 seconds reading packed DDS data. Earlier measurements of the
-loose-file implementation reduced a roughly 21.16-second source-texture path to
-2.24 through 2.51 seconds with a complete cache. The current packed cache is
-about 1.6 GiB.
+- `TextureHooks` installs one early Harmony adapter for content discovery and
+  texture loading. Normal mod attachment does not install a second copy.
+- `TextureDdsCache` owns discovery plans, the process-lifetime serial background
+  task and maintenance. It does not depend on the archived loader or scheduler.
+- The shared `CacheStore` caches mapped pack readers on Unity's main thread.
+  The DDS service owns their disposal, releases all mappings before background
+  publication and does not own/destroy textures already given to RimWorld.
+- `DdsPackStore` owns the persistent disk index and immutable discovery snapshots.
+  This is file-format state, not a second general-purpose cache framework.
+- `fixworld.dds` publishes typed snapshots through the shared telemetry store.
+  The same presenter feeds the diagnostics window, logs and JSONL capture.
+  Cached profiler slots measure discovery, uploads and completed build durations.
 
-These numbers describe one machine, one mod list, and one cache identity. They
-are not a general performance guarantee. Raw runs and comparison rules belong
-to the benchmark data, not this document.
+Only the main thread uses Unity. The worker handles files and the external
+converter, survives colony/menu transitions, and stops on runtime shutdown.
+Cancellation terminates texconv; final store disposal belongs to the worker if
+it is still unwinding. No timeout disposes resources underneath an active job.
 
-Rebuilding 8,250 missing entries into 52 packs took 282 seconds in the
-background with one active converter. Reading 256 MiB of packed data ahead of
-the Runtime was neutral for total startup time on the reference NVMe. Slow
-storage requires separate measurements.
+## Validity and publication
 
-## Validity
+`index.json` records package/source path, source length and modification time,
+source hash, converter hash, artifact slice and last use. Startup freshness uses
+size/time plus converter identity, not a full source hash on every launch.
+Changed entries are converted again. The existing
+`bc7-unorm-gpu-mips-v1-mod-pack` identity and schema 2 remain readable.
 
-`index.json` records the source path, source size and modification time, content
-hash, converter identity, output artifact, and last use. Size and modification
-time provide the fast startup path. A changed source is hashed before FixWorld
-decides whether conversion is actually required
+Writes use a temporary file, flush and atomic replacement with
+`index.backup.json`. Each rebuilt pack gets a unique artifact name, including
+repairs with unchanged source stamps. A corrupt cached DDS falls back immediately
+and becomes a background rebuild candidate. Slice bounds, BC7/DX10 2D format,
+dimensions, mip count and exact payload length are checked before Unity upload.
 
-Index publication uses a temporary file, flush, and atomic replacement. The
-previous index remains available as `index.backup.json`. Missing, corrupt, or
-incompatible entries are cache misses and fall back to the original texture
+Only eligible dimensions are converted. Unsupported images and non-divisible
+dimensions remain on RimWorld's path. Disabling RimWorld texture compression or
+lacking BC7 support also leaves source texture loading to RimWorld.
 
-The cache identity includes every option that can affect pixels. The current
-identity also distinguishes sRGB handling so older DDS files that could render
-too dark are rebuilt rather than reused
+## Background builds and controls
 
-## Build and maintenance
+Missing entries are prepared after the fork reaches Ready. One below-normal
+worker invokes one converter at a time, using the established BC7_UNORM,
+ignore-sRGB, vertical-flip and mip-count settings. Existing cache hits remain
+usable if texconv is unavailable. Budget maintenance also runs on warm starts
+with no conversions. There is no automatic migration/deletion of the old loose
+`dds-v1` cache and no archived FixWorld.Tool dependency.
 
-Cache validation occurs during loading. Missing DDS files are built later as
-low-priority background jobs after the menu is usable. Workers may perform file
-and conversion work, but publication remains ordered and atomic. Warm access
-timestamps are updated per pack at most every 12 hours, avoiding a complete
-manifest rewrite on every launch.
+Open **Mod Options -> FixWorld -> dds**, or the in-game FixWorld main-bar entry:
 
-The default disk limit is 6 GiB and can be changed between 1 and 64 GiB in the
-FixWorld settings. FixWorld also keeps at least 10 GiB of free disk space.
-`FIXWORLD_DDS_CACHE_MAX_GIB` provides an explicit test override
+- **Clear DDS cache** asks for confirmation, removes generated packs, and leaves
+  source textures and already loaded game textures alone. Restart to rebuild.
+- **Retry DDS builds** restarts failed mod builds. Both controls are unavailable
+  during startup or while the worker is active.
 
-When space is insufficient or `texconv` is unavailable, FixWorld loads the
-original texture. Removed sources and disabled mods become cleanup candidates.
-Least-recently-used entries are evicted when the configured limit is exceeded
+Defaults: 6 GiB cache budget and 10 GiB minimum free space. Current overrides:
 
-After an upgrade from the loose-file pilot cache, FixWorld removes the owned
-`dds-v1` directory automatically. The migration waits for the new pack builds
-and runs as a low-priority background I/O job, so deleting thousands of old
-files does not extend the startup path. It is idempotent and is skipped when a
-custom active cache root cannot be mapped safely to the standard legacy sibling
+| Variable | Meaning |
+| --- | --- |
+| `FIXWORLD_DDS_CACHE=0` | Disable the DDS cache |
+| `FIXWORLD_DDS_CACHE_ROOT` | Dedicated cache directory |
+| `FIXWORLD_DDS_CACHE_MAX_GIB` | Positive cache budget |
+| `FIXWORLD_DDS_CACHE_MIN_FREE_GIB` | Positive free-space reserve |
+| `FIXWORLD_TEXCONV_PATH` | Explicit converter executable |
 
-Inspect or remove that legacy cache manually without Python:
+The fork does not yet expose a cache-size settings slider. Use a dedicated
+directory for a root override, never a directory containing unrelated files.
 
-```powershell
-.\Tools\Windows-x64\FixWorld.Tool.exe dds-cache status
-.\Tools\Windows-x64\FixWorld.Tool.exe dds-cache clean
-```
+The Windows package contains the pinned DirectXTex texconv executable and MIT
+license. SHA-256: `DCFDEC10244E02CF5037FBA089C55FB7E1326B1C8181742D77D15FA5CB5EEF06`.
+See [third-party notices](../THIRD_PARTY_NOTICES.md). Linux creation is unverified.
 
-`status` is read-only. `clean` removes the complete FixWorld-owned legacy
-`dds-v1` directory and refuses to run while RimWorld is active
+## Verification, 2026-09-05
 
-## Converter boundary
+79 net472 contracts cover disk-index roundtrips, freshness, writer exclusion,
+backup recovery, malformed slices, publication, eviction/clear, exact BC7
+payload sizes, converter arguments, Unicode paths, Windows quoting and actual
+child-process cancellation. These tests use a converter fixture, not Unity.
 
-Windows builds bundle `texconv.exe` from DirectXTex. Only the typed tool wrapper
-knows its command-line arguments. Runtime code passes paths and conversion
-requirements rather than starting the process directly
+Native fork run: `temp/dds-fork-native/Player.log`, PID 39152,
+telemetry session `d681f13b7578488ea9f49b1bf36a2a0f`:
 
-The bundled DirectXTex build and license are documented in
-[third-party notices](../THIRD_PARTY_NOTICES.md). Linux conversion is not yet
-implemented. Existing DDS files may be platform-neutral, but cache creation
-still requires an explicitly supported converter backend
+- 10,471 successful DDS uploads from 63 mapped packs, zero DDS failures.
+- 167 initial misses: 162 excluded dimensions, 5 newly built entries.
+- Upload scopes total 1,731.11 ms; reader creation 152.44 ms; discovery 397.87 ms.
+- Background builds total 1,370 ms. Cache size 1,700,168,976 bytes.
+- Ready/main menu reached. Shared callback error count remained zero.
 
-## BC7 quality checks
+This proves the restored cache-hit and small background-build paths, not a
+controlled total-startup speedup or a complete visual audit. Native cache-button
+actions and colony/menu transitions during a long build remain separate checks.
+The existing HugsLib ModOptions patch warning appears in both the preceding UI
+run and this DDS run; it is not a newly introduced DDS error.
 
-An automated comparison decoded 10,344 packed BC7 top mip levels and compared
-them with their PNG or JPEG sources. Mean luminance ratios remained close to
-1.000 with and without PNG gamma, sRGB, or ICC metadata. The reported darker
-runtime appearance therefore still requires a named affected texture and an
-in-game check of Unity sampling, alpha handling, and generated mip levels.
+## Historical results, not fork benchmarks
 
-A 40-texture converter sample took 956 ms with normal GPU BC7, 674 ms with quick
-GPU BC7, and 21.9 seconds on the CPU. Quick mode increased mean top-level RGBA
-error from 0.291 to 0.456 values out of 255. Normal GPU quality remains the
-default until the runtime appearance issue is resolved.
+The archived pilot reported about 21.16 seconds for source textures versus
+2.24-2.51 seconds with a complete loose-file cache. An 88-mod pack experiment
+reported 10,460 entries in 62 packs, about 1.6 GiB. Rebuilding 8,250 entries took
+282 seconds with one active converter. These measurements use different scopes
+and runs and cannot be compared directly with the fork upload scope above.
 
-## Measurement rules
+Archived image comparisons found mean top-level luminance near 1.000 across
+10,344 BC7 textures. A reported darker in-game texture still needs a named
+example and Unity sampling/alpha/mip inspection. GPU quality remains unchanged.
 
-Cold application cache, warm application cache, and warm operating-system file
-cache are different states. A cache build warms the OS cache and therefore does
-not count as an independent cold follow-up run. A/B comparisons must use the
-same RimWorld build, mod list, source fixture, cache identity, and worker policy
+Cold application cache, warm application cache and warm OS file cache are
+different states. Cache creation warms the OS cache; a subsequent launch is
+not an independent cold run.

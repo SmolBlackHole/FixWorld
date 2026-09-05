@@ -31,7 +31,8 @@ class BuildTests(unittest.TestCase):
             root = Path(directory)
             content, output = root / "content", root / "output"
             required = {
-                "About/About.xml", "LoadFolders.xml", "Tools/Doorstop-4.4.0/winhttp.dll"
+                "About/About.xml", "LoadFolders.xml", "Tools/Doorstop-4.4.0/winhttp.dll",
+                "Tools/Windows-x64/texconv.exe", "Tools/DirectXTex-LICENSE.txt"
             }
             for name in required | {"v1.6/Assemblies/Old.dll", "Tools/secret.log", "Source/private.cs"}:
                 path = content / name

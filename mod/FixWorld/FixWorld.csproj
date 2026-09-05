@@ -121,6 +121,8 @@
         <Compile Include="Source\Profiling\*.cs" />
         <Compile Include="Source\Telemetry\*.cs" />
         <Compile Include="Source\Caching\*.cs" />
+        <Compile Include="Source\Textures\*.cs" />
+        <Compile Include="Source\Patches\TextureHooks.cs" />
         <Compile Include="Source\Core\Dialog_LibraryUpdateRequired.cs" />
         <Compile Include="Source\Core\FixWorldMod.cs" />
         <Compile Include="Source\Core\FixWorldTextures.cs" />

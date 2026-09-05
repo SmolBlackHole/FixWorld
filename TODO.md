@@ -20,9 +20,12 @@ The approved [slice plan](docs/fork-refactor-plan.md) controls execution.
       Implemented and loading screen checked natively, including the deferred
       background. Main-bar interaction/scrolling and the cross-reference guard
       still need native acceptance. See docs/diagnostics.md.
-- [ ] Restore DDS after UI acceptance, using the fork's shared services and
-      proven worker lifetime/maintenance behavior. No general scheduler rewrite
-      is required ahead of it by the current approved continuation.
+- [x] Restore DDS using the fork's shared cache, telemetry and profiler, with
+      process-lifetime worker and maintenance controls. Latest user order started
+      DDS before the remaining UI acceptance checks. 79 DDS contracts and native
+      10,471-hit/5-build smoke passed. See [DDS](docs/dds-cache.md).
+- [ ] Native DDS maintenance buttons and colony/menu transitions during a long
+      background build. No general scheduler rewrite is required ahead of DDS.
 - [x] Local JSONL capture and Python collector: shared contracts, counter metadata,
       local tests and Release build. See [harness](docs/harness.md).
 - [ ] In-game capture acceptance after deployment: manually launched game,

@@ -32,6 +32,7 @@ def check_contracts() -> None:
         ("Telemetry.Contracts", ()),
         ("Caching.Contracts", ()),
         ("News.Contracts", ()),
+        ("Dds.Contracts", ()),
         ("Bootstrap.Contracts", ("--", str(OUTPUT / "FixWorld.Restart.exe"))),
     ):
         subprocess.run(
