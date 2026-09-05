@@ -1,6 +1,9 @@
 title: FixWorld
 description: |-
-    FixWorld is being rewritten on a HugsLib-derived foundation for RimWorld 1.6.
-    This is an unvalidated development snapshot. Requires Harmony.
-    Project: https://github.com/SmolBlackHole/FixWorld
+    FixWorld is a performance and stability mod for RimWorld. It is designed to
+    fix various issues in the game, improve performance, and enhance stability.
+    The mod is currently in development and may not be fully functional or stable.
+    Users are encouraged to report any issues they encounter on the project's GitHub page.
+
+    The project can be found at: https://github.com/SmolBlackHole/FixWorld
 visibility: 0
