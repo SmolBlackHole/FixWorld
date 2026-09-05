@@ -25,12 +25,9 @@ def check_contracts() -> None:
     dotnet = find_dotnet_sdk()
     environment = os.environ.copy()
     environment.update({"DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_NOLOGO": "1"})
-    for suite, arguments, shadow_mode in (
-        ("Shared.Contracts", (), "1"),
-        ("Pathfinding.Contracts", (), "1"),
-        ("Pathfinding.Contracts", ("--", "--observer-disabled"), "0"),
+    for suite, arguments in (
+        ("Shared.Contracts", ()),
     ):
-        environment["FIXWORLD_SHADOW_GRID"] = shadow_mode
         subprocess.run(
             (
                 dotnet,

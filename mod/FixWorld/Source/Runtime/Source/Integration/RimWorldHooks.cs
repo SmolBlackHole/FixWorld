@@ -1,5 +1,4 @@
 using System;
-using FixWorld.Pathfinding;
 using HarmonyLib;
 using Verse;
 
@@ -92,22 +91,9 @@ namespace FixWorld.Integration
                 }
 
                 RuntimeProfilingHookGroup.Install();
-                if (PathfindingProfilingHookGroup.Install())
-                {
-                    Log.Message(ShadowGridObserver.Enabled
-                        ? "[FixWorld] Shadow grid observer active (binary/cardinal, no gameplay queries)."
-                        : "[FixWorld] Shadow grid observer disabled by FIXWORLD_SHADOW_GRID=0.");
-                }
+                PathfindingProfilingHookGroup.Install();
                 return true;
             }
-        }
-
-        internal static bool IsFixWorldOwner(string owner)
-        {
-            return string.Equals(owner, OwnerPrefix, StringComparison.Ordinal) ||
-                   owner?.StartsWith(
-                       OwnerPrefix + ".",
-                       StringComparison.Ordinal) == true;
         }
 
         internal static void Uninstall()

@@ -7,5 +7,4 @@
     <Project Path="mod/FixWorld/Source/Shared/FixWorld.Shared.csproj" />
     <Project Path="mod/FixWorld/Tests/Shared.Contracts/FixWorld.Shared.Contracts.csproj" />
     <Project Path="mod/FixWorld/Tests/Profiling.Benchmarks/FixWorld.Profiling.Benchmarks.csproj" />
-    <Project Path="mod/FixWorld/Tests/Pathfinding.Contracts/FixWorld.Pathfinding.Contracts.csproj" />
 </Solution>

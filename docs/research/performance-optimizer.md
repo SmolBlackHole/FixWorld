@@ -253,6 +253,19 @@ partially applied optimization set.
 
 ## Verification notes
 
+### Pathfinding follow-up (2026-09-05)
+
+The bundled sources contain no direct `PathFinder`, `Reachability`, or
+connectivity-grid replacement. Their useful precedent for this track is bounded
+consumer-scoped caching, not a ready-made navigation algorithm. Tick-based cache
+expiry cannot replace topology invalidation after walls, doors, or fences change.
+
+`Watcher.cs` calculates TPS from elapsed wall time and changes in
+`GenTicks.TicksAbs`. FixWorld uses an independent `TickRateCounter` that counts
+completed tick callbacks over stopwatch time instead, so developer game-clock
+jumps do not inflate throughput. Publication uses roughly one-second windows;
+pausing clears the displayed rate. No Watcher implementation was copied.
+
 Claims above were checked against the decompiled source files listed in each
 section. No external source or binary behavior was assumed. The source is a
 decompilation captured on 2026-08-30; exact method signatures and available

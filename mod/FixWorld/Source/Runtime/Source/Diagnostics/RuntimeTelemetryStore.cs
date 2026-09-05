@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Runtime.Serialization;
 using System.Threading;
 using FixWorld.Loading;
-using FixWorld.Pathfinding;
 using FixWorld.PlayData;
 using FixWorld.Preloader;
 using FixWorld.Profiling;
@@ -14,6 +13,10 @@ namespace FixWorld.Diagnostics
 {
     internal sealed class RuntimeTelemetryStore : IDisposable
     {
+        // Updated and captured on the main thread; independent of profiler sampling.
+        private readonly TickRateCounter tickRate = new(Stopwatch.Frequency);
+        internal void ResetTickRate(long timestamp) => tickRate.Reset(timestamp);
+        internal void UpdateTickRate(long timestamp, bool paused) => tickRate.Update(timestamp, paused);
         private const int TargetHistorySetCount = 1024;
         private const int TargetHistoryWays = 4;
         private const int TargetHistoryCapacity =
@@ -69,26 +72,6 @@ namespace FixWorld.Diagnostics
         private long pathUniqueExpandedCells;
         private long reachabilityCacheHits;
         private long reachabilityCacheMisses;
-        private long shadowChangedCells;
-        private long shadowChangedLeaves;
-        private long shadowChangedRegions;
-        private long shadowChangedSuperChunks;
-        private long shadowFailures;
-        private long shadowFullUpdates;
-        private long shadowIncrementalUpdates;
-        private long shadowRebuiltLeaves;
-        private long shadowRebuiltRegions;
-        private long shadowRebuiltSuperChunks;
-        private long shadowSampledCells;
-        private long shadowQueriesAnswered;
-        private long shadowQueriesConnected;
-        private long shadowQueriesUnavailable;
-        private long shadowQueriesEligible;
-        private long shadowQueriesEligibleNegative;
-        private long shadowQueriesMismatched;
-        private long shadowQueriesNegativeMatches;
-        private readonly long[] shadowQueryUnavailableReasons =
-            new long[(int)ShadowQueryUnavailableReason.Count];
         private double estimatedDurationMilliseconds;
         private LoadingLiveState liveState;
         private Profiler<PlayDataLoadStage> profiler;
@@ -228,13 +211,27 @@ namespace FixWorld.Diagnostics
             return true;
         }
 
-        internal long StartRuntimeHotpath(RuntimeHotpath hotpath) =>
-            runtimeSlots[(int)hotpath].StartTimestamp();
+        internal long StartRuntimeHotpath(RuntimeHotpath hotpath)
+        {
+            if (hotpath == RuntimeHotpath.Tick && tickRate.IsPaused)
+            {
+                tickRate.Update(Stopwatch.GetTimestamp(), paused: false);
+            }
+
+            return runtimeSlots[(int)hotpath].StartTimestamp();
+        }
 
         internal void StopRuntimeHotpath(
             RuntimeHotpath hotpath,
-            long startedAt) =>
+            long startedAt)
+        {
+            if (hotpath == RuntimeHotpath.Tick)
+            {
+                tickRate.RecordTick();
+            }
+
             runtimeSlots[(int)hotpath].StopTimestamp(startedAt);
+        }
 
         internal void ObservePathBatch(
             int requests,
@@ -324,89 +321,6 @@ namespace FixWorld.Diagnostics
             }
         }
 
-        internal void ObserveShadowGrid(
-            bool fullRebuild,
-            int sampledCells,
-            int changedCells,
-            in ShadowRebuildStats stats)
-        {
-            if (fullRebuild)
-            {
-                Interlocked.Increment(ref shadowFullUpdates);
-            }
-            else
-            {
-                Interlocked.Increment(ref shadowIncrementalUpdates);
-            }
-
-            Interlocked.Add(ref shadowSampledCells, sampledCells);
-            Interlocked.Add(ref shadowChangedCells, changedCells);
-            Interlocked.Add(ref shadowRebuiltLeaves, stats.RebuiltLeaves);
-            Interlocked.Add(ref shadowChangedLeaves, stats.ChangedLeaves);
-            Interlocked.Add(ref shadowRebuiltRegions, stats.RebuiltRegions);
-            Interlocked.Add(ref shadowChangedRegions, stats.ChangedRegions);
-            Interlocked.Add(
-                ref shadowRebuiltSuperChunks,
-                stats.RebuiltSuperChunks);
-            Interlocked.Add(
-                ref shadowChangedSuperChunks,
-                stats.ChangedSuperChunks);
-        }
-
-        internal void ObserveShadowGridFailure() =>
-            Interlocked.Increment(ref shadowFailures);
-
-        internal void ObserveShadowGridQuery(bool answered, bool connected)
-        {
-            if (!answered)
-            {
-                ObserveShadowGridUnavailable(
-                    ShadowQueryUnavailableReason.GridUnavailable);
-                return;
-            }
-
-            Interlocked.Increment(ref shadowQueriesAnswered);
-            if (connected)
-            {
-                Interlocked.Increment(ref shadowQueriesConnected);
-            }
-        }
-
-        internal void ObserveShadowGridQueryEligible(bool vanillaResult)
-        {
-            Interlocked.Increment(ref shadowQueriesEligible);
-            if (!vanillaResult)
-            {
-                Interlocked.Increment(ref shadowQueriesEligibleNegative);
-            }
-        }
-
-        internal void ObserveShadowGridComparison(
-            bool mismatched,
-            bool vanillaResult)
-        {
-            if (mismatched)
-            {
-                Interlocked.Increment(ref shadowQueriesMismatched);
-            }
-            else if (!vanillaResult)
-            {
-                Interlocked.Increment(ref shadowQueriesNegativeMatches);
-            }
-        }
-
-        internal void ObserveShadowGridUnavailable(
-            ShadowQueryUnavailableReason reason)
-        {
-            Interlocked.Increment(ref shadowQueriesUnavailable);
-            int index = (int)reason;
-            if ((uint)index < (uint)shadowQueryUnavailableReasons.Length &&
-                index != (int)ShadowQueryUnavailableReason.None)
-            {
-                Interlocked.Increment(ref shadowQueryUnavailableReasons[index]);
-            }
-        }
-
         internal RuntimeProfilingSnapshot CaptureRuntimeProfiling(
             bool publish = false) =>
             new(
@@ -449,26 +363,7 @@ namespace FixWorld.Diagnostics
                         Interlocked.Read(ref pathMaximumChunks8),
                         Interlocked.Read(ref pathMaximumChunks16),
                         Interlocked.Read(ref pathMaximumChunks32))),
-                new RuntimeShadowGridSnapshot(
-                    Interlocked.Read(ref shadowFullUpdates),
-                    Interlocked.Read(ref shadowIncrementalUpdates),
-                    Interlocked.Read(ref shadowSampledCells),
-                    Interlocked.Read(ref shadowChangedCells),
-                    Interlocked.Read(ref shadowRebuiltLeaves),
-                    Interlocked.Read(ref shadowChangedLeaves),
-                    Interlocked.Read(ref shadowRebuiltRegions),
-                    Interlocked.Read(ref shadowChangedRegions),
-                    Interlocked.Read(ref shadowRebuiltSuperChunks),
-                    Interlocked.Read(ref shadowChangedSuperChunks),
-                    Interlocked.Read(ref shadowFailures),
-                    Interlocked.Read(ref shadowQueriesAnswered),
-                    Interlocked.Read(ref shadowQueriesConnected),
-                    Interlocked.Read(ref shadowQueriesUnavailable),
-                    Interlocked.Read(ref shadowQueriesEligible),
-                    Interlocked.Read(ref shadowQueriesMismatched),
-                    Interlocked.Read(ref shadowQueriesEligibleNegative),
-                    Interlocked.Read(ref shadowQueriesNegativeMatches),
-                    CaptureCounters(shadowQueryUnavailableReasons)));
+                tickRate.TPS, tickRate.IsPaused);
 
         internal RuntimeDiagnosticsSnapshot Complete(
             string source,
@@ -675,7 +570,7 @@ namespace FixWorld.Diagnostics
 
         private static long[] CaptureCounters(long[] counters)
         {
-            var snapshot = new long[counters.Length];
+            long[] snapshot = new long[counters.Length];
             for (int index = 0; index < snapshot.Length; index++)
             {
                 snapshot[index] = Interlocked.Read(ref counters[index]);

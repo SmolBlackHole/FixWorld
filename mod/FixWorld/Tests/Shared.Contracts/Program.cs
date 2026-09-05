@@ -31,6 +31,7 @@ internal static class Program
             BufferedProfilingPublishesSnapshots();
             ProfilingCanBeDisabled();
             ProfilerOptionsRejectInvalidValues();
+            TickRateContracts.Run(Assert);
             EventBusKeepsChannelsTypedAndBounded();
             EventBusCoalescesLatestValues();
             EventBusAcceptsConcurrentPublishers();

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
-using System.Runtime.CompilerServices;
+using FixWorld.Pathfinding;
 using HarmonyLib;
 using Verse;
 
@@ -11,19 +11,15 @@ namespace FixWorld.Integration
     internal static class PathfindingOptimizationHooks
     {
         internal static readonly Type[] PatchTypes =
-        {
+        [
             typeof(ConnectivityUnionPatch)
-        };
+        ];
 
         [HarmonyPatch(
             typeof(ConnectivitySource),
             nameof(ConnectivitySource.UpdateIncrementally))]
         private static class ConnectivityUnionPatch
         {
-            private static readonly ConditionalWeakTable<
-                ConnectivitySource,
-                VisitMap> VisitMaps = new();
-
             [HarmonyTranspiler]
             private static IEnumerable<CodeInstruction> Transpiler(
                 IEnumerable<CodeInstruction> instructions,
@@ -48,22 +44,22 @@ namespace FixWorld.Integration
                         typeof(HashSet<IntVec3>).FullName,
                         nameof(HashSet<IntVec3>.Add));
                 MethodInfo beginUpdate = AccessTools.DeclaredMethod(
-                    typeof(ConnectivityUnionPatch),
-                    nameof(BeginUpdate)) ??
+                    typeof(ConnectivityUpdateDeduplication),
+                    nameof(ConnectivityUpdateDeduplication.BeginUpdate)) ??
                     throw new MissingMethodException(
-                        typeof(ConnectivityUnionPatch).FullName,
-                        nameof(BeginUpdate));
+                        typeof(ConnectivityUpdateDeduplication).FullName,
+                        nameof(ConnectivityUpdateDeduplication.BeginUpdate));
                 MethodInfo tryVisit = AccessTools.DeclaredMethod(
-                    typeof(ConnectivityUnionPatch),
-                    nameof(TryVisit)) ??
+                    typeof(ConnectivityUpdateDeduplication),
+                    nameof(ConnectivityUpdateDeduplication.TryVisit)) ??
                     throw new MissingMethodException(
-                        typeof(ConnectivityUnionPatch).FullName,
-                        nameof(TryVisit));
+                        typeof(ConnectivityUpdateDeduplication).FullName,
+                        nameof(ConnectivityUpdateDeduplication.TryVisit));
 
                 var rewritten =
                     new List<CodeInstruction>(instructions);
                 LocalBuilder visitMap = generator.DeclareLocal(
-                    typeof(VisitMap));
+                    typeof(ConnectivityUpdateDeduplication.VisitMap));
                 int clearIndex = -1;
                 int addIndex = -1;
                 int checkedCellLoads = 0;
@@ -133,80 +129,12 @@ namespace FixWorld.Integration
                 first.labels.Clear();
                 rewritten.InsertRange(
                     0,
-                    new[]
-                    {
+                    [
                         loadInstance,
                         new CodeInstruction(OpCodes.Call, beginUpdate),
                         new CodeInstruction(OpCodes.Stloc, visitMap)
-                    });
+                    ]);
                 return rewritten;
-            }
-
-            private static VisitMap BeginUpdate(ConnectivitySource source)
-            {
-                VisitMap visitMap = VisitMaps.GetValue(
-                    source,
-                    CreateVisitMap);
-                visitMap.BeginUpdate();
-                return visitMap;
-            }
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            private static bool TryVisit(VisitMap visitMap, IntVec3 cell) =>
-                visitMap.TryVisit(cell);
-
-            private static VisitMap CreateVisitMap(
-                ConnectivitySource source)
-            {
-                FieldInfo mapField = AccessTools.Field(
-                    typeof(SimplePathFinderDataSource<CellConnection>),
-                    "map") ??
-                    throw new MissingFieldException(
-                        typeof(SimplePathFinderDataSource<CellConnection>)
-                            .FullName,
-                        "map");
-                var map = (Map)mapField.GetValue(source);
-                return new VisitMap(
-                    map.cellIndices.SizeX,
-                    map.cellIndices.NumGridCells);
-            }
-
-            private sealed class VisitMap
-            {
-                private readonly int width;
-                private readonly int[] generations;
-                private int generation;
-
-                internal VisitMap(int width, int cellCount)
-                {
-                    this.width = width;
-                    generations = new int[cellCount];
-                }
-
-                internal void BeginUpdate()
-                {
-                    if (generation == int.MaxValue)
-                    {
-                        Array.Clear(generations, 0, generations.Length);
-                        generation = 1;
-                        return;
-                    }
-
-                    generation++;
-                }
-
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                internal bool TryVisit(IntVec3 cell)
-                {
-                    int index = (cell.z * width) + cell.x;
-                    if (generations[index] == generation)
-                    {
-                        return false;
-                    }
-
-                    generations[index] = generation;
-                    return true;
-                }
             }
         }
     }

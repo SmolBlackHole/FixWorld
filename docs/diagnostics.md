@@ -101,6 +101,8 @@ loading or DDS features.
 
 Readers use the last immutable published snapshot and its monotonic publication
 timestamp. Formatting happens only when a consumer asks for diagnostics.
+The read-only snapshot DTOs use primary constructors without changing their
+get-only API or equality behavior.
 While a game is active, FixWorld also writes a cumulative
 `[FixWorld.Profile]` entry to `Player.log` every 30 seconds and when the game
 ends. Each hotpath uses `calls,totalMs,avgMs,maxMs`; pathfinding counters follow
@@ -127,37 +129,14 @@ copied only when diagnostics are read or published.
 profiled as normal hotpaths. Their reported totals expose the observer cost in
 the same runtime snapshot as the game work being studied.
 
-The experimental shadow grid uses that same profiler for full observations,
-incremental observations, and nested rebuilds. `Shadow grid` shows full/incremental
-update counts, sampled/changed cells, rebuilt/changed chunks at all three levels,
-and failures. These counters also appear in the existing `shadow=` log fields.
-Rebuild time is included in the full/incremental totals. The observer does not
-answer gameplay queries or claim a RimWorld reachability match rate. See
-[the runtime shadow observer](pathfinding.md#runtime-shadow-observer) for scope,
-activation, and the live-test procedure.
-
-The global binary graph now samples actual vanilla `CanReach` results, at most
-one candidate per game tick. Counters distinguish eligible candidates, answered
-comparisons, connected graph answers, unavailable samples, and mismatches.
-`ShadowGridQuery` measures sampled adapter/comparison work, not candidate filtering.
-The narrow profile and module ownership are documented under
-[the comparison profile](pathfinding.md#first-rimworld-comparison-profile).
-No result is used to accept, reject, or modify a path request. Zero mismatches
-without answered samples is not validation.
-
-The Shadow grid section also lists first-failure unavailable reasons and explicit
-eligible-negative/negative-match counters. Manual two-cell comparisons use the
-developer action **FixWorld / Compare shadow reachability** and write separate
-`[FixWorld.ShadowTest]` lines, without mixing into organic sample counters.
-Selection logs `queued`; resume simulation to execute after a regular gather.
-Transiently stale data retains the pending request rather than requiring another
-click. See
-[the negative-case procedure](pathfinding.md#explicit-negative-case-test).
+The removed super-grid experiment and its final measurements are documented in
+[Pathfinding optimization](pathfinding.md#rejected-81632-super-grid-experiment).
+It no longer adds hotpaths, snapshots, UI sections or gameplay hooks.
 
 ## In-game UI
 
 The normal Mod presents Startup, Preloader, Stages, DDS cache, Runtime, Issues,
-Hotpaths, Pathfinding, and Shadow grid sections in a resizable window. Dense rows scroll
+Hotpaths, and Pathfinding sections in a resizable window. Dense rows scroll
 independently. The Runtime retains the formatted startup result and appends the
 latest published runtime snapshot when requested. An open window polls the text
 contract at most every 500 ms. A closed window does no polling or formatting
@@ -180,7 +159,9 @@ allocate.
 
 Stage timings show where startup time is spent, but they do not attribute nested
 work to individual mods or methods. Runtime hotpath totals are inclusive and can
-overlap. Queue delay is currently measured in game ticks, not wall-clock time.
+overlap. Queue delay is still measured in game ticks, but TPS is independently
+computed from completed ticks over a roughly one-second wall-clock window.
+Large game-clock jumps do not inflate that rate, and paused windows report zero.
 The target-repetition tracker measures reuse candidates, not paths that are
 already proven interchangeable. Its key intentionally excludes the start cell
 but includes the map, target identity, and end mode. Constraint distributions

@@ -13,7 +13,7 @@ namespace FixWorld.Runtime
 {
     internal static class RuntimeHost
     {
-        private static readonly object Sync = new object();
+        private static readonly object Sync = new();
         private static RuntimeContext current;
         private static bool shutdown;
 
@@ -39,7 +39,7 @@ namespace FixWorld.Runtime
 
                 PreloaderTimelineSnapshot timeline =
                     PreloaderTimelineState.Capture();
-                RuntimeContext created = new RuntimeContext();
+                var created = new RuntimeContext();
                 try
                 {
                     Volatile.Write(ref current, created);
@@ -163,25 +163,6 @@ namespace FixWorld.Runtime
         internal static void ObservePathDataUpdate(
             in PathSpatialObservation observation) =>
             Volatile.Read(ref current)?.ObservePathDataUpdate(in observation);
-
-        internal static void ObserveShadowGrid(Map map, List<IntVec3> deltas, bool fullRebuild) =>
-            Volatile.Read(ref current)?.ObserveShadowGrid(map, deltas, fullRebuild);
-
-        internal static void CompareShadowCells(Map map, IntVec3 start, IntVec3 target) =>
-            Volatile.Read(ref current)?.CompareShadowCells(map, start, target);
-
-        internal static void AfterPathDataGathered(Map map) =>
-            Volatile.Read(ref current)?.AfterPathDataGathered(map);
-
-        internal static void ObserveReachabilityComparison(
-            Map map,
-            IntVec3 start,
-            LocalTargetInfo target,
-            PathEndMode endMode,
-            TraverseParms parms,
-            bool actualResult) =>
-            Volatile.Read(ref current)?.ObserveReachabilityComparison(
-                map, start, target, endMode, parms, actualResult);
 
         internal static void ObserveReachabilityCache(bool hit) => Volatile.Read(ref current)?.ObserveReachabilityCache(hit);
 

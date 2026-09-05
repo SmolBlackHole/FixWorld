@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
-using FixWorld.Pathfinding;
 using FixWorld.Profiling;
 using FixWorld.Textures;
 
@@ -121,6 +120,8 @@ namespace FixWorld.Diagnostics
             text.AppendLine();
             text.AppendLine();
             text.AppendLine("Hotpaths");
+            text.AppendLine("  TPS: " + profiling.TicksPerSecond.ToString("F1", CultureInfo.InvariantCulture) +
+                (profiling.Paused ? " (paused)" : " (completed ticks / real second, ~1 s window)"));
             text.AppendLine(
                 "  Profiler: " + profiling.AggregationMode.ToString().ToLowerInvariant() +
                 ", snapshot age: " +
@@ -156,7 +157,6 @@ namespace FixWorld.Diagnostics
             }
 
             AppendPathfindingDetails(text, profiling.Pathfinding);
-            AppendShadowGridDetails(text, profiling.ShadowGrid);
             return text.ToString().TrimEnd();
         }
 
@@ -167,6 +167,10 @@ namespace FixWorld.Diagnostics
             StringBuilder text = new(3072);
             text.Append("[FixWorld.Profile] reason=");
             text.Append(reason);
+            text.Append("; tps=");
+            text.Append(profiling.TicksPerSecond.ToString("F1", CultureInfo.InvariantCulture));
+            text.Append("; paused=");
+            text.Append(profiling.Paused);
             text.Append("; mode=");
             text.Append(profiling.AggregationMode.ToString().ToLowerInvariant());
             text.Append("; snapshotAgeMs=");
@@ -276,57 +280,6 @@ namespace FixWorld.Diagnostics
             text.Append(spatial.Chunks16.ToString(CultureInfo.InvariantCulture));
             text.Append(",chunks32:");
             text.Append(spatial.Chunks32.ToString(CultureInfo.InvariantCulture));
-            RuntimeShadowGridSnapshot shadow = profiling.ShadowGrid;
-            text.Append("; shadow=full:");
-            text.Append(shadow.FullUpdates.ToString(CultureInfo.InvariantCulture));
-            text.Append(",incremental:");
-            text.Append(shadow.IncrementalUpdates.ToString(
-                CultureInfo.InvariantCulture));
-            text.Append(",sampled:");
-            text.Append(shadow.SampledCells.ToString(
-                CultureInfo.InvariantCulture));
-            text.Append(",changed:");
-            text.Append(shadow.ChangedCells.ToString(
-                CultureInfo.InvariantCulture));
-            text.Append(",rebuiltLeaves:");
-            text.Append(shadow.RebuiltLeaves.ToString(
-                CultureInfo.InvariantCulture));
-            text.Append(",changedLeaves:");
-            text.Append(shadow.ChangedLeaves.ToString(
-                CultureInfo.InvariantCulture));
-            text.Append(",rebuiltRegions:");
-            text.Append(shadow.RebuiltRegions.ToString(
-                CultureInfo.InvariantCulture));
-            text.Append(",changedRegions:");
-            text.Append(shadow.ChangedRegions.ToString(
-                CultureInfo.InvariantCulture));
-            text.Append(",rebuiltSuperChunks:");
-            text.Append(shadow.RebuiltSuperChunks.ToString(
-                CultureInfo.InvariantCulture));
-            text.Append(",changedSuperChunks:");
-            text.Append(shadow.ChangedSuperChunks.ToString(
-                CultureInfo.InvariantCulture));
-            text.Append(",failures:");
-            text.Append(shadow.Failures.ToString(CultureInfo.InvariantCulture));
-            text.Append(",queryAnswered:");
-            text.Append(shadow.QueriesAnswered.ToString(
-                CultureInfo.InvariantCulture));
-            text.Append(",queryConnected:");
-            text.Append(shadow.QueriesConnected.ToString(
-                CultureInfo.InvariantCulture));
-            text.Append(",queryUnavailable:");
-            text.Append(shadow.QueriesUnavailable.ToString(
-                CultureInfo.InvariantCulture));
-            text.Append(",queryEligible:");
-            text.Append(shadow.QueriesEligible.ToString(CultureInfo.InvariantCulture));
-            text.Append(",queryMismatched:");
-            text.Append(shadow.QueriesMismatched.ToString(CultureInfo.InvariantCulture));
-            text.Append(",queryEligibleNegative:");
-            text.Append(shadow.QueriesEligibleNegative.ToString(CultureInfo.InvariantCulture));
-            text.Append(",queryNegativeMatches:");
-            text.Append(shadow.QueriesNegativeMatches.ToString(CultureInfo.InvariantCulture));
-            text.Append(",queryUnavailableReasons:");
-            text.Append(FormatUnavailableReasons(shadow.QueryUnavailableReasons));
             return text.ToString();
         }
 
@@ -505,69 +458,6 @@ namespace FixWorld.Diagnostics
                 "% hit rate");
         }
 
-        private static void AppendShadowGridDetails(
-            StringBuilder text,
-            RuntimeShadowGridSnapshot shadow)
-        {
-            text.AppendLine();
-            text.AppendLine("Shadow grid");
-            text.AppendLine(
-                "  Configured: " +
-                (ShadowGridObserver.Enabled ? "enabled test" : "disabled") +
-                ", binary/cardinal observer only, gameplay unchanged");
-            text.AppendLine(
-                "  Updates: " + shadow.FullUpdates.ToString(
-                    CultureInfo.InvariantCulture) +
-                " full, " + shadow.IncrementalUpdates.ToString(
-                    CultureInfo.InvariantCulture) + " incremental");
-            text.AppendLine(
-                "  Cells: " + shadow.SampledCells.ToString(
-                    CultureInfo.InvariantCulture) + " sampled, " +
-                shadow.ChangedCells.ToString(CultureInfo.InvariantCulture) +
-                " changed");
-            text.AppendLine(
-                "  Leaves: " + shadow.RebuiltLeaves.ToString(
-                    CultureInfo.InvariantCulture) + " rebuilt, " +
-                shadow.ChangedLeaves.ToString(CultureInfo.InvariantCulture) +
-                " changed");
-            text.AppendLine(
-                "  Regions: " + shadow.RebuiltRegions.ToString(
-                    CultureInfo.InvariantCulture) + " rebuilt, " +
-                shadow.ChangedRegions.ToString(CultureInfo.InvariantCulture) +
-                " changed");
-            text.AppendLine(
-                "  Super-chunks: " + shadow.RebuiltSuperChunks.ToString(
-                    CultureInfo.InvariantCulture) + " rebuilt, " +
-                shadow.ChangedSuperChunks.ToString(
-                    CultureInfo.InvariantCulture) + " changed");
-            text.AppendLine(
-                "  Timing: nested Rebuild is included in full/incremental " +
-                "update timing");
-            text.AppendLine(
-                "  Queries: " + shadow.QueriesAnswered.ToString(
-                    CultureInfo.InvariantCulture) + " answered, " +
-                shadow.QueriesConnected.ToString(
-                    CultureInfo.InvariantCulture) + " connected, " +
-                shadow.QueriesUnavailable.ToString(
-                    CultureInfo.InvariantCulture) + " unavailable");
-            text.AppendLine(
-                "  Vanilla comparison: " + shadow.QueriesEligible.ToString(
-                    CultureInfo.InvariantCulture) + " eligible, " +
-                shadow.QueriesEligibleNegative.ToString(
-                    CultureInfo.InvariantCulture) + " eligible negative, " +
-                shadow.QueriesMismatched.ToString(
-                    CultureInfo.InvariantCulture) + " mismatched, " +
-                shadow.QueriesNegativeMatches.ToString(
-                    CultureInfo.InvariantCulture) +
-                " negative matches (sampled, observational only)");
-            text.AppendLine(
-                "  Unavailable reasons: " +
-                FormatUnavailableReasons(shadow.QueryUnavailableReasons));
-            text.AppendLine(
-                "  Failures: " + shadow.Failures.ToString(
-                    CultureInfo.InvariantCulture));
-        }
-
         private static string FormatPawnCategories(long[] counts) =>
             FormatCounts(
                 counts,
@@ -637,36 +527,6 @@ namespace FixWorld.Diagnostics
             return text.Length == 0 ? "none" : text.ToString();
         }
 
-        private static string FormatUnavailableReasons(long[] counts)
-        {
-            if (counts == null)
-            {
-                return "none";
-            }
-
-            var text = new StringBuilder(192);
-            int count = Math.Min(
-                counts.Length,
-                (int)ShadowQueryUnavailableReason.Count);
-            for (int index = 1; index < count; index++)
-            {
-                if (counts[index] == 0L)
-                {
-                    continue;
-                }
-
-                if (text.Length > 0)
-                {
-                    text.Append(", ");
-                }
-
-                text.Append(((ShadowQueryUnavailableReason)index).ToString());
-                text.Append(' ');
-                text.Append(counts[index].ToString(CultureInfo.InvariantCulture));
-            }
-
-            return text.Length == 0 ? "none" : text.ToString();
-        }
 
         private static string FormatChunkMeasurement(
             long total,
@@ -729,15 +589,9 @@ namespace FixWorld.Diagnostics
                 : "unavailable";
         }
 
-        private static string Milliseconds(double value)
-        {
-            return value.ToString("F1", CultureInfo.InvariantCulture) + "ms";
-        }
+        private static string Milliseconds(double value) => value.ToString("F1", CultureInfo.InvariantCulture) + "ms";
 
-        private static string OptionalMilliseconds(double? value)
-        {
-            return value.HasValue ? Milliseconds(value.Value) : "unavailable";
-        }
+        private static string OptionalMilliseconds(double? value) => value.HasValue ? Milliseconds(value.Value) : "unavailable";
 
         private static string Mebibytes(long bytes)
         {

@@ -178,78 +178,55 @@ namespace FixWorld.Diagnostics
             };
     }
 
-    internal readonly struct PathRequestObservation
+    internal readonly struct PathRequestObservation(
+        long targetKey,
+        int tick,
+        int distance,
+        PathRequestConstraint constraints,
+        PathRequestPawnCategory pawnCategory,
+        PathRequestTraversalMode traversalMode,
+        PathRequestEndMode endMode,
+        PathRequestTargetKind targetKind,
+        PathRequestLocality locality)
     {
-        internal PathRequestObservation(
-            long targetKey,
-            int tick,
-            int distance,
-            PathRequestConstraint constraints,
-            PathRequestPawnCategory pawnCategory,
-            PathRequestTraversalMode traversalMode,
-            PathRequestEndMode endMode,
-            PathRequestTargetKind targetKind,
-            PathRequestLocality locality)
-        {
-            TargetKey = targetKey;
-            Tick = tick;
-            Distance = distance;
-            Constraints = constraints;
-            PawnCategory = pawnCategory;
-            TraversalMode = traversalMode;
-            EndMode = endMode;
-            TargetKind = targetKind;
-            Locality = locality;
-        }
+        internal long TargetKey { get; } = targetKey;
 
-        internal long TargetKey { get; }
+        internal int Tick { get; } = tick;
 
-        internal int Tick { get; }
+        internal int Distance { get; } = distance;
 
-        internal int Distance { get; }
+        internal PathRequestConstraint Constraints { get; } = constraints;
 
-        internal PathRequestConstraint Constraints { get; }
+        internal PathRequestPawnCategory PawnCategory { get; } = pawnCategory;
 
-        internal PathRequestPawnCategory PawnCategory { get; }
+        internal PathRequestTraversalMode TraversalMode { get; } = traversalMode;
 
-        internal PathRequestTraversalMode TraversalMode { get; }
+        internal PathRequestEndMode EndMode { get; } = endMode;
 
-        internal PathRequestEndMode EndMode { get; }
+        internal PathRequestTargetKind TargetKind { get; } = targetKind;
 
-        internal PathRequestTargetKind TargetKind { get; }
-
-        internal PathRequestLocality Locality { get; }
+        internal PathRequestLocality Locality { get; } = locality;
     }
 
-    internal readonly struct PathSpatialObservation
+    internal readonly struct PathSpatialObservation(
+        int dirtyCells,
+        int expandedCellVisits,
+        int uniqueExpandedCells,
+        int chunks8,
+        int chunks16,
+        int chunks32)
     {
-        internal PathSpatialObservation(
-            int dirtyCells,
-            int expandedCellVisits,
-            int uniqueExpandedCells,
-            int chunks8,
-            int chunks16,
-            int chunks32)
-        {
-            DirtyCells = dirtyCells;
-            ExpandedCellVisits = expandedCellVisits;
-            UniqueExpandedCells = uniqueExpandedCells;
-            Chunks8 = chunks8;
-            Chunks16 = chunks16;
-            Chunks32 = chunks32;
-        }
+        internal int DirtyCells { get; } = dirtyCells;
 
-        internal int DirtyCells { get; }
+        internal int ExpandedCellVisits { get; } = expandedCellVisits;
 
-        internal int ExpandedCellVisits { get; }
+        internal int UniqueExpandedCells { get; } = uniqueExpandedCells;
 
-        internal int UniqueExpandedCells { get; }
+        internal int Chunks8 { get; } = chunks8;
 
-        internal int Chunks8 { get; }
+        internal int Chunks16 { get; } = chunks16;
 
-        internal int Chunks16 { get; }
-
-        internal int Chunks32 { get; }
+        internal int Chunks32 { get; } = chunks32;
     }
 
     internal enum RuntimeHotpath
@@ -278,354 +255,181 @@ namespace FixWorld.Diagnostics
         PathRequestTelemetry,
         PathSpatialTelemetry,
         ReachabilityCanReach,
-        ReachabilityCacheLookup,
-        ShadowGridFull,
-        ShadowGridIncremental,
-        ShadowGridRebuild,
-        ShadowGridQuery
+        ReachabilityCacheLookup
     }
 
     internal static class RuntimeHotpathCatalog
     {
-        internal const int Count = 29;
+        internal const int Count = 25;
 
         internal static string GetName(RuntimeHotpath hotpath)
         {
-            switch (hotpath)
+            return hotpath switch
             {
-                case RuntimeHotpath.Tick:
-                    return "TickManager.DoSingleTick";
-                case RuntimeHotpath.MapPreTick:
-                    return "Map.MapPreTick";
-                case RuntimeHotpath.MapPostTick:
-                    return "Map.MapPostTick";
-                case RuntimeHotpath.PathFinderTick:
-                    return "PathFinder.PathFinderTick";
-                case RuntimeHotpath.PathFinderPushRequest:
-                    return "PathFinder.PushRequest";
-                case RuntimeHotpath.PathFinderFindPathNow:
-                    return "PathFinder.FindPathNow";
-                case RuntimeHotpath.PathFinderGatherMapData:
-                    return "PathFinderMapData.GatherData";
-                case RuntimeHotpath.PathFinderSourceCosts:
-                    return "Path data: movement costs";
-                case RuntimeHotpath.PathFinderSourceAreas:
-                    return "Path data: areas";
-                case RuntimeHotpath.PathFinderSourcePerceptual:
-                    return "Path data: perceptual costs";
-                case RuntimeHotpath.PathFinderSourceConnectivity:
-                    return "Path data: connectivity";
-                case RuntimeHotpath.PathFinderSourceWater:
-                    return "Path data: water";
-                case RuntimeHotpath.PathFinderSourceFences:
-                    return "Path data: fences";
-                case RuntimeHotpath.PathFinderSourceBuildings:
-                    return "Path data: buildings";
-                case RuntimeHotpath.PathFinderSourceFactions:
-                    return "Path data: factions";
-                case RuntimeHotpath.PathFinderSourceFog:
-                    return "Path data: fog";
-                case RuntimeHotpath.PathFinderSourcePersistentDanger:
-                    return "Path data: persistent danger";
-                case RuntimeHotpath.PathFinderSourceDarkness:
-                    return "Path data: darkness";
-                case RuntimeHotpath.PathFinderJobBarrier:
-                    return "PathFinder job barrier";
-                case RuntimeHotpath.PathFinderGridScheduling:
-                    return "PathFinder grid scheduling";
-                case RuntimeHotpath.PathFinderPathScheduling:
-                    return "PathFinder path scheduling";
-                case RuntimeHotpath.PathRequestTelemetry:
-                    return "FixWorld path request telemetry";
-                case RuntimeHotpath.PathSpatialTelemetry:
-                    return "FixWorld path spatial telemetry";
-                case RuntimeHotpath.ReachabilityCanReach:
-                    return "Reachability.CanReach";
-                case RuntimeHotpath.ReachabilityCacheLookup:
-                    return "ReachabilityCache.CachedResultFor";
-                case RuntimeHotpath.ShadowGridFull:
-                    return "ShadowGridObserver full update";
-                case RuntimeHotpath.ShadowGridIncremental:
-                    return "ShadowGridObserver incremental update";
-                case RuntimeHotpath.ShadowGridRebuild:
-                    return "ShadowConnectivityGrid.Rebuild";
-                case RuntimeHotpath.ShadowGridQuery:
-                    return "ShadowConnectivityGrid query";
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(hotpath));
-            }
+                RuntimeHotpath.Tick => "TickManager.DoSingleTick",
+                RuntimeHotpath.MapPreTick => "Map.MapPreTick",
+                RuntimeHotpath.MapPostTick => "Map.MapPostTick",
+                RuntimeHotpath.PathFinderTick => "PathFinder.PathFinderTick",
+                RuntimeHotpath.PathFinderPushRequest => "PathFinder.PushRequest",
+                RuntimeHotpath.PathFinderFindPathNow => "PathFinder.FindPathNow",
+                RuntimeHotpath.PathFinderGatherMapData => "PathFinderMapData.GatherData",
+                RuntimeHotpath.PathFinderSourceCosts => "Path data: movement costs",
+                RuntimeHotpath.PathFinderSourceAreas => "Path data: areas",
+                RuntimeHotpath.PathFinderSourcePerceptual => "Path data: perceptual costs",
+                RuntimeHotpath.PathFinderSourceConnectivity => "Path data: connectivity",
+                RuntimeHotpath.PathFinderSourceWater => "Path data: water",
+                RuntimeHotpath.PathFinderSourceFences => "Path data: fences",
+                RuntimeHotpath.PathFinderSourceBuildings => "Path data: buildings",
+                RuntimeHotpath.PathFinderSourceFactions => "Path data: factions",
+                RuntimeHotpath.PathFinderSourceFog => "Path data: fog",
+                RuntimeHotpath.PathFinderSourcePersistentDanger => "Path data: persistent danger",
+                RuntimeHotpath.PathFinderSourceDarkness => "Path data: darkness",
+                RuntimeHotpath.PathFinderJobBarrier => "PathFinder job barrier",
+                RuntimeHotpath.PathFinderGridScheduling => "PathFinder grid scheduling",
+                RuntimeHotpath.PathFinderPathScheduling => "PathFinder path scheduling",
+                RuntimeHotpath.PathRequestTelemetry => "FixWorld path request telemetry",
+                RuntimeHotpath.PathSpatialTelemetry => "FixWorld path spatial telemetry",
+                RuntimeHotpath.ReachabilityCanReach => "Reachability.CanReach",
+                RuntimeHotpath.ReachabilityCacheLookup => "ReachabilityCache.CachedResultFor",
+                _ => throw new ArgumentOutOfRangeException(nameof(hotpath)),
+            };
         }
     }
 
-    internal readonly struct RuntimePathfindingSnapshot
+    internal readonly struct RuntimePathfindingSnapshot(
+        long batches,
+        long requests,
+        long maximumBatchSize,
+        long totalQueueDelayTicks,
+        long maximumQueueDelayTicks,
+        long dataUpdates,
+        long dirtyCells,
+        long maximumDirtyCells,
+        long gridJobsCreated,
+        long reachabilityCacheHits,
+        long reachabilityCacheMisses,
+        RuntimePathRequestSnapshot requestDemand,
+        RuntimeSpatialSnapshot spatial)
     {
-        internal RuntimePathfindingSnapshot(
-            long batches,
-            long requests,
-            long maximumBatchSize,
-            long totalQueueDelayTicks,
-            long maximumQueueDelayTicks,
-            long dataUpdates,
-            long dirtyCells,
-            long maximumDirtyCells,
-            long gridJobsCreated,
-            long reachabilityCacheHits,
-            long reachabilityCacheMisses,
-            RuntimePathRequestSnapshot requestDemand,
-            RuntimeSpatialSnapshot spatial)
-        {
-            Batches = batches;
-            Requests = requests;
-            MaximumBatchSize = maximumBatchSize;
-            TotalQueueDelayTicks = totalQueueDelayTicks;
-            MaximumQueueDelayTicks = maximumQueueDelayTicks;
-            DataUpdates = dataUpdates;
-            DirtyCells = dirtyCells;
-            MaximumDirtyCells = maximumDirtyCells;
-            GridJobsCreated = gridJobsCreated;
-            ReachabilityCacheHits = reachabilityCacheHits;
-            ReachabilityCacheMisses = reachabilityCacheMisses;
-            RequestDemand = requestDemand;
-            Spatial = spatial;
-        }
+        internal long Batches { get; } = batches;
 
-        internal long Batches { get; }
+        internal long Requests { get; } = requests;
 
-        internal long Requests { get; }
+        internal long MaximumBatchSize { get; } = maximumBatchSize;
 
-        internal long MaximumBatchSize { get; }
+        internal long TotalQueueDelayTicks { get; } = totalQueueDelayTicks;
 
-        internal long TotalQueueDelayTicks { get; }
+        internal long MaximumQueueDelayTicks { get; } = maximumQueueDelayTicks;
 
-        internal long MaximumQueueDelayTicks { get; }
+        internal long DataUpdates { get; } = dataUpdates;
 
-        internal long DataUpdates { get; }
+        internal long DirtyCells { get; } = dirtyCells;
 
-        internal long DirtyCells { get; }
+        internal long MaximumDirtyCells { get; } = maximumDirtyCells;
 
-        internal long MaximumDirtyCells { get; }
+        internal long GridJobsCreated { get; } = gridJobsCreated;
 
-        internal long GridJobsCreated { get; }
+        internal long ReachabilityCacheHits { get; } = reachabilityCacheHits;
 
-        internal long ReachabilityCacheHits { get; }
+        internal long ReachabilityCacheMisses { get; } = reachabilityCacheMisses;
 
-        internal long ReachabilityCacheMisses { get; }
+        internal RuntimePathRequestSnapshot RequestDemand { get; } = requestDemand;
 
-        internal RuntimePathRequestSnapshot RequestDemand { get; }
-
-        internal RuntimeSpatialSnapshot Spatial { get; }
+        internal RuntimeSpatialSnapshot Spatial { get; } = spatial;
     }
 
-    internal readonly struct RuntimePathRequestSnapshot
+    internal readonly struct RuntimePathRequestSnapshot(
+        long observations,
+        long repeatedTargets,
+        long targetTrackerCollisions,
+        long totalDistance,
+        long maximumDistance,
+        long[] pawnCategories,
+        long[] traversalModes,
+        long[] endModes,
+        long[] targetKinds,
+        long[] distanceBuckets,
+        long[] localities,
+        long[] constraints)
     {
-        internal RuntimePathRequestSnapshot(
-            long observations,
-            long repeatedTargets,
-            long targetTrackerCollisions,
-            long totalDistance,
-            long maximumDistance,
-            long[] pawnCategories,
-            long[] traversalModes,
-            long[] endModes,
-            long[] targetKinds,
-            long[] distanceBuckets,
-            long[] localities,
-            long[] constraints)
-        {
-            Observations = observations;
-            RepeatedTargets = repeatedTargets;
-            TargetTrackerCollisions = targetTrackerCollisions;
-            TotalDistance = totalDistance;
-            MaximumDistance = maximumDistance;
-            PawnCategories = pawnCategories ??
+        internal long Observations { get; } = observations;
+
+        internal long RepeatedTargets { get; } = repeatedTargets;
+
+        internal long TargetTrackerCollisions { get; } = targetTrackerCollisions;
+
+        internal long TotalDistance { get; } = totalDistance;
+
+        internal long MaximumDistance { get; } = maximumDistance;
+
+        internal long[] PawnCategories { get; } = pawnCategories ??
                 throw new ArgumentNullException(nameof(pawnCategories));
-            TraversalModes = traversalModes ??
+
+        internal long[] TraversalModes { get; } = traversalModes ??
                 throw new ArgumentNullException(nameof(traversalModes));
-            EndModes = endModes ??
+
+        internal long[] EndModes { get; } = endModes ??
                 throw new ArgumentNullException(nameof(endModes));
-            TargetKinds = targetKinds ??
+
+        internal long[] TargetKinds { get; } = targetKinds ??
                 throw new ArgumentNullException(nameof(targetKinds));
-            DistanceBuckets = distanceBuckets ??
+
+        internal long[] DistanceBuckets { get; } = distanceBuckets ??
                 throw new ArgumentNullException(nameof(distanceBuckets));
-            Localities = localities ??
+
+        internal long[] Localities { get; } = localities ??
                 throw new ArgumentNullException(nameof(localities));
-            Constraints = constraints ??
+
+        internal long[] Constraints { get; } = constraints ??
                 throw new ArgumentNullException(nameof(constraints));
-        }
-
-        internal long Observations { get; }
-
-        internal long RepeatedTargets { get; }
-
-        internal long TargetTrackerCollisions { get; }
-
-        internal long TotalDistance { get; }
-
-        internal long MaximumDistance { get; }
-
-        internal long[] PawnCategories { get; }
-
-        internal long[] TraversalModes { get; }
-
-        internal long[] EndModes { get; }
-
-        internal long[] TargetKinds { get; }
-
-        internal long[] DistanceBuckets { get; }
-
-        internal long[] Localities { get; }
-
-        internal long[] Constraints { get; }
     }
 
-    internal readonly struct RuntimeSpatialSnapshot
+    internal readonly struct RuntimeSpatialSnapshot(
+        long expandedCellVisits,
+        long uniqueExpandedCells,
+        long chunks8,
+        long chunks16,
+        long chunks32,
+        long maximumUniqueExpandedCells,
+        long maximumChunks8,
+        long maximumChunks16,
+        long maximumChunks32)
     {
-        internal RuntimeSpatialSnapshot(
-            long expandedCellVisits,
-            long uniqueExpandedCells,
-            long chunks8,
-            long chunks16,
-            long chunks32,
-            long maximumUniqueExpandedCells,
-            long maximumChunks8,
-            long maximumChunks16,
-            long maximumChunks32)
-        {
-            ExpandedCellVisits = expandedCellVisits;
-            UniqueExpandedCells = uniqueExpandedCells;
-            Chunks8 = chunks8;
-            Chunks16 = chunks16;
-            Chunks32 = chunks32;
-            MaximumUniqueExpandedCells = maximumUniqueExpandedCells;
-            MaximumChunks8 = maximumChunks8;
-            MaximumChunks16 = maximumChunks16;
-            MaximumChunks32 = maximumChunks32;
-        }
+        internal long ExpandedCellVisits { get; } = expandedCellVisits;
 
-        internal long ExpandedCellVisits { get; }
+        internal long UniqueExpandedCells { get; } = uniqueExpandedCells;
 
-        internal long UniqueExpandedCells { get; }
+        internal long Chunks8 { get; } = chunks8;
 
-        internal long Chunks8 { get; }
+        internal long Chunks16 { get; } = chunks16;
 
-        internal long Chunks16 { get; }
+        internal long Chunks32 { get; } = chunks32;
 
-        internal long Chunks32 { get; }
+        internal long MaximumUniqueExpandedCells { get; } = maximumUniqueExpandedCells;
 
-        internal long MaximumUniqueExpandedCells { get; }
+        internal long MaximumChunks8 { get; } = maximumChunks8;
 
-        internal long MaximumChunks8 { get; }
+        internal long MaximumChunks16 { get; } = maximumChunks16;
 
-        internal long MaximumChunks16 { get; }
-
-        internal long MaximumChunks32 { get; }
+        internal long MaximumChunks32 { get; } = maximumChunks32;
     }
 
-    internal readonly struct RuntimeShadowGridSnapshot
+    internal readonly struct RuntimeProfilingSnapshot(
+        ProfileAggregationMode aggregationMode,
+        ProfileSnapshot<RuntimeHotpath> hotpaths,
+        RuntimePathfindingSnapshot pathfinding,
+        double ticksPerSecond = 0,
+        bool paused = true)
     {
-        internal RuntimeShadowGridSnapshot(
-            long fullUpdates,
-            long incrementalUpdates,
-            long sampledCells,
-            long changedCells,
-            long rebuiltLeaves,
-            long changedLeaves,
-            long rebuiltRegions,
-            long changedRegions,
-            long rebuiltSuperChunks,
-            long changedSuperChunks,
-            long failures,
-            long queriesAnswered,
-            long queriesConnected,
-            long queriesUnavailable,
-            long queriesEligible,
-            long queriesMismatched,
-            long queriesEligibleNegative,
-            long queriesNegativeMatches,
-            long[] queryUnavailableReasons)
-        {
-            FullUpdates = fullUpdates;
-            IncrementalUpdates = incrementalUpdates;
-            SampledCells = sampledCells;
-            ChangedCells = changedCells;
-            RebuiltLeaves = rebuiltLeaves;
-            ChangedLeaves = changedLeaves;
-            RebuiltRegions = rebuiltRegions;
-            ChangedRegions = changedRegions;
-            RebuiltSuperChunks = rebuiltSuperChunks;
-            ChangedSuperChunks = changedSuperChunks;
-            Failures = failures;
-            QueriesAnswered = queriesAnswered;
-            QueriesConnected = queriesConnected;
-            QueriesUnavailable = queriesUnavailable;
-            QueriesEligible = queriesEligible;
-            QueriesMismatched = queriesMismatched;
-            QueriesEligibleNegative = queriesEligibleNegative;
-            QueriesNegativeMatches = queriesNegativeMatches;
-            QueryUnavailableReasons = queryUnavailableReasons ??
-                throw new ArgumentNullException(nameof(queryUnavailableReasons));
-        }
+        internal ProfileAggregationMode AggregationMode { get; } = aggregationMode;
 
-        internal long FullUpdates { get; }
-
-        internal long IncrementalUpdates { get; }
-
-        internal long SampledCells { get; }
-
-        internal long ChangedCells { get; }
-
-        internal long RebuiltLeaves { get; }
-
-        internal long ChangedLeaves { get; }
-
-        internal long RebuiltRegions { get; }
-
-        internal long ChangedRegions { get; }
-
-        internal long RebuiltSuperChunks { get; }
-
-        internal long ChangedSuperChunks { get; }
-
-        internal long Failures { get; }
-
-        internal long QueriesAnswered { get; }
-
-        internal long QueriesConnected { get; }
-
-        internal long QueriesUnavailable { get; }
-
-        internal long QueriesEligible { get; }
-
-        internal long QueriesMismatched { get; }
-
-        internal long QueriesEligibleNegative { get; }
-
-        internal long QueriesNegativeMatches { get; }
-
-        internal long[] QueryUnavailableReasons { get; }
-    }
-
-    internal readonly struct RuntimeProfilingSnapshot
-    {
-        internal RuntimeProfilingSnapshot(
-            ProfileAggregationMode aggregationMode,
-            ProfileSnapshot<RuntimeHotpath> hotpaths,
-            RuntimePathfindingSnapshot pathfinding,
-            RuntimeShadowGridSnapshot shadowGrid = default)
-        {
-            AggregationMode = aggregationMode;
-            Hotpaths = hotpaths ??
+        internal ProfileSnapshot<RuntimeHotpath> Hotpaths { get; } = hotpaths ??
                 throw new ArgumentNullException(nameof(hotpaths));
-            Pathfinding = pathfinding;
-            ShadowGrid = shadowGrid;
-        }
 
-        internal ProfileAggregationMode AggregationMode { get; }
+        internal RuntimePathfindingSnapshot Pathfinding { get; } = pathfinding;
 
-        internal ProfileSnapshot<RuntimeHotpath> Hotpaths { get; }
+        internal double TicksPerSecond { get; } = ticksPerSecond;
 
-        internal RuntimePathfindingSnapshot Pathfinding { get; }
-
-        internal RuntimeShadowGridSnapshot ShadowGrid { get; }
+        internal bool Paused { get; } = paused;
     }
 }
