@@ -14,6 +14,10 @@ The approved [slice plan](docs/fork-refactor-plan.md) controls execution.
       then test clean first boot, one restart, normal attach, Mods-tab restart
       and disabled ModConfig. Desktop process tests do not replace this.
 - [ ] Next infrastructure slice: Scheduling/Jobs, before reintroducing DDS.
+- [x] Local JSONL capture and Python collector: shared contracts, counter metadata,
+      local tests and Release build. See [harness](docs/harness.md).
+- [ ] In-game capture acceptance after deployment: manually launched game,
+      JSONL and logs collected by Python, separate session after restart.
 
 - [x] Slice 1: typed telemetry/profiling, real callers, focused tests,
       verification and commit. No lifecycle/cache/scheduler redesign.

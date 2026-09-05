@@ -11,14 +11,28 @@ namespace FixWorld.Telemetry
         private readonly Action<T, TelemetryWriter> present;
         public TelemetryContract(string id, int schemaVersion, Action<T, TelemetryWriter> present)
         {
-            if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("ID is required.", nameof(id));
-            if (schemaVersion <= 0) throw new ArgumentOutOfRangeException(nameof(schemaVersion));
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                throw new ArgumentException("ID is required.", nameof(id));
+            }
+
+
+            if (schemaVersion <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(schemaVersion));
+            }
+
+
             Id = id; SchemaVersion = schemaVersion;
             this.present = present ?? throw new ArgumentNullException(nameof(present));
         }
         public string Id { get; }
         public int SchemaVersion { get; }
-        internal void Present(T snapshot, TelemetryWriter writer) => present(snapshot, writer);
+        internal void Present(T snapshot, TelemetryWriter writer)
+        {
+            present(snapshot, writer);
+        }
+
     }
 
     // Membership mutations are cold. Readers reuse the published membership
@@ -36,8 +50,18 @@ namespace FixWorld.Telemetry
             if (contract == null) throw new ArgumentNullException(nameof(contract));
             lock (sync)
             {
-                if (disposed) throw new ObjectDisposedException(nameof(TelemetryStore));
-                if (registrations.ContainsKey(contract.Id)) throw new InvalidOperationException("Duplicate telemetry ID: " + contract.Id);
+                if (disposed)
+                {
+                    throw new ObjectDisposedException(nameof(TelemetryStore));
+                }
+
+
+                if (registrations.ContainsKey(contract.Id))
+                {
+                    throw new InvalidOperationException("Duplicate telemetry ID: " + contract.Id);
+                }
+
+
                 var registration = new TelemetryRegistration<T>(this, contract);
                 registrations.Add(contract.Id, registration);
                 Volatile.Write(ref view, new List<TelemetryRegistration>(registrations.Values).AsReadOnly());
@@ -58,14 +82,28 @@ namespace FixWorld.Telemetry
             }
         }
 
-        public void WriteJson(TextWriter output) => Write(output, true);
-        public void WriteLog(TextWriter output) => Write(output, false);
+        public void WriteJson(TextWriter output)
+        {
+            Write(output, true);
+        }
+
+        public void WriteLog(TextWriter output)
+        {
+            Write(output, false);
+        }
+
+
         private void Write(TextWriter output, bool json)
         {
             if (output == null) throw new ArgumentNullException(nameof(output));
             var writer = new TelemetryWriter(output, json);
             writer.Begin();
-            foreach (var registration in Registrations) registration.Write(writer);
+            foreach (var registration in Registrations)
+            {
+                registration.Write(writer);
+            }
+
+
             writer.End();
         }
 
@@ -73,9 +111,18 @@ namespace FixWorld.Telemetry
         {
             lock (sync)
             {
-                if (disposed) return;
+                if (disposed)
+                {
+                    return;
+                }
+
+
                 disposed = true;
-                foreach (var registration in registrations.Values) registration.Deactivate();
+                foreach (var registration in registrations.Values)
+                {
+                    registration.Deactivate();
+                }
+
                 registrations.Clear();
                 Volatile.Write(ref view, Array.AsReadOnly(Array.Empty<TelemetryRegistration>()));
             }
@@ -93,19 +140,36 @@ namespace FixWorld.Telemetry
         public string Id { get; }
         public int SchemaVersion { get; }
         public Type SnapshotType { get; }
+        public string Generation { get; } = Guid.NewGuid().ToString("N");
         public object PublishedSnapshot => Volatile.Read(ref snapshot);
         protected void PublishSnapshot(object value)
         {
             if (value == null) throw new ArgumentNullException(nameof(value));
             lock (sync)
             {
-                if (disposed) throw new ObjectDisposedException(Id);
+                if (disposed)
+                {
+                    throw new ObjectDisposedException(Id);
+                }
+
+
                 Volatile.Write(ref snapshot, value);
             }
         }
-        internal void Deactivate() { lock (sync) disposed = true; }
+        internal void Deactivate()
+        {
+            lock (sync)
+            {
+                disposed = true;
+            }
+        }
         internal abstract void Write(TelemetryWriter writer);
-        public void Dispose() => owner.Remove(this);
+        public void Dispose()
+        {
+            owner.Remove(this);
+            GC.SuppressFinalize(this);
+        }
+
     }
 
     public sealed class TelemetryRegistration<T> : TelemetryRegistration where T : class
@@ -114,12 +178,22 @@ namespace FixWorld.Telemetry
         internal TelemetryRegistration(TelemetryStore owner, TelemetryContract<T> contract)
             : base(owner, contract.Id, contract.SchemaVersion, typeof(T)) { this.contract = contract; }
         public T Snapshot => (T)PublishedSnapshot;
-        public void Publish(T snapshot) => PublishSnapshot(snapshot);
+        public void Publish(T snapshot)
+        {
+            PublishSnapshot(snapshot);
+        }
+
+
         internal override void Write(TelemetryWriter writer)
         {
             var current = Snapshot;
-            if (current == null) return;
-            writer.BeginRecord(Id, SchemaVersion);
+            if (current == null)
+            {
+                return;
+            }
+
+
+            writer.BeginRecord(Id, SchemaVersion, Generation);
             contract.Present(current, writer);
             writer.EndRecord();
         }

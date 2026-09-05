@@ -12,8 +12,18 @@ namespace FixWorld.Caching
         public CacheContract(string id, int capacity, Func<TKey, TValue> create,
             IEqualityComparer<TKey> comparer = null)
         {
-            if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Cache ID is required.", nameof(id));
-            if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                throw new ArgumentException("Cache ID is required.", nameof(id));
+            }
+
+
+            if (capacity <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(capacity));
+            }
+
+
             Id = id; Capacity = capacity; Create = create ?? throw new ArgumentNullException(nameof(create));
             Comparer = comparer ?? EqualityComparer<TKey>.Default;
         }
@@ -36,7 +46,12 @@ namespace FixWorld.Caching
         private int activeFactories;
         public CacheStore(TelemetryStore telemetry, Profiler<ProfileKey> profiler)
         {
-            if (telemetry == null) throw new ArgumentNullException(nameof(telemetry));
+            if (telemetry == null)
+            {
+                throw new ArgumentNullException(nameof(telemetry));
+            }
+
+
             this.profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
             this.telemetry = telemetry.Register(CacheStoreSnapshot.Contract);
         }
@@ -45,17 +60,31 @@ namespace FixWorld.Caching
 
         public void BindCurrentThread()
         {
-            if (disposed) throw new ObjectDisposedException(nameof(CacheStore));
+            if (disposed)
+            {
+                throw new ObjectDisposedException(nameof(CacheStore));
+            }
+
+
             int current = Thread.CurrentThread.ManagedThreadId;
             int existing = Interlocked.CompareExchange(ref ownerThread, current, 0);
-            if (existing != 0 && existing != current) throw new InvalidOperationException("Cache store is bound to another thread.");
+            if (existing != 0 && existing != current)
+            {
+                throw new InvalidOperationException("Cache store is bound to another thread.");
+            }
+
         }
 
         public TypedCache<TKey, TValue> Create<TKey, TValue>(CacheContract<TKey, TValue> contract)
         {
             AssertSetupAccess();
             if (contract == null) throw new ArgumentNullException(nameof(contract));
-            if (caches.ContainsKey(contract.Id)) throw new InvalidOperationException("Duplicate cache ID: " + contract.Id);
+            if (caches.ContainsKey(contract.Id))
+            {
+                throw new InvalidOperationException("Duplicate cache ID: " + contract.Id);
+            }
+
+
             var created = new TypedCache<TKey, TValue>(this, contract,
                 profiler.GetSlot(new ProfileKey(contract.Id, "cache.create")));
             caches.Add(contract.Id, created);
@@ -66,37 +95,79 @@ namespace FixWorld.Caching
             AssertAccess();
             var values = new CacheStatistics[caches.Count];
             int index = 0;
-            foreach (var cache in caches.Values) values[index++] = cache.Capture();
+            foreach (var cache in caches.Values)
+            {
+                values[index++] = cache.Capture();
+            }
+
+
             telemetry.Publish(new CacheStoreSnapshot(Array.AsReadOnly(values)));
         }
         // Safe during background def reload. Values are discarded lazily on
         // their owning thread, before the next read or statistics publication.
         public void InvalidateAll()
         {
-            if (disposed) throw new ObjectDisposedException(nameof(CacheStore));
+            if (disposed)
+            {
+                throw new ObjectDisposedException(nameof(CacheStore));
+            }
+
+
             Interlocked.Increment(ref generation);
         }
         internal void Remove(CacheRegistration cache)
         {
             AssertSetupAccess();
-            if (caches.TryGetValue(cache.Id, out var current) && ReferenceEquals(cache, current)) caches.Remove(cache.Id);
+            if (caches.TryGetValue(cache.Id, out var current) && ReferenceEquals(cache, current))
+            {
+                caches.Remove(cache.Id);
+            }
+
         }
         internal void AssertAccess()
         {
-            if (ownerThread == 0) throw new InvalidOperationException("Cache store has not been bound to its owner thread.");
+            if (ownerThread == 0)
+            {
+                throw new InvalidOperationException("Cache store has not been bound to its owner thread.");
+            }
+
+
             AssertSetupAccess();
         }
         internal void AssertSetupAccess()
         {
-            if (ownerThread != 0 && Thread.CurrentThread.ManagedThreadId != ownerThread) throw new InvalidOperationException("Cache access requires its owner thread.");
-            if (disposed) throw new ObjectDisposedException(nameof(CacheStore));
+            if (ownerThread != 0 && Thread.CurrentThread.ManagedThreadId != ownerThread)
+            {
+                throw new InvalidOperationException("Cache access requires its owner thread.");
+            }
+
+
+            if (disposed)
+            {
+                throw new ObjectDisposedException(nameof(CacheStore));
+            }
+
         }
         public void Dispose()
         {
-            if (disposed) return;
+            if (disposed)
+            {
+                return;
+            }
+
+
             AssertSetupAccess();
-            if (activeFactories != 0) throw new InvalidOperationException("Cache factories must finish before the store is disposed.");
-            foreach (var cache in caches.Values) cache.Retire();
+            if (activeFactories != 0)
+            {
+                throw new InvalidOperationException("Cache factories must finish before the store is disposed.");
+            }
+
+
+            foreach (var cache in caches.Values)
+            {
+                cache.Retire();
+            }
+
             caches.Clear();
             telemetry.Dispose();
             disposed = true;
@@ -142,7 +213,12 @@ namespace FixWorld.Caching
         }
         public TValue GetOrAdd(TKey key)
         {
-            if (TryGet(key, out var found)) return found;
+            if (TryGet(key, out var found))
+            {
+                return found;
+            }
+
+
             AssertNotCreating();
             TValue value;
             creating = true;
@@ -165,7 +241,12 @@ namespace FixWorld.Caching
         public bool Invalidate(TKey key)
         {
             AssertAccess(); AssertNotCreating();
-            if (!entries.TryGetValue(key, out var entry)) return false;
+            if (!entries.TryGetValue(key, out var entry))
+            {
+                return false;
+            }
+
+
             entries.Remove(key); insertionOrder.Remove(entry.Node); invalidations++; return true;
         }
         public override void Clear()
@@ -175,7 +256,12 @@ namespace FixWorld.Caching
         }
         public override void Dispose()
         {
-            if (disposed) return;
+            if (disposed)
+            {
+                return;
+            }
+
+
             owner.AssertSetupAccess(); Retire(); owner.Remove(this);
         }
         internal override void Retire()
@@ -187,7 +273,12 @@ namespace FixWorld.Caching
         }
         private void AssertAccess()
         {
-            owner.AssertAccess(); if (disposed) throw new ObjectDisposedException(Id);
+            owner.AssertAccess(); if (disposed)
+            {
+                throw new ObjectDisposedException(Id);
+            }
+
+
             long current = owner.Generation;
             if (generation != current)
             {
@@ -197,7 +288,12 @@ namespace FixWorld.Caching
         private void ClearValues()
         { invalidations += entries.Count; entries.Clear(); insertionOrder.Clear(); }
         private void AssertNotCreating()
-        { if (creating) throw new InvalidOperationException("A cache factory cannot mutate or recursively fill its own cache."); }
+        {
+            if (creating)
+            {
+                throw new InvalidOperationException("A cache factory cannot mutate or recursively fill its own cache.");
+            }
+        }
         private readonly struct Entry
         {
             public Entry(TValue value, LinkedListNode<TKey> node) { Value = value; Node = node; }
@@ -230,9 +326,9 @@ namespace FixWorld.Caching
             {
                 var cache = data.Caches[i]; var prefix = i.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".";
                 writer.Value(prefix + "id", cache.Id); writer.Value(prefix + "entries", cache.Count);
-                writer.Value(prefix + "capacity", cache.Capacity); writer.Value(prefix + "hits", cache.Hits);
-                writer.Value(prefix + "misses", cache.Misses); writer.Value(prefix + "evictions", cache.Evictions);
-                writer.Value(prefix + "invalidations", cache.Invalidations);
+                writer.Value(prefix + "capacity", cache.Capacity); writer.Counter(prefix + "hits", cache.Hits);
+                writer.Counter(prefix + "misses", cache.Misses); writer.Counter(prefix + "evictions", cache.Evictions);
+                writer.Counter(prefix + "invalidations", cache.Invalidations);
             }
         });
     }

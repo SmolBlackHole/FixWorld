@@ -16,13 +16,10 @@ namespace FixWorld.Telemetry
         public int LastTickCallbacks { get; }
     }
 
-    public readonly struct LibraryState
+    public readonly struct LibraryState(int initializedMods, int delayedCallbacks, TickSchedulerSnapshot distributed)
     {
-        public LibraryState(int initializedMods, int delayedCallbacks, TickSchedulerSnapshot distributed)
-        { InitializedMods = initializedMods; DelayedCallbacks = delayedCallbacks; Distributed = distributed; }
-        public int InitializedMods { get; }
-        public int DelayedCallbacks { get; }
-        public TickSchedulerSnapshot Distributed { get; }
+        public int InitializedMods { get; } = initializedMods; public int DelayedCallbacks { get; } = delayedCallbacks; public TickSchedulerSnapshot Distributed { get; } = distributed;
+
     }
 
     public sealed class LibrarySnapshot
@@ -42,9 +39,9 @@ namespace FixWorld.Telemetry
         {
             writer.Value("published_stopwatch_ticks", data.Timestamp);
             writer.Value("stopwatch_frequency", Stopwatch.Frequency);
-            writer.Value("frame_notifications", data.Frames);
-            writer.Value("tick_notifications", data.Ticks);
-            writer.Value("caught_callback_errors", data.Errors);
+            writer.Counter("frame_notifications", data.Frames);
+            writer.Counter("tick_notifications", data.Ticks);
+            writer.Counter("caught_callback_errors", data.Errors);
             writer.Value("initialized_mods", data.State.InitializedMods);
             writer.Value("delayed_callbacks", data.State.DelayedCallbacks);
             writer.Value("distributed.recipients", data.State.Distributed.Recipients);
@@ -58,9 +55,9 @@ namespace FixWorld.Telemetry
                 writer.Value(prefix + "owner", measurement.Key.Owner);
                 writer.Value(prefix + "operation", measurement.Key.Operation);
                 writer.Value(prefix + "source", measurement.Key.Source.ToString());
-                writer.Value(prefix + "calls", measurement.Calls);
-                writer.Value(prefix + "failures", measurement.Failures);
-                writer.Value(prefix + "inclusive_total_ms", measurement.TotalTime.TotalMilliseconds);
+                writer.Counter(prefix + "calls", measurement.Calls);
+                writer.Counter(prefix + "failures", measurement.Failures);
+                writer.Counter(prefix + "inclusive_total_ms", measurement.TotalTime.TotalMilliseconds);
                 writer.Value(prefix + "max_ms", measurement.MaximumTime.TotalMilliseconds);
             }
         }

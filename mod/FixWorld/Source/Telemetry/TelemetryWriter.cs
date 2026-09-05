@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 
@@ -12,23 +13,35 @@ namespace FixWorld.Telemetry
         private readonly TextWriter output;
         private readonly bool json;
         private bool firstRecord = true, firstValue;
+        private readonly List<string> counters = [];
         internal TelemetryWriter(TextWriter output, bool json) { this.output = output; this.json = json; }
         internal void Begin() { if (json) output.Write('['); }
         internal void End() { if (json) output.Write(']'); }
-        internal void BeginRecord(string id, int version)
+        internal void BeginRecord(string id, int version, string generation)
         {
             firstValue = true;
+            counters.Clear();
             if (json)
             {
                 if (!firstRecord) output.Write(',');
                 output.Write("{\"id\":"); Quote(id);
                 output.Write(",\"schemaVersion\":"); output.Write(version.ToString(CultureInfo.InvariantCulture));
+                output.Write(",\"generation\":"); Quote(generation);
                 output.Write(",\"values\":{");
             }
             else output.WriteLine("[" + id + " v" + version.ToString(CultureInfo.InvariantCulture) + "]");
             firstRecord = false;
         }
-        internal void EndRecord() { if (json) output.Write("}}"); }
+        internal void EndRecord()
+        {
+            if (!json) return;
+            output.Write("},\"counters\":[");
+            for (int i = 0; i < counters.Count; i++)
+            { if (i != 0) output.Write(','); Quote(counters[i]); }
+            output.Write("]}");
+        }
+        public void Counter(string name, long value) { Value(name, value); counters.Add(name); }
+        public void Counter(string name, double value) { Value(name, value); counters.Add(name); }
         public void Value(string name, long value) => Scalar(name, value.ToString(CultureInfo.InvariantCulture));
         public void Value(string name, double value)
         {

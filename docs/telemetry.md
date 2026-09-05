@@ -24,6 +24,12 @@ counts. No per-sample strings, registry lookup, formatting or event dispatch.
 The library uses inline profiling, with no new background aggregation thread.
 Buffered profiling remains available for explicitly owned users of the profiler.
 
+`TelemetryWriter.Value` presents state; `Counter` additionally declares cumulative
+values for downstream delta analysis. JSON includes counter names and a unique
+registration generation. Do not duplicate these declarations in Python or UI.
+Presenters are pure and thread-safe: the [local capture worker](harness.md) also
+uses them, without invoking live provider captures.
+
 ```csharp
 // Initialization, not inside an operation:
 var slot = Diagnostics.Profiler.GetSlot(
@@ -81,6 +87,9 @@ a guaranteed cleanup boundary.
   field list in the host/UI. Values carry units in their field names.
 
 ## Verification
+
+The controller also owns the local JSONL capture worker. See the
+[Python harness](harness.md) for collection, limits and interpretation.
 
 Run `dotnet run --project mod/FixWorld/Tests/Telemetry.Contracts/FixWorld.Telemetry.Contracts.csproj -c Release`.
 It compiles actual profiler/store/presentation and scheduler source for net472;

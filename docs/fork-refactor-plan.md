@@ -144,6 +144,27 @@ instance. Existing late initialization and Unity callbacks remain with the fork.
   93 earlier contracts. Real Doorstop/Unity startup remains an explicit in-game
   acceptance step; do not claim it from desktop tests.
 
+## Slice 5: local capture and Python harness (complete, in-game acceptance open)
+
+Approved after the shell/export exploration. Shell only opens processes/files;
+it is not an IPC endpoint. Reuse typed presenters, not the archived schema-19
+loader report or a second measurement registry.
+
+1. Mark cumulative counters in the shared presentation contract. Export all
+   registered modules generically, including registration lifetime identity.
+2. Controller owns a background JSONL exporter of published snapshots (one
+   second cadence, unique process session, bounded file size, isolated errors).
+   No gameplay reads, formatting or file I/O in probes. Stop before store teardown.
+3. Python collects complete lines and local logs without starting/stopping the
+   game. Preserve session boundaries and raw data; derive only declared counter
+   deltas. Publish generic CSV and summaries, tolerate incomplete final lines.
+4. Test production serialization, background lifetime/failure, new contracts,
+   Python parsing, restarts, counter resets and live partial writes. Build the
+   fork and rerun existing contracts. Native in-game acceptance remains separate.
+
+Excluded: remote commands, uploads, DDS, new gameplay probes, scheduler redesign,
+legacy benchmark compatibility and automatic game termination.
+
 ## Verification record
 
 - Slice 1: PASS, 35 net472 contract checks; full fork Release build against the
@@ -171,6 +192,16 @@ instance. Existing late initialization and Unity callbacks remain with the fork.
   native game process, live installation or deployment performed. The in-game
   first-install/attach/restart/disable sequence remains an acceptance item.
 
+- Slice 5: local verification PASS. 35 telemetry + 13 capture/finalizer checks,
+  36 cache, 22 News and 63 bootstrap checks. All 11 Python collector tests pass,
+  including mid-collection session replacement and partial UTF-8/log writes.
+  Pyright strict: zero errors/warnings. Full local-reference Release build:
+  zero warnings/errors. Production C# fixture -> Python analyzer preserves an
+  arbitrary module/schema and computes requests 7 -> 17 as delta 10 without a
+  module-specific parser. No game, deployment or external upload performed.
+  Concurrent user formatting/modernization retained; unavailable net472
+  ThrowIfNull calls use explicit checks. Native capture acceptance remains open.
+
 Autonomous continuation remains authorized, one scoped slice at a time.
-Scheduling/jobs follow bootstrap. DDS remains excluded. Do not treat desktop
+Scheduling/jobs follow the user-prioritized capture slice. DDS remains excluded. Do not treat desktop
 bootstrap verification as proof of native Doorstop/Unity Mono behavior.

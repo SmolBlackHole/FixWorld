@@ -19,7 +19,7 @@ internal static class Program
     { writer.Value("value", data.Value); writer.Value("text", data.Text); writer.Value("ratio", 1.25); writer.Value("ok", true); });
     private static void Main()
     {
-        Registry(); Profiles(); Publication(); Scheduler();
+        Registry(); Profiles(); Publication(); Scheduler(); CaptureContracts.Run();
         Console.WriteLine($"PASS: {checks} telemetry/profiling contract checks (.NET Framework). No game started.");
     }
     private static void Registry()

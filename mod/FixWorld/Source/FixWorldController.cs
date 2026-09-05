@@ -101,10 +101,24 @@ namespace FixWorld
                     controller.Diagnostics = new LibraryDiagnostics();
                     controller.Caches = new CacheStore(controller.Diagnostics.Store, controller.Diagnostics.Profiler);
                     BootstrapIntegration.RegisterTelemetry(controller.Diagnostics);
+                    controller.StartCapture();
                 }
                 catch { controller.DisposeCore(); throw; }
             });
             BootstrapIntegration.Publish();
+        }
+
+        private TelemetryCapture telemetryCapture;
+        private void StartCapture()
+        {
+            if (telemetryCapture != null || Diagnostics == null) return;
+            try
+            {
+                var directory = System.IO.Path.Combine(
+                    BootEnvironment.SaveDataFolder(Environment.GetCommandLineArgs()), "FixWorld", "Telemetry");
+                telemetryCapture = new TelemetryCapture(Diagnostics.Store, directory, BootEnvironment.Log);
+            }
+            catch (Exception error) { BootEnvironment.Log("Telemetry capture unavailable: " + error); }
         }
 
         private static ModLogger _logger;
@@ -324,7 +338,7 @@ namespace FixWorld
             using var measurement = Diagnostics.Update.Measure();
             try
             {
-                if (DoLater != null) DoLater.OnUpdate();
+                DoLater?.OnUpdate();
                 for (int i = 0; i < initializedMods.Count; i++)
                 {
                     try
@@ -417,7 +431,7 @@ namespace FixWorld
             using var measurement = Diagnostics.OnGUI.Measure();
             try
             {
-                if (DoLater != null) DoLater.OnGUI();
+                DoLater?.OnGUI();
                 KeyBindingHandler.OnGUI();
                 for (int i = 0; i < initializedMods.Count; i++)
                 {
@@ -498,8 +512,9 @@ namespace FixWorld
 
         private void DisposeCore()
         {
+            telemetryCapture?.Dispose();
             // Failed attachment precedes cache thread binding. Normal quit is on
-            // its bound main thread. No worker shutdown protocol is needed here.
+            // its bound main thread. The exporter has already been signaled above.
             if (BootSession.Current.Phase == BootPhase.Failed) HarmonyInst?.UnpatchAll(HarmonyInstanceIdentifier);
             try { Caches?.Dispose(); }
             finally { Diagnostics?.Dispose(); }

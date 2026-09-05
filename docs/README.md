@@ -13,6 +13,7 @@ support boundary
 | Implement a module under the binding architecture | [Runtime module contracts](runtime-modules.md) |
 | Understand the observed loading stages | [Play-data stages](play-data-pipeline.md) |
 | Understand telemetry, benchmark data, and the in-game UI | [Runtime diagnostics](diagnostics.md) |
+| Collect and analyze the rewrite's typed telemetry locally | [Python capture harness](harness.md) |
 | Understand how performance changes are selected and proven | [Optimization method](optimization.md) |
 | Follow the pathfinding, map-tiling, connectivity, and path-reuse track | [Pathfinding and spatial optimization](pathfinding.md) |
 | Review Dubs Performance Analyzer's profiling architecture | [Dubs Performance Analyzer source review](research/dubs-performance-analyzer.md) |
