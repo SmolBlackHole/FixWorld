@@ -12,9 +12,10 @@ The approved [slice plan](docs/fork-refactor-plan.md) controls execution.
       verification and commit. No lifecycle/cache/scheduler redesign.
 - [x] Slice 2: shared typed caching and complete settings text-cache
       cutover. Exact scope and verification are in the slice plan.
-- [ ] Known fork defect: News `DestroyLoadedImages` destroys textures borrowed
-      from ContentFinder/placeholder assets as well as its own loaded images.
-      Separate owned/borrowed image lifetime before migrating News image caching.
+- [x] News image ownership: preserve borrowed textures, release owned textures,
+      isolate filenames by mod and invalidate queued loads on close/replacement.
+      Contract tests and local build passed; in-game behavior remains unverified.
+- [ ] Use the existing News/UpdateFeatureDef system for FixWorld changelog entries.
 
 ## Legacy checklist
 

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using UnityEngine;
 using Verse;
 
@@ -22,23 +20,15 @@ namespace FixWorld.News
 
         private static readonly Texture2D missingTexturePlaceholder = ContentFinder<Texture2D>.Get(BaseContent.BadTexPath);
 
-        public static IEnumerable<KeyValuePair<string, Texture2D>> LoadImagesForMod(
-            ModContentPack modContent, IEnumerable<string> filenamesNoExtension)
-        {
-            return filenamesNoExtension.Select(
-                filename => new KeyValuePair<string, Texture2D>(filename, GetImage(modContent, filename))
-            );
-        }
-
-        private static Texture2D GetImage(ModContentPack modContent, string relativeFilePathNoExtension)
+        internal static NewsImage GetImage(ModContentPack modContent, string relativeFilePathNoExtension)
         {
             try
             {
                 var newsFolderTex = TryResolveTextureRelativeToNewsFolder(modContent, relativeFilePathNoExtension);
-                if (newsFolderTex != null) return newsFolderTex;
+                if (newsFolderTex != null) return new NewsImage(newsFolderTex, owned: true);
                 // try getting the texture from the common resources as fallback
                 var resourcesTex = ContentFinder<Texture2D>.Get(relativeFilePathNoExtension, false);
-                if (resourcesTex != null) return resourcesTex;
+                if (resourcesTex != null) return new NewsImage(resourcesTex, owned: false);
             }
             catch (Exception e)
             {
@@ -47,7 +37,7 @@ namespace FixWorld.News
             // if all else fails, return purple "missing image" texture
             FixWorldController.Logger.Warning($"Failed to resolve update feature texture mod:{modContent.PackageIdPlayerFacing} " +
                                             $"file:{relativeFilePathNoExtension}, using placeholder");
-            return missingTexturePlaceholder;
+            return new NewsImage(missingTexturePlaceholder, owned: false);
         }
 
         private static Texture2D TryResolveTextureRelativeToNewsFolder(ModContentPack modContent, string relativeFilePathNoExtension)
@@ -71,11 +61,12 @@ namespace FixWorld.News
 
         private static Texture2D LoadTextureFromFile(FileInfo file)
         {
+            Texture2D tex = null;
             try
             {
                 var fileBytes = File.ReadAllBytes(file.FullName);
-                var tex = new Texture2D(2, 2, TextureFormat.Alpha8, true);
-                tex.LoadImage(fileBytes);
+                tex = new Texture2D(2, 2, TextureFormat.Alpha8, true);
+                if (!tex.LoadImage(fileBytes)) throw new IOException("Image decoding failed.");
                 tex.name = Path.GetFileNameWithoutExtension(file.Name);
                 tex.Compress(true);
                 tex.filterMode = FilterMode.Bilinear;
@@ -85,6 +76,7 @@ namespace FixWorld.News
             }
             catch (Exception e)
             {
+                if (tex != null) UnityEngine.Object.Destroy(tex);
                 throw new IOException($"Failed to load texture at path \"{file.FullName}\"", e);
             }
         }

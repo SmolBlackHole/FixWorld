@@ -65,9 +65,9 @@ Desktop CLR timings and compilation are not in-game validation.
 
 ## Deliberately not migrated here
 
-The News image loader and dependent segment lists need an owned/borrowed texture
-contract before cache conversion. The existing `DestroyLoadedImages()` destroys
-borrowed ContentFinder and placeholder textures too; this remains an open defect
-in TODO. Do not feed these resources into the generic derived-data cache.
+News images use a window-owned `NewsImageSet` with explicit owned/borrowed texture
+results, not the generic derived-data cache. Only file-loaded textures are
+destroyed on replacement or window close; ContentFinder and placeholder assets
+remain borrowed. See [News image lifetime](news.md).
 Resolved FieldInfo bindings are engine contracts, not a reason to add runtime
 dictionary lookups around every reflection handle.

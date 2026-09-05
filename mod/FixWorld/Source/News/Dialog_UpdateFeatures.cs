@@ -28,13 +28,12 @@ namespace FixWorld.News
         private readonly UpdateFeatureManager.IgnoredNewsIds ignoredNewsProviders;
         private readonly Color TitleLineColor = new Color(0.3f, 0.3f, 0.3f);
         private readonly Color LinkTextColor = new Color(.7f, .7f, 1f);
-        private readonly Dictionary<string, Texture2D> resolvedImages = new Dictionary<string, Texture2D>();
+        private readonly NewsImageSet resolvedImages = new();
         private readonly string ignoreToggleTip = "FixWorld_features_ignoreTooltip".Translate();
         private readonly float linkTextWidth;
         private List<FeatureEntry> entries;
         private float totalContentHeight = -1;
         private Vector2 scrollPosition;
-        private bool anyImagesPending;
 
         public override Vector2 InitialSize
         {
@@ -55,10 +54,11 @@ namespace FixWorld.News
             InstallUpdateFeatureDefs(featureDefs);
         }
 
-        public override void Close(bool doCloseSound = true)
+        public override void PostClose()
         {
-            base.Close(doCloseSound);
-            DestroyLoadedImages();
+            base.PostClose();
+            resolvedImages.Reset();
+            entries.Clear();
         }
 
         public override void DoWindowContents(Rect inRect)
@@ -78,7 +78,7 @@ namespace FixWorld.News
                 TooltipHandler.TipRegion(titleRect, "FixWorld_features_description".Translate());
             }
             GenUI.ResetLabelAlign();
-            if (!anyImagesPending)
+            if (!resolvedImages.Pending)
             {
                 Text.Font = GameFont.Small;
                 var scrollViewRect = new Rect(0f, titleRect.height, contentRect.width, contentRect.height - titleRect.height);
@@ -103,7 +103,7 @@ namespace FixWorld.News
                     {
                         var segment = entry.segments[j];
                         skipDrawing = curY - scrollPosition.y + segment.expectedHeight < 0f || curY - scrollPosition.y > scrollViewRect.height;
-                        segment.Draw(indentedContent, ref curY, resolvedImages, lastSegment, skipDrawing);
+                        segment.Draw(indentedContent, ref curY, resolvedImages, entry.def.modContentPack, lastSegment, skipDrawing);
                         lastSegment = segment;
                     }
                     curY += EntryFooterHeight;
@@ -116,7 +116,7 @@ namespace FixWorld.News
 
         protected void InstallUpdateFeatureDefs(IEnumerable<UpdateFeatureDef> featureDefs)
         {
-            DestroyLoadedImages();
+            resolvedImages.Reset();
             GenerateDrawableEntries(featureDefs.ToList());
             totalContentHeight = -1;
         }
@@ -241,7 +241,7 @@ namespace FixWorld.News
                 totalContentHeight += EntryTitleHeight;
                 foreach (var segment in entry.segments)
                 {
-                    totalContentHeight += segment.CalculateHeight(labelStyle, textWidth, resolvedImages);
+                    totalContentHeight += segment.CalculateHeight(labelStyle, textWidth, resolvedImages, entry.def.modContentPack);
                 }
             }
             totalContentHeight += EntryFooterHeight * entries.Count;
@@ -259,38 +259,7 @@ namespace FixWorld.News
                     requiredImagePairs.Add((def.modContentPack, imageFileName));
                 }
             }
-            if (requiredImagePairs.Count > 0)
-            {
-                anyImagesPending = true;
-                var requiredImagesGroupedByMod = requiredImagePairs
-                    .GroupBy(pair => pair.pack, pair => pair.fileName);
-                FixWorldController.Instance.DoLater.DoNextUpdate(() =>
-                {
-                    // this must be done in the main thread due to Unity API calls
-                    foreach (var group in requiredImagesGroupedByMod)
-                    {
-                        ResolveImagesForMod(group.Key, group);
-                    }
-                    anyImagesPending = false;
-                });
-            }
-        }
-
-        private void ResolveImagesForMod(ModContentPack mod, IEnumerable<string> imageFileNames)
-        {
-            foreach (var nameTexturePair in UpdateFeatureImageLoader.LoadImagesForMod(mod, imageFileNames))
-            {
-                resolvedImages[nameTexturePair.Key] = nameTexturePair.Value;
-            }
-        }
-
-        private void DestroyLoadedImages()
-        {
-            foreach (var resolvedTexture in resolvedImages.Values)
-            {
-                UnityEngine.Object.Destroy(resolvedTexture);
-            }
-            resolvedImages.Clear();
+            resolvedImages.Replace(requiredImagePairs, FixWorldController.Instance.DoLater.DoNextUpdate);
         }
 
         private List<DescriptionSegment> ParseEntryContent(string content, bool trimWhitespace, out IEnumerable<string> requiredImages)
@@ -414,11 +383,11 @@ namespace FixWorld.News
                 this.type = type;
             }
 
-            public float CalculateHeight(GUIStyle style, float width, Dictionary<string, Texture2D> images)
+            public float CalculateHeight(GUIStyle style, float width, NewsImageSet images, ModContentPack mod)
             {
                 if (type == SegmentType.Image && imageNames != null)
                 {
-                    if (cachedTextures == null) cachedTextures = CacheOwnTextures(images);
+                    if (cachedTextures == null) cachedTextures = CacheOwnTextures(images, mod);
                     return expectedHeight;
                 }
                 else if (type == SegmentType.Caption && text != null)
@@ -432,13 +401,13 @@ namespace FixWorld.News
                 return 0;
             }
 
-            public void Draw(Rect rect, ref float curY, Dictionary<string, Texture2D> images, DescriptionSegment previousSegment, bool skipDrawing)
+            public void Draw(Rect rect, ref float curY, NewsImageSet images, ModContentPack mod, DescriptionSegment previousSegment, bool skipDrawing)
             {
                 if (type == SegmentType.Image && imageNames != null)
                 {
                     if (!skipDrawing)
                     {
-                        if (cachedTextures == null) cachedTextures = CacheOwnTextures(images);
+                        if (cachedTextures == null) cachedTextures = CacheOwnTextures(images, mod);
                         var curX = rect.x;
                         for (int i = 0; i < cachedTextures.Count; i++)
                         {
@@ -470,14 +439,14 @@ namespace FixWorld.News
                 }
             }
 
-            private List<Texture2D> CacheOwnTextures(Dictionary<string, Texture2D> images)
+            private List<Texture2D> CacheOwnTextures(NewsImageSet images, ModContentPack mod)
             {
                 var cached = new List<Texture2D>(imageNames.Length);
                 expectedHeight = expectedWidth = 0;
                 for (int i = 0; i < imageNames.Length; i++)
                 {
                     Texture2D tex;
-                    if (!images.TryGetValue(imageNames[i], out tex) || tex == null) continue;
+                    if (!images.TryGet(mod, imageNames[i], out tex) || tex == null) continue;
                     cached.Add(tex);
                     if (tex.height > expectedHeight) expectedHeight = tex.height;
                     expectedWidth += tex.width;

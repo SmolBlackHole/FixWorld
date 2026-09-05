@@ -89,7 +89,24 @@ resolved engine contracts, not mutable data caches; do not turn each into a
 dictionary lookup. News image ownership and its dependent lists require a
 separate resource-lifetime slice. Exploration found an existing defect there:
 `DestroyLoadedImages` destroys borrowed ContentFinder/placeholder textures too.
-This defect is documented in TODO; no game readiness claim follows this slice.
+This defect is addressed by the subsequent News resource-lifetime slice below;
+no game readiness claim follows the cache slice.
+
+## Slice 3: News image lifetime (complete)
+
+The user's latest decision advances this fix ahead of scheduling. Keep the
+existing News UI and scheduler. Do not build a changelog publishing system here.
+
+- Represent owned file textures and borrowed ContentFinder/placeholder textures
+  explicitly. Destroy only owned resources, including partially decoded images.
+- One window-owned image set uses mod identity plus filename and deduplicates
+  requests. Clear it at replacement and the actual Window.PostClose boundary.
+- Generation-check queued loads so a closed/replaced window cannot load stale
+  images or clear the pending flag of a newer batch.
+- Verify production loader and owner with deterministic engine stubs: ownership,
+  duplicate names, close-before-pump, replacement, empty news, decode/processing
+  failures and enqueue failure. Compile the complete fork and rerun both earlier
+  contract suites. No game launch or deployment in this slice.
 
 ## Deferred
 
@@ -110,6 +127,12 @@ do not revive old runtime orchestration or move DDS/installer code in this task.
   hits took about 1.6 ms with zero Gen0 collections in the desktop CLR smoke
   interval, not a Unity Mono benchmark. Release compiler optimization enabled.
   News texture ownership remains explicitly open; no in-game test performed.
+- Slice 3: PASS, 22 production News loader/owner contract checks plus the 71
+  telemetry/cache regression checks. Full local-reference Release build:
+  zero warnings/errors. Removed the old untyped image-loading API. Source
+  inspection confirmed WindowStack calls PostClose on direct removal. Actual
+  Unity decoding, rendering and in-game window behavior remain unverified.
 
-The authorized two-slice run is complete. Scheduling/jobs, DDS and installation
-have not been migrated. Further work starts with a new scoped exploration.
+Autonomous continuation remains authorized, one scoped slice at a time.
+Scheduling/jobs follow the user-prioritized News fix. DDS and installation have
+not been migrated.
