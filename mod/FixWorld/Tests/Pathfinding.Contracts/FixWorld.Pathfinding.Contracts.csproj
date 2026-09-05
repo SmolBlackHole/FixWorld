@@ -21,5 +21,7 @@
             Link="Source\ShadowConnectivityGrid.cs" />
         <Compile Include="..\..\Source\Runtime\Source\Pathfinding\ShadowGridObserver.cs"
             Link="Source\ShadowGridObserver.cs" />
+        <Compile Include="..\..\Source\Runtime\Source\Pathfinding\ReachabilityComparisonPolicy.cs"
+            Link="Source\ReachabilityComparisonPolicy.cs" />
     </ItemGroup>
 </Project>

@@ -136,12 +136,23 @@ answer gameplay queries or claim a RimWorld reachability match rate. See
 [the runtime shadow observer](pathfinding.md#runtime-shadow-observer) for scope,
 activation, and the live-test procedure.
 
-The global binary graph is exercised by bounded endpoint probes at path-batch
-scheduling. Query counters distinguish answered/connected results from unavailable
-samples (for example, a busy or uninitialized map). `ShadowGridQuery` measures
-the adapter and query work. These are cardinal, binary `OnCell` probes, not
-RimWorld `CanReach` answers or validation of pawn traversal rules. No result is
-used to accept, reject, or modify a path request.
+The global binary graph now samples actual vanilla `CanReach` results, at most
+one candidate per game tick. Counters distinguish eligible candidates, answered
+comparisons, connected graph answers, unavailable samples, and mismatches.
+`ShadowGridQuery` measures sampled adapter/comparison work, not candidate filtering.
+The narrow profile and module ownership are documented under
+[the comparison profile](pathfinding.md#first-rimworld-comparison-profile).
+No result is used to accept, reject, or modify a path request. Zero mismatches
+without answered samples is not validation.
+
+The Shadow grid section also lists first-failure unavailable reasons and explicit
+eligible-negative/negative-match counters. Manual two-cell comparisons use the
+developer action **FixWorld / Compare shadow reachability** and write separate
+`[FixWorld.ShadowTest]` lines, without mixing into organic sample counters.
+Selection logs `queued`; resume simulation to execute after a regular gather.
+Transiently stale data retains the pending request rather than requiring another
+click. See
+[the negative-case procedure](pathfinding.md#explicit-negative-case-test).
 
 ## In-game UI
 

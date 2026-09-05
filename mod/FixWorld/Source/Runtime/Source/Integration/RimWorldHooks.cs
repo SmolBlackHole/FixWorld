@@ -35,6 +35,12 @@ namespace FixWorld.Integration
                 OwnerPrefix + ".profiling",
                 RuntimeProfilingHooks.PatchTypes,
                 required: false);
+        private static readonly HookGroup PathfindingProfilingHookGroup =
+            new(
+                "pathfinding profiling",
+                OwnerPrefix + ".pathfinding-profiling",
+                PathfindingProfilingHooks.PatchTypes,
+                required: false);
         private static readonly HookGroup PathfindingOptimizationHookGroup =
             new(
                 "pathfinding optimization",
@@ -85,7 +91,8 @@ namespace FixWorld.Integration
                         "[FixWorld] Connectivity union deduplication active.");
                 }
 
-                if (RuntimeProfilingHookGroup.Install())
+                RuntimeProfilingHookGroup.Install();
+                if (PathfindingProfilingHookGroup.Install())
                 {
                     Log.Message(ShadowGridObserver.Enabled
                         ? "[FixWorld] Shadow grid observer active (binary/cardinal, no gameplay queries)."
@@ -108,6 +115,7 @@ namespace FixWorld.Integration
             lock (Sync)
             {
                 RuntimeProfilingHookGroup.Uninstall();
+                PathfindingProfilingHookGroup.Uninstall();
                 PathfindingOptimizationHookGroup.Uninstall();
                 LifecycleHookGroup.Uninstall();
                 LoadingUiHookGroup.Uninstall();

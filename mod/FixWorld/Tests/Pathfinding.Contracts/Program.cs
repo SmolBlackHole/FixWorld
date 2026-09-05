@@ -58,6 +58,7 @@ internal static class Program
         PartialSuperChunkContracts();
         RandomContracts();
         GlobalConnectivityContracts.Run(Assert);
+        ComparisonContracts.Run(Assert);
     }
 
     private static void InputContracts()

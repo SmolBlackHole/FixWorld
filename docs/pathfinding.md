@@ -581,13 +581,10 @@ are unavailable, not disconnected. It does not initialize a grid or read live
 map cells during a query. The completed generation may lag newly changed world
 state until the next update barrier; it is not a promise of gameplay freshness.
 
-The existing `ScheduleBatchedPathJobs` prefix examines at most eight requests and
-probes the first eligible `OnCell` pair, after `GatherData`. `ShadowGridQuery`
-includes bounded request selection, adapter work, and counter recording, so its
-call count can exceed the answered/unavailable totals when no eligible pair is
-found. It is also included in outer tick/pathfinder timings. No probe result is
-written into the request. The log exposes `queryAnswered`, `queryConnected`, and
-`queryUnavailable`; the same totals appear in the Shadow grid UI.
+The initial global-query build sampled endpoints at `ScheduleBatchedPathJobs`.
+That synthetic binary probe produced the historical checkpoint below. It has
+now been replaced by the actual vanilla-result comparison described next;
+do not combine the two builds' query counts into a reachability match rate.
 
 Global contracts use an independent scalar whole-map flood fill for randomized
 edits, splits/merges, thin and partial maps, blocked endpoints, and routes leaving
@@ -628,6 +625,128 @@ Captures are local under `data/profiling/captures/pathfinding/`:
 This demonstrates inexpensive maintenance and queries in the observed workloads,
 not saved game work: the shadow graph still executes alongside RimWorld.
 
+#### First RimWorld comparison profile
+
+The current observational consumer uses the actual `Reachability.CanReach(IntVec3,
+LocalTargetInfo, PathEndMode, TraverseParms)` result for distinct in-bounds,
+normally walkable cell endpoints, `OnCell`, pawn-null `PassDoors`, `Danger.Deadly`,
+and no additional traversal restrictions. This is a comparison profile, not an
+assertion that the existing mask already reproduces every vanilla behavior.
+The result is observed after the original call, never synthesized by a second
+`CanReach` call and never substituted into gameplay. Comparison sampling is
+limited to one candidate per game tick on the main thread. `queryEligible`
+counts profile candidates before sampling and freshness checks. `queryAnswered`
+counts completed comparisons, `queryConnected` their positive graph answers,
+`queryUnavailable` sampled candidates that cannot be compared, and
+`queryMismatched` differing vanilla/graph results. All five counters appear in
+the UI and log. A first mismatch emits one warning per runtime context with
+the map, endpoints, generation, and both answers.
+
+`ShadowGridQuery` includes sampled endpoint validation, freshness checks, graph
+lookup, and counter recording. It excludes the cheap candidate filter and
+throttle. The original `CanReach` timer stops before comparison work; enclosing
+tick or caller scopes can still include that work. Disabling the shadow grid
+also bypasses comparison entirely. This build still needs live coverage checks.
+
+Source findings supporting the scope (local decompiled game sources):
+
+- `Verse/ReachabilityImmediate.cs:55` returns true for a same-cell `OnCell` target
+  without checking walkability. Exclude same-cell queries rather than measuring
+  an already trivial early return as a graph opportunity.
+- `Verse/Reachability.cs:219` permits an unwalkable start through any of its eight
+  neighbors. Exclude such starts; binary graph false is not equivalent there.
+- `Verse/Region.cs:282` checks region passability and, for `PassDoors`, the fence
+  restriction. `Verse/RegionTypeUtility.cs:17` classifies doors/fences before
+  normal walkability, so those boundaries still need empirical comparison.
+- `Verse/RegionMaker.cs:103` links cardinal neighbors; ordinary region traversal
+  is cardinal. This does not eliminate the exceptional start behavior above.
+- `Verse/PathFinderMapData.cs:196` gathers sources synchronously and clears its
+  cell/rectangle deltas. A main-thread postfix must skip pending deltas, missing
+  initial gathering, dirty regions, and unavailable shadow generations.
+- `Verse/CostSource.cs:17` copies cached path-grid values into its own buffers.
+  It does not write the path grids sampled by `WalkableByAny`; concurrent source
+  copying alone does not require moving the observer callback.
+
+Normal notification-based freshness is in scope. Arbitrary raw path-grid writes
+without notifications remain unsupported. `TraverseParms` defaults must be
+handled literally: its default `targetBuildable` value is not `CellRect.Empty`.
+Do not silently filter out every default-constructed vanilla query.
+Both `avoidPersistentDanger` values are accepted for this pawn-null `PassDoors`
+profile because vanilla `Region.Allows` does not consult it in that branch.
+
+Only measured coverage, correctly matched positive and negative cases, and a
+separate performance comparison can justify later serving these answers. In
+particular, zero mismatches with zero completed samples is not validation.
+
+The first organic comparison run (2026-09-05) reached 128 answered samples,
+all connected and matching vanilla, with zero observer failures. It recorded
+2,311 eligible candidates and 1,246 unavailable samples. Thirty binary cell
+changes were handled incrementally. This validates positive samples only;
+the old aggregate unavailable counter cannot explain those exclusions retroactively.
+
+Unavailable samples now record the first failing guard: `OutOfBounds`,
+`StartBlocked`, `TargetBlocked`, `MissingMapData`, `MissingFreshnessAccess`,
+`NotGathered`, `PendingCellDeltas`, `PendingRectDeltas`, `DirtyRegions`,
+`GridUnavailable`, or `Exception`. `GridUnavailable` combines the observer's
+missing/disabled/busy generation states. Only sampled exclusions count here,
+not profile rejections or the one-per-tick throttle. `queryEligibleNegative`
+counts eligible vanilla-false candidates; `queryNegativeMatches` counts sampled
+false/false matches. Both are separate from total matches and mismatches.
+
+##### Explicit negative-case test
+
+After restarting with this build, enable developer mode and open the debug
+actions menu: **FixWorld / Compare shadow reachability**. Click a walkable floor
+cell inside a completely walled enclosure, then one outside. Do not click the
+wall itself. Doors do not isolate this `PassDoors` profile, even when closed.
+Select the two cells, then resume simulation. Selection logs `queued` and stores
+one pending request; another selection replaces it. The test waits for the
+selected map's regular `PathFinderMapData.GatherData` postfix, after source
+workers finish and pending deltas are cleared. It never initiates a gather.
+If that map has no natural gather, the request remains pending.
+
+At that barrier, the test checks freshness, invokes vanilla `CanReach` once,
+and compares its answer with the
+current shadow grid. It does not order a pawn, edit terrain, force a graph
+rebuild, or replace a game result. The ordinary vanilla query may populate its
+normal internal cache. Its postfix is excluded from organic sample counters;
+the explicit result is logged separately as `[FixWorld.ShadowTest]` with endpoints,
+generation, vanilla/shadow answers, and `matched`. A successful negative test is
+`vanilla=False, shadow=False, matched=True`. Repeat after reopening the enclosure
+and expect a positive match. Transient unavailability keeps the request pending
+and logs only changes in the waiting reason. Invalid/blocked endpoints and
+missing required data/access cancel it. A weak map reference avoids retaining
+maps, and game-end/disposal clears pending work. No unavailable input is treated
+as a disconnected answer. The request is consumed before the vanilla call to
+prevent recursive execution. Live verification of this deferred dev tool remains
+required.
+
+The initial click-time tool repeatedly encountered pending cell/rectangle deltas
+in live tests, even as normal simulation updated the grid. Those attempts yielded
+no manual comparison; they motivated moving execution to the regular data barrier
+rather than weakening validation or asking users to time their clicks.
+
+Live deferred-tool acceptance (2026-09-05): seven manual comparisons matched
+vanilla. Generations 2/3 tested the same endpoints as disconnected/connected;
+generations 4/5/6 followed closing, reopening, and closing the enclosure with
+false/true/false matches. No observer failures occurred. This closes the scoped
+topology smoke test, not general gameplay equivalence or a speedup claim.
+
+#### Pathfinding module ownership
+
+The module lives inside the existing Runtime assembly, not in a new DLL.
+`Pathfinding/ShadowConnectivityGrid` owns the binary graph;
+`ShadowGridObserver` owns per-map lifetime, updates, and synchronized reads.
+`ShadowReachabilityComparison` owns sampling, freshness, and result comparison;
+`ReachabilityComparisonPolicy` defines the testable candidate filter.
+
+`Integration/PathfindingProfilingHooks` adapts Verse events and results to that
+module and records pathfinding measurements. `RuntimeProfilingHooks` contains
+only the generic tick and map-tick timers. `RuntimeContext` wires module lifetime,
+and the telemetry store/shared profiler only record and publish measurements.
+The existing `PathfindingOptimizationHooks` remains separate: its connectivity
+deduplication changes executed work, unlike the observational shadow module.
+
 ### Standalone hierarchy harness
 
 The first Phase 3 slice lives in `ShadowConnectivityGrid` and the standalone
@@ -649,8 +768,8 @@ negative answer does not exclude a route outside the chunk. The mutable grid has
 one owner: edits accumulate, component queries reject pending changes, and a
 synchronous `Rebuild` finishes before queries resume. This is not an immutable
 snapshot API for concurrent readers. The runtime adapter below serializes updates
-per map and exposes counters only. Cross-thread topology publication and
-comparisons with real RimWorld queries remain later parts of Experiment B.
+per map and permits nonblocking observational reads. Cross-thread topology
+publication and serving gameplay answers remain later parts of Experiment B.
 
 Benchmark timings belong to the standalone CLR and synthetic masks. Full-map
 scalar work, hierarchy construction, and retained-grid incremental updates must

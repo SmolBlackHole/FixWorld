@@ -186,12 +186,29 @@ is not. A Boids-style neighborhood update can rebuild the directly affected
 leaves and boundaries, while component and portal changes propagate through a
 small parent hierarchy only when their summaries actually change.
 
-Current slice: connect the validated cardinal, binary-passability hierarchy across
-super-chunk boundaries and add observational global connectivity queries. Publish
-completed updates under the per-map gate, test answers against a scalar whole-map
-oracle, and measure bounded real-request probes in the existing profiler/UI/log.
-No gameplay query replacement, pawn-specific traversal semantics, or path reuse.
+Current slice: compare actual RimWorld `CanReach` answers with the global graph
+for cell-only `OnCell`, pawn-null `PassDoors`, `Danger.Deadly`, unrestricted
+queries with distinct, normally walkable endpoints. Skip stale/unavailable input
+and count coverage/mismatches. No second vanilla invocation, gameplay query
+replacement, pawn-specific traversal expansion, or path reuse.
 Experiment A's remaining gameplay and queue-delay checks stay open.
+
+- [x] Separate pathfinding hooks from generic runtime profiling. Keep grid state,
+      comparison policy, and freshness in the Runtime's Pathfinding module.
+- [x] Replace synthetic endpoint probes with bounded, observational comparisons
+      of the scoped vanilla `CanReach` result; expose eligible/mismatch counters.
+- [ ] Validate live comparison coverage, positive and negative cases, and wall
+      edits. Zero answered samples is inconclusive; no gameplay cutover yet.
+      First organic run: 128 positive matches, zero mismatches/failures;
+      negative cases remain open.
+- [x] Expose first-failure exclusion reasons and negative-match counters; provide
+      an explicit two-cell developer test, separate from organic samples.
+- [x] Run the developer test across a sealed enclosure, then reopen and close it.
+      Seven matches across generations 2-6, including negative/positive/negative;
+      no observer failures. This closes the manual topology test only.
+- [x] Queue manual selections until the selected map's regular GatherData barrier;
+      retain freshness checks and cancel pending work when leaving the game.
+      Verify this deferred execution in the live enclosure test above.
 
 - [ ] For future shadow-vs-game mismatches, retain a bounded reproducer with masks,
       endpoints, traversal profile, dirty cells, portal data, generations, and both
@@ -253,6 +270,9 @@ Experiment A's remaining gameplay and queue-delay checks stay open.
 - [ ] Compare every shadow reachability answer against RimWorld across empty and
       dense maps, disconnected rooms, one-cell corridors, bridges, doors, map
       edges, component merges, component splits, and multiple active maps.
+      First comparison slice is the restricted PassDoors profile above. A zero
+      mismatch count with zero eligible/completed samples is not a pass. Wider
+      profiles and automatic gameplay cutover remain outside this slice.
 - [ ] Benchmark scalar versus bit-parallel leaf rebuilds, full-map rebuilds versus
       incremental rebuilds, and all three hierarchy levels. Record wall time,
       allocations, memory, dirty and rebuilt leaves, neighbor visits, changed

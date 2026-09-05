@@ -83,6 +83,12 @@ namespace FixWorld.Diagnostics
         private long shadowQueriesAnswered;
         private long shadowQueriesConnected;
         private long shadowQueriesUnavailable;
+        private long shadowQueriesEligible;
+        private long shadowQueriesEligibleNegative;
+        private long shadowQueriesMismatched;
+        private long shadowQueriesNegativeMatches;
+        private readonly long[] shadowQueryUnavailableReasons =
+            new long[(int)ShadowQueryUnavailableReason.Count];
         private double estimatedDurationMilliseconds;
         private LoadingLiveState liveState;
         private Profiler<PlayDataLoadStage> profiler;
@@ -354,7 +360,8 @@ namespace FixWorld.Diagnostics
         {
             if (!answered)
             {
-                Interlocked.Increment(ref shadowQueriesUnavailable);
+                ObserveShadowGridUnavailable(
+                    ShadowQueryUnavailableReason.GridUnavailable);
                 return;
             }
 
@@ -362,6 +369,41 @@ namespace FixWorld.Diagnostics
             if (connected)
             {
                 Interlocked.Increment(ref shadowQueriesConnected);
+            }
+        }
+
+        internal void ObserveShadowGridQueryEligible(bool vanillaResult)
+        {
+            Interlocked.Increment(ref shadowQueriesEligible);
+            if (!vanillaResult)
+            {
+                Interlocked.Increment(ref shadowQueriesEligibleNegative);
+            }
+        }
+
+        internal void ObserveShadowGridComparison(
+            bool mismatched,
+            bool vanillaResult)
+        {
+            if (mismatched)
+            {
+                Interlocked.Increment(ref shadowQueriesMismatched);
+            }
+            else if (!vanillaResult)
+            {
+                Interlocked.Increment(ref shadowQueriesNegativeMatches);
+            }
+        }
+
+        internal void ObserveShadowGridUnavailable(
+            ShadowQueryUnavailableReason reason)
+        {
+            Interlocked.Increment(ref shadowQueriesUnavailable);
+            int index = (int)reason;
+            if ((uint)index < (uint)shadowQueryUnavailableReasons.Length &&
+                index != (int)ShadowQueryUnavailableReason.None)
+            {
+                Interlocked.Increment(ref shadowQueryUnavailableReasons[index]);
             }
         }
 
@@ -421,7 +463,12 @@ namespace FixWorld.Diagnostics
                     Interlocked.Read(ref shadowFailures),
                     Interlocked.Read(ref shadowQueriesAnswered),
                     Interlocked.Read(ref shadowQueriesConnected),
-                    Interlocked.Read(ref shadowQueriesUnavailable)));
+                    Interlocked.Read(ref shadowQueriesUnavailable),
+                    Interlocked.Read(ref shadowQueriesEligible),
+                    Interlocked.Read(ref shadowQueriesMismatched),
+                    Interlocked.Read(ref shadowQueriesEligibleNegative),
+                    Interlocked.Read(ref shadowQueriesNegativeMatches),
+                    CaptureCounters(shadowQueryUnavailableReasons)));
 
         internal RuntimeDiagnosticsSnapshot Complete(
             string source,

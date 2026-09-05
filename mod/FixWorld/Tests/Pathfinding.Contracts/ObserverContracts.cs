@@ -499,11 +499,88 @@ namespace Verse
         public int y = y;
         public int z = z;
 
+        public readonly bool IsValid => x >= 0 && z >= 0;
+
+        public static IntVec3 Invalid => new IntVec3(-1000, -1000, -1000);
+
         public readonly bool Equals(IntVec3 other) => x == other.x && y == other.y && z == other.z;
 
         public override readonly bool Equals(object obj) => obj is IntVec3 && Equals((IntVec3)obj);
 
         public override readonly int GetHashCode() => (x * 397) ^ (y * 17) ^ z;
+
+        public static bool operator ==(IntVec3 left, IntVec3 right) =>
+            left.Equals(right);
+
+        public static bool operator !=(IntVec3 left, IntVec3 right) =>
+            !left.Equals(right);
+    }
+
+    public struct CellRect : IEquatable<CellRect>
+    {
+        public CellRect(int minX, int minZ, int maxX, int maxZ)
+        {
+            this.minX = minX;
+            this.minZ = minZ;
+            this.maxX = maxX;
+            this.maxZ = maxZ;
+        }
+
+        public int minX;
+        public int minZ;
+        public int maxX;
+        public int maxZ;
+
+        public static CellRect Empty => new CellRect(0, 0, -1, -1);
+
+        public bool Equals(CellRect other) => minX == other.minX &&
+            minZ == other.minZ && maxX == other.maxX && maxZ == other.maxZ;
+
+        public override bool Equals(object obj) =>
+            obj is CellRect && Equals((CellRect)obj);
+
+        public override int GetHashCode() =>
+            (((minX * 397) ^ minZ) * 397 ^ maxX) * 397 ^ maxZ;
+
+        public static bool operator ==(CellRect left, CellRect right) =>
+            left.Equals(right);
+
+        public static bool operator !=(CellRect left, CellRect right) =>
+            !left.Equals(right);
+    }
+
+    public sealed class Pawn
+    {
+    }
+
+    public sealed class Thing
+    {
+    }
+
+    public struct LocalTargetInfo
+    {
+        public LocalTargetInfo(IntVec3 cell)
+        {
+            Cell = cell;
+            HasThing = false;
+        }
+
+        public LocalTargetInfo(Thing thing)
+        {
+            Cell = IntVec3.Invalid;
+            HasThing = thing != null;
+        }
+
+        public IntVec3 Cell { get; }
+        public bool HasThing { get; }
+        public bool IsValid => HasThing || Cell.IsValid;
+    }
+
+    public enum Danger
+    {
+        None,
+        Some,
+        Deadly
     }
 
     public sealed class Map
@@ -599,6 +676,40 @@ namespace Verse
         public static int ErrorCount { get; private set; }
 
         public static void Error(string message) => ErrorCount++;
+    }
+}
+
+namespace Verse.AI
+{
+    public enum PathEndMode
+    {
+        OnCell,
+        Touch,
+        ClosestTouch,
+        InteractionCell
+    }
+
+    public enum TraverseMode
+    {
+        ByPawn,
+        PassDoors,
+        NoPassClosedDoors,
+        NoPassDoors
+    }
+
+    public struct TraverseParms
+    {
+        public Pawn pawn;
+        public TraverseMode mode;
+        public Danger maxDanger;
+        public bool canBashDoors;
+        public bool canBashFences;
+        public bool alwaysUseAvoidGrid;
+        public bool fenceBlocked;
+        public bool avoidDarknessDanger;
+        public bool avoidFog;
+        public bool avoidPersistentDanger;
+        public CellRect targetBuildable;
     }
 }
 

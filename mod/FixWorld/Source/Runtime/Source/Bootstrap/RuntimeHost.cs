@@ -7,6 +7,7 @@ using FixWorld.Integration;
 using FixWorld.PlayData;
 using FixWorld.Preloader;
 using Verse;
+using Verse.AI;
 
 namespace FixWorld.Runtime
 {
@@ -166,31 +167,21 @@ namespace FixWorld.Runtime
         internal static void ObserveShadowGrid(Map map, List<IntVec3> deltas, bool fullRebuild) =>
             Volatile.Read(ref current)?.ObserveShadowGrid(map, deltas, fullRebuild);
 
-        internal static bool TryQueryShadowGrid(
+        internal static void CompareShadowCells(Map map, IntVec3 start, IntVec3 target) =>
+            Volatile.Read(ref current)?.CompareShadowCells(map, start, target);
+
+        internal static void AfterPathDataGathered(Map map) =>
+            Volatile.Read(ref current)?.AfterPathDataGathered(map);
+
+        internal static void ObserveReachabilityComparison(
             Map map,
             IntVec3 start,
-            IntVec3 target,
-            out bool connected,
-            out long generation)
-        {
-            RuntimeContext context = Volatile.Read(ref current);
-            if (context == null)
-            {
-                connected = false;
-                generation = 0L;
-                return false;
-            }
-
-            return context.TryQueryShadowGrid(
-                map,
-                start,
-                target,
-                out connected,
-                out generation);
-        }
-
-        internal static void ObserveShadowGridQuery(bool answered, bool connected) =>
-            Volatile.Read(ref current)?.ObserveShadowGridQuery(answered, connected);
+            LocalTargetInfo target,
+            PathEndMode endMode,
+            TraverseParms parms,
+            bool actualResult) =>
+            Volatile.Read(ref current)?.ObserveReachabilityComparison(
+                map, start, target, endMode, parms, actualResult);
 
         internal static void ObserveReachabilityCache(bool hit) => Volatile.Read(ref current)?.ObserveReachabilityCache(hit);
 

@@ -537,7 +537,12 @@ namespace FixWorld.Diagnostics
             long failures,
             long queriesAnswered,
             long queriesConnected,
-            long queriesUnavailable)
+            long queriesUnavailable,
+            long queriesEligible,
+            long queriesMismatched,
+            long queriesEligibleNegative,
+            long queriesNegativeMatches,
+            long[] queryUnavailableReasons)
         {
             FullUpdates = fullUpdates;
             IncrementalUpdates = incrementalUpdates;
@@ -553,6 +558,12 @@ namespace FixWorld.Diagnostics
             QueriesAnswered = queriesAnswered;
             QueriesConnected = queriesConnected;
             QueriesUnavailable = queriesUnavailable;
+            QueriesEligible = queriesEligible;
+            QueriesMismatched = queriesMismatched;
+            QueriesEligibleNegative = queriesEligibleNegative;
+            QueriesNegativeMatches = queriesNegativeMatches;
+            QueryUnavailableReasons = queryUnavailableReasons ??
+                throw new ArgumentNullException(nameof(queryUnavailableReasons));
         }
 
         internal long FullUpdates { get; }
@@ -582,6 +593,16 @@ namespace FixWorld.Diagnostics
         internal long QueriesConnected { get; }
 
         internal long QueriesUnavailable { get; }
+
+        internal long QueriesEligible { get; }
+
+        internal long QueriesMismatched { get; }
+
+        internal long QueriesEligibleNegative { get; }
+
+        internal long QueriesNegativeMatches { get; }
+
+        internal long[] QueryUnavailableReasons { get; }
     }
 
     internal readonly struct RuntimeProfilingSnapshot

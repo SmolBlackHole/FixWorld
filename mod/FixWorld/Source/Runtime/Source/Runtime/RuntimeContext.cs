@@ -9,6 +9,7 @@ using FixWorld.PlayData;
 using FixWorld.Scheduling;
 using FixWorld.Textures;
 using Verse;
+using Verse.AI;
 
 namespace FixWorld.Runtime
 {
@@ -27,6 +28,7 @@ namespace FixWorld.Runtime
         private readonly IDisposable lifecycleSubscription;
         private readonly RuntimeTelemetryStore telemetry;
         private readonly ShadowGridObserver shadowGrid;
+        private readonly ShadowReachabilityComparison shadowReachability;
         private object attachedMod;
         private bool disposed;
         private long nextRuntimeProfileLogAt;
@@ -49,6 +51,7 @@ namespace FixWorld.Runtime
                     error));
             telemetry = new RuntimeTelemetryStore();
             shadowGrid = new ShadowGridObserver(telemetry);
+            shadowReachability = new ShadowReachabilityComparison(telemetry, shadowGrid);
             Lifecycle = new RimWorldLifecycle(events);
             Textures = new TextureDdsCache(scheduler, mainThread);
             lifecycleSubscription = events.Subscribe<RimWorldLifecycleEvent>(
@@ -230,21 +233,20 @@ namespace FixWorld.Runtime
         internal void ObserveShadowGrid(Map map, List<IntVec3> deltas, bool fullRebuild) =>
             shadowGrid.Observe(map, deltas, fullRebuild);
 
-        internal bool TryQueryShadowGrid(
+        internal void CompareShadowCells(Map map, IntVec3 start, IntVec3 target) =>
+            shadowReachability.CompareSelectedCells(map, start, target);
+
+        internal void AfterPathDataGathered(Map map) =>
+            shadowReachability.AfterGatherData(map);
+
+        internal void ObserveReachabilityComparison(
             Map map,
             IntVec3 start,
-            IntVec3 target,
-            out bool connected,
-            out long generation) =>
-            shadowGrid.TryQuery(
-                map,
-                start,
-                target,
-                out connected,
-                out generation);
-
-        internal void ObserveShadowGridQuery(bool answered, bool connected) =>
-            telemetry.ObserveShadowGridQuery(answered, connected);
+            LocalTargetInfo target,
+            PathEndMode endMode,
+            TraverseParms parms,
+            bool actualResult) =>
+            shadowReachability.Observe(map, start, target, endMode, parms, actualResult);
 
         internal void ObserveReachabilityCache(bool hit) =>
             telemetry.ObserveReachabilityCache(hit);
@@ -257,6 +259,7 @@ namespace FixWorld.Runtime
             }
 
             disposed = true;
+            shadowReachability.CancelPending();
             if (runtimeProfileLoggingActive)
             {
                 LogRuntimeProfile("shutdown", publish: true);
@@ -311,6 +314,7 @@ namespace FixWorld.Runtime
                 case RimWorldLifecycleEventKind.PlayDataReady:
                     break;
                 case RimWorldLifecycleEventKind.GameEnded:
+                    shadowReachability.CancelPending();
                     if (runtimeProfileLoggingActive)
                     {
                         LogRuntimeProfile("game-ended", publish: true);

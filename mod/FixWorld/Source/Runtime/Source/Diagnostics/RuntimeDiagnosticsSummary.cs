@@ -317,6 +317,16 @@ namespace FixWorld.Diagnostics
             text.Append(",queryUnavailable:");
             text.Append(shadow.QueriesUnavailable.ToString(
                 CultureInfo.InvariantCulture));
+            text.Append(",queryEligible:");
+            text.Append(shadow.QueriesEligible.ToString(CultureInfo.InvariantCulture));
+            text.Append(",queryMismatched:");
+            text.Append(shadow.QueriesMismatched.ToString(CultureInfo.InvariantCulture));
+            text.Append(",queryEligibleNegative:");
+            text.Append(shadow.QueriesEligibleNegative.ToString(CultureInfo.InvariantCulture));
+            text.Append(",queryNegativeMatches:");
+            text.Append(shadow.QueriesNegativeMatches.ToString(CultureInfo.InvariantCulture));
+            text.Append(",queryUnavailableReasons:");
+            text.Append(FormatUnavailableReasons(shadow.QueryUnavailableReasons));
             return text.ToString();
         }
 
@@ -541,6 +551,19 @@ namespace FixWorld.Diagnostics
                 shadow.QueriesUnavailable.ToString(
                     CultureInfo.InvariantCulture) + " unavailable");
             text.AppendLine(
+                "  Vanilla comparison: " + shadow.QueriesEligible.ToString(
+                    CultureInfo.InvariantCulture) + " eligible, " +
+                shadow.QueriesEligibleNegative.ToString(
+                    CultureInfo.InvariantCulture) + " eligible negative, " +
+                shadow.QueriesMismatched.ToString(
+                    CultureInfo.InvariantCulture) + " mismatched, " +
+                shadow.QueriesNegativeMatches.ToString(
+                    CultureInfo.InvariantCulture) +
+                " negative matches (sampled, observational only)");
+            text.AppendLine(
+                "  Unavailable reasons: " +
+                FormatUnavailableReasons(shadow.QueryUnavailableReasons));
+            text.AppendLine(
                 "  Failures: " + shadow.Failures.ToString(
                     CultureInfo.InvariantCulture));
         }
@@ -607,6 +630,37 @@ namespace FixWorld.Diagnostics
                 }
 
                 text.Append(name(index));
+                text.Append(' ');
+                text.Append(counts[index].ToString(CultureInfo.InvariantCulture));
+            }
+
+            return text.Length == 0 ? "none" : text.ToString();
+        }
+
+        private static string FormatUnavailableReasons(long[] counts)
+        {
+            if (counts == null)
+            {
+                return "none";
+            }
+
+            var text = new StringBuilder(192);
+            int count = Math.Min(
+                counts.Length,
+                (int)ShadowQueryUnavailableReason.Count);
+            for (int index = 1; index < count; index++)
+            {
+                if (counts[index] == 0L)
+                {
+                    continue;
+                }
+
+                if (text.Length > 0)
+                {
+                    text.Append(", ");
+                }
+
+                text.Append(((ShadowQueryUnavailableReason)index).ToString());
                 text.Append(' ');
                 text.Append(counts[index].ToString(CultureInfo.InvariantCulture));
             }
