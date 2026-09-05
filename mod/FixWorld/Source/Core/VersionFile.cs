@@ -32,7 +32,7 @@ namespace FixWorld.Core
 		}
 
 		public Version OverrideVersion { get; private set; }
-		public Version RequiredLibraryVersion { get; private set; }
+		public Version RequiredFixWorldVersion { get; private set; }
 
 		private VersionFile(XDocument doc)
 		{
@@ -47,10 +47,10 @@ namespace FixWorld.Core
 			{
 				OverrideVersion = new Version(overrideVersionElement.Value);
 			}
-			var requiredLibraryVersionElement = doc.Root.Element("requiredLibraryVersion");
-			if (requiredLibraryVersionElement != null)
+			var requiredFixWorldVersionElement = doc.Root.Element("requiredFixWorldVersion");
+			if (requiredFixWorldVersionElement != null)
 			{
-				RequiredLibraryVersion = new Version(requiredLibraryVersionElement.Value);
+				RequiredFixWorldVersion = new Version(requiredFixWorldVersionElement.Value);
 			}
 		}
 	}

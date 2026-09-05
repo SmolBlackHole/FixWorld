@@ -152,3 +152,25 @@ Still required in-game: clean first install -> one restart -> ready library;
 normal boot -> same controller attachment; Mods-tab restart; disabled FixWorld
 -> no core initialization. Desktop CLR tests do not prove native Doorstop
 injection, Unity Mono loading or the engine's shutdown behavior.
+
+### First native run, 2026-09-05
+
+The hash-verified legacy proxy/config/manifest and original junction were moved
+to `RimWorld/FixWorld.previous-20260905-210119` (recoverable, not deleted).
+The mod junction now targets `mod/FixWorld/Mods/FixWorld`.
+
+Process 49016 installed Doorstop, exited, and the helper launched process 9512.
+The new manifest cleared RestartPending; typed bootstrap telemetry reached Ready.
+The collector retained 54 complete samples with no validation warnings or caught
+library callback errors. Evidence: `temp/startup-20260905-210119/capture` (local,
+ignored). The actual main menu was visible; the game was left open.
+
+The run exposed a fork-specific version-check defect: Allow Tool's HugsLib
+`requiredLibraryVersion` was being compared to FixWorld 0.1.0. FixWorld now reads
+only `requiredFixWorldVersion` from About/Version.xml. HugsLib's original tag is
+not interpreted as a FixWorld dependency. Regression fixtures test both tags
+together and preserve overrideVersion metadata. The corrected build passed local
+validation but was not loaded into this already running process.
+
+Native Mods-tab restart, disabled entry and the corrected version dialog remain
+unverified. The loading UI has not yet been restored from the archive.

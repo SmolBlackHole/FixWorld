@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Xml;
+using System.Xml.Linq;
 using FixWorld.Bootstrap;
 
 internal static class Program
@@ -300,6 +301,16 @@ internal static class Program
             Check(BootSession.Current.Phase == BootPhase.CoreReady, "assembly-load event automatically starts early core");
         }
         var assembly = Assembly.LoadFrom(args[1]);
+        var versionFile = assembly.GetType("FixWorld.Core.VersionFile", true);
+        object ParseVersion(string xml) => Activator.CreateInstance(versionFile,
+            BindingFlags.Instance | BindingFlags.NonPublic, null,
+            new object[] { XDocument.Parse(xml) }, null);
+        var required = versionFile.GetProperty("RequiredFixWorldVersion");
+        var hugsOnly = ParseVersion("<VersionData><requiredLibraryVersion>9.0.0</requiredLibraryVersion></VersionData>");
+        Check(required.GetValue(hugsOnly) == null, "HugsLib requirement never becomes FixWorld requirement");
+        var both = ParseVersion("<VersionData><requiredLibraryVersion>9.0.0</requiredLibraryVersion><requiredFixWorldVersion>0.2.0</requiredFixWorldVersion><overrideVersion>3.0.0</overrideVersion></VersionData>");
+        Check((Version)required.GetValue(both) == new Version(0, 2, 0), "Explicit FixWorld requirement retained alongside HugsLib");
+        Check((Version)versionFile.GetProperty("OverrideVersion").GetValue(both) == new Version(3, 0, 0), "Mod version metadata retained");
         var type = assembly.GetType("FixWorld.FixWorldController", true);
         var start = type.GetMethod("StartEarly");
         start.Invoke(null, null);

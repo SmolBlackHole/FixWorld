@@ -10,20 +10,15 @@ using Verse;
 namespace FixWorld.Core
 {
     /// <summary>
-    /// Checks the current version of the library against the About.xml -> requiredLibraryVersion of all mods.
+    /// Checks FixWorld against About/Version.xml -> requiredFixWorldVersion.
+    /// HugsLib's requiredLibraryVersion belongs to HugsLib, not this fork.
     /// Shows a popup window (<see cref="Dialog_LibraryUpdateRequired"/>) if one of the loaded mods requires a
     /// more recent version of the library.
     /// </summary>
-    internal class LibraryVersionChecker
+    internal class LibraryVersionChecker(Version currentLibraryVersion, IModLogger logger)
     {
-        private readonly Version currentLibraryVersion;
-        private readonly IModLogger logger;
-
-        public LibraryVersionChecker(Version currentLibraryVersion, IModLogger logger)
-        {
-            this.currentLibraryVersion = currentLibraryVersion;
-            this.logger = logger;
-        }
+        private readonly Version currentLibraryVersion = currentLibraryVersion;
+        private readonly IModLogger logger = logger;
 
         internal IEnumerable<(string modName, Version requiredVersion)> RequiredLibraryVersionEnumerator { get; set; } =
             new EnumerateRequiredLibraryVersionsInMods();
@@ -90,15 +85,10 @@ namespace FixWorld.Core
             return null;
         }
 
-        public struct VersionMismatchReport
+        public readonly struct VersionMismatchReport(string modName, Version expectedVersion)
         {
-            public string ModName { get; }
-            public Version ExpectedVersion { get; }
-            public VersionMismatchReport(string modName, Version expectedVersion)
-            {
-                ModName = modName;
-                ExpectedVersion = expectedVersion;
-            }
+            public string ModName { get; } = modName;
+            public Version ExpectedVersion { get; } = expectedVersion;
         }
 
         private class EnumerateRequiredLibraryVersionsInMods : IEnumerable<(string, Version)>
@@ -107,7 +97,7 @@ namespace FixWorld.Core
             {
                 foreach (var contentPack in LoadedModManager.RunningMods)
                 {
-                    var requiredVersion = VersionFile.TryParseVersionFile(contentPack)?.RequiredLibraryVersion;
+                    var requiredVersion = VersionFile.TryParseVersionFile(contentPack)?.RequiredFixWorldVersion;
                     if (requiredVersion != null)
                     {
                         yield return (contentPack.Name, requiredVersion);

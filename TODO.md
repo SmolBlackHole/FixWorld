@@ -13,6 +13,10 @@ The approved [slice plan](docs/fork-refactor-plan.md) controls execution.
 - [ ] In-game bootstrap acceptance: remove the legacy installation explicitly,
       then test clean first boot, one restart, normal attach, Mods-tab restart
       and disabled ModConfig. Desktop process tests do not replace this.
+      First install/restart/attach passed on 2026-09-05; Mods-tab restart and
+      disabled entry still need native acceptance. See windows-preloader.md.
+- [ ] Restore the archived loading UI and tips using the fork's shared
+      measurements/contracts, without restoring the old custom mod loader.
 - [ ] Next infrastructure slice: Scheduling/Jobs, before reintroducing DDS.
 - [x] Local JSONL capture and Python collector: shared contracts, counter metadata,
       local tests and Release build. See [harness](docs/harness.md).
