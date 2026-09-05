@@ -33,6 +33,7 @@ RimWorldWin64.exe
      -> execute the original loader and deferred actions
      -> FixWorld yields deferred work through an isolated loading overlay
   -> FixWorld.Mod.dll
+     -> initialize embedded FixWorld.Foundation (HugsLib fork)
      -> attach settings and ModContentPack to the running runtime
 ```
 
@@ -49,6 +50,7 @@ the runtime that already exists.
 | `FixWorld.Loader` | Exact RimWorld contract validation and one runtime start call |
 | `FixWorld.Runtime` | Lifecycle, passive stage observation, scheduler, telemetry, DDS cache, and loading UI state |
 | `FixWorld.Mod` | Doorstop installation, settings, RimWorld UI, and runtime attachment |
+| `FixWorld.Foundation` | Embedded HugsLib fork; first slice activates lifecycle initialization and quit logging only |
 | `FixWorld.Tool` | Explicit command-line wrappers for preloader maintenance, DDS cleanup, and texconv |
 
 The preloader and loader contain no gameplay policy. The runtime owns long-lived

@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package>
+    <metadata>
+        <id>SmolBlackHole.FixWorld</id>
+        <version>0.1.0</version>
+        <title>FixWorld</title>
+        <authors>SmolBlackHole</authors>
+        <owners>SmolBlackHole</owners>
+        <license type="expression">MPL-2.0</license>
+        <projectUrl>https://github.com/SmolBlackHole/FixWorld</projectUrl>
+        <requireLicenseAcceptance>false</requireLicenseAcceptance>
+        <description>FixWorld development foundation for RimWorld 1.6, derived from HugsLib.</description>
+        <tags>RimWorld Mod</tags>
+    </metadata>
+    <files>
+        <file src="license.txt" target="" />
+        <file src="NOTICE.txt" target="" />
+    </files>
+</package>

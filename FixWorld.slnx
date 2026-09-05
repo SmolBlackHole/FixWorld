@@ -1,10 +1,4 @@
 <Solution>
-    <Project Path="mod/FixWorld/Source/Mod/FixWorld.Mod.csproj" />
-    <Project Path="mod/FixWorld/Source/Loader/FixWorld.Loader.csproj" />
-    <Project Path="mod/FixWorld/Source/Preloader/FixWorld.Preloader.csproj" />
-    <Project Path="mod/FixWorld/Source/Tool/FixWorld.Tool.csproj" />
-    <Project Path="mod/FixWorld/Source/Runtime/FixWorld.Runtime.csproj" />
-    <Project Path="mod/FixWorld/Source/Shared/FixWorld.Shared.csproj" />
-    <Project Path="mod/FixWorld/Tests/Shared.Contracts/FixWorld.Shared.Contracts.csproj" />
-    <Project Path="mod/FixWorld/Tests/Profiling.Benchmarks/FixWorld.Profiling.Benchmarks.csproj" />
+    <Project Path="mod/FixWorld/FixWorld.csproj" />
+    <Project Path="mod/FixWorld/Tests/FixWorldTests.csproj" />
 </Solution>

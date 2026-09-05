@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<Defs>
+
+	<KeyBindingCategoryDef>
+		<defName>FixWorldShortcuts</defName>
+		<label>FixWorld</label>
+		<description>Shortcuts for the FixWorld library.</description>
+	</KeyBindingCategoryDef>
+
+</Defs>

@@ -4,6 +4,8 @@
 !.env.example
 /mod/FixWorld/Local.Build.props
 /temp/
+/old/
+/.archive/
 *.user
 *.suo
 

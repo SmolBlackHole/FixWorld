@@ -1,0 +1,17 @@
+FixWorld is derived from HugsLib by UnlimitedHugs and contributors:
+https://github.com/UnlimitedHugs/RimworldHugsLib
+
+Original upstream license notice:
+
+This is free and unencumbered software released into the public domain.
+
+Anyone is free to copy, modify, publish, use, compile, sell, or
+distribute this software, either in source code form or as a compiled
+binary, for any purpose, commercial or non-commercial, and by any means.
+
+HugsLib includes a compiled version of the Harmony library made by Andreas Pardeike (MIT license).
+
+FixWorld does not change the public-domain status of the original material.
+FixWorld modifications are offered under MPL-2.0. Harmony remains a separate
+dependency with its own license. The copied legacy Harmony binary was removed
+from the active mod alongside the pre-1.6 assemblies.

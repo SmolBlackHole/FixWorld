@@ -22,9 +22,17 @@ together. Do not create a framework layer for each arrow.
 
 ## Ownership
 
-- The runtime composition root owns one `RuntimeServices` instance per runtime.
-  It supplies the central telemetry store, EventBus, JobScheduler and
-  MainThreadQueue. Modules borrow these services; they never dispose them.
+- Latest approved decision (2026-09-05): embed and maintain our own HugsLib fork
+  under `mod/FixWorld/Source/Foundation`. It is the foundation, not an adapter
+  around another general-purpose FixWorld module framework. No build reference
+  may point at the research copy under `decompiled/third-party`.
+- The embedded foundation supplies mod lifecycle, settings, logging and suitable
+  tick callbacks. FixWorld supplies missing capabilities: DDS, installer,
+  profiling, typed telemetry and background workers. Existing `RuntimeServices`
+  and `RuntimeModule` are evaluated during migration, not mandatory architecture.
+- There is one active runtime and one owner per service. The early Doorstop
+  bootstrap and later foundation attachment must not start separate runtimes.
+  Background services remain available before the normal mod entry when needed.
 - Shared owns engine-independent contracts and reusable infrastructure. Use its
   existing profiler, scheduling and caching facilities before adding another
   implementation. No second sample bus, scheduler or aggregation thread is
@@ -41,8 +49,9 @@ together. Do not create a framework layer for each arrow.
 
 ## What every module provides
 
-Use a common typed `RuntimeModule<TSnapshot>` base for lifecycle repetition,
-including modules with no active gameplay replacement. It provides:
+Modules provide the following contracts. The previously implemented Shared
+`RuntimeModule<TSnapshot>` is no longer a required base class; reuse the embedded
+foundation where it already provides the lifecycle rather than layering both:
 
 1. A stable unique identity, positive data-schema version, and snapshot type.
 2. Installation and uninstallation of its telemetry registration.
@@ -165,6 +174,26 @@ review their usefulness during the diagnostics migration, not this phase.
 
 ### Phase 2: runtime, DDS and installation refactor (authorized next)
 
+The approved first slice is now the embedded foundation:
+
+1. Copy HugsLib source and license into an independently built FixWorld project.
+   Separate assembly, namespace, Harmony and persistence identities from original
+   HugsLib, which other mods may still load. Do not ship original HugsLib/Harmony
+   binaries or impersonate the original package.
+2. Connect one FixWorld entry for initialization, logging and normal termination.
+   Existing DDS engine, bootstrap, restart coordinator, settings and cache formats
+   remain unchanged. Upstream UI, quickstart, publisher and restart hooks are not
+   activated in this slice. Preserve their source for subsequent migrations.
+3. Verify builds and focused isolation/lifecycle contracts. In-game smoke testing
+   must verify one initialization, existing DDS behavior, normal termination and
+   coexistence with original HugsLib. Compilation alone is not this acceptance.
+
+Stop after this slice. Next modules are **DDS** (cache/conversion/state/telemetry)
+and **FixWorldInstaller** (Doorstop installation, detection and coordinated
+restart). Doorstop belongs to the installer, not the DDS module. First-install
+logic must work before the early runtime exists. The later paragraphs describe
+those subsequent migration slices, not permission to pull them into this one.
+
 Latest decision (2026-09-05): start with DDS and the installation/startup chain,
 not Pathfinding or the generic diagnostics formatter. Temporary broken builds or
 game behavior during local restructuring are acceptable, but must be reported;
@@ -172,7 +201,7 @@ this is not permission to lose user data, delete caches or launch/restart games
 without task-scoped authorization. Verify each completed slice before calling
 it ready. Do not disguise known breakage with a parallel fallback architecture.
 
-First cut: runtime owns Shared services; a typed DDS V2 module owns DDS startup,
+Following the foundation slice: a typed DDS module owns DDS startup,
 attachment and lifecycle operations, its own state DTO and optional profiling.
 Keep Harmony/Verse adaptation outside it. Retain the existing pack/conversion
 engine as a lower-level dependency until the following DDS slices replace its

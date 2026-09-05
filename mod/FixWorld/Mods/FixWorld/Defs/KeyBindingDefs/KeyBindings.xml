@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<Defs>
+
+	<KeyBindingDef>
+		<category>FixWorldShortcuts</category>
+		<defName>PublishLogs</defName>
+		<label>Publish log file (hold Ctrl)</label>
+		<defaultKeyCodeA>F12</defaultKeyCodeA>
+	</KeyBindingDef>
+
+	<KeyBindingDef>
+		<category>FixWorldShortcuts</category>
+		<defName>OpenLogFile</defName>
+		<label>Open log file</label>
+	</KeyBindingDef>
+
+	<KeyBindingDef>
+		<category>FixWorldShortcuts</category>
+		<defName>RestartRimworld</defName>
+		<label>Restart Rimworld</label>
+	</KeyBindingDef>
+
+	<KeyBindingDef>
+		<category>FixWorldShortcuts</category>
+		<defName>HLOpenModSettings</defName>
+		<label>Open Mod Setting window</label>
+	</KeyBindingDef>
+
+	<KeyBindingDef>
+		<category>FixWorldShortcuts</category>
+		<defName>HLOpenUpdateNews</defName>
+		<label>Open Mod Update News window</label>
+	</KeyBindingDef>
+
+</Defs>

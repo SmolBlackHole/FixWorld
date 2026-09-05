@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+
+	<FixWorld_settings_btn>Mod-Einstellungen</FixWorld_settings_btn>
+	<FixWorld_settings_windowTitle>Mod-Einstellungen</FixWorld_settings_windowTitle>
+	<FixWorld_settings_resetValue>Auf Standard zurücksetzen</FixWorld_settings_resetValue>
+	<FixWorld_settings_resetAll>Alle zurücksetzen</FixWorld_settings_resetAll>
+	<FixWorld_settings_resetAll_prompt>Alle Mods auf ihre Standardeinstellungen zurücksetzen?</FixWorld_settings_resetAll_prompt>
+	<FixWorld_settings_noSettings>Keine Mods mit veränderbaren Einstellungen geladen.</FixWorld_settings_noSettings>
+	<FixWorld_settings_resetMod>{0} auf Standard zurücksetzen</FixWorld_settings_resetMod>
+	<FixWorld_settings_resetMod_prompt>{0} Mod auf ihre Standardeinstellungen zurücksetzen?</FixWorld_settings_resetMod_prompt>
+	<FixWorld_settings_resetIncludeHidden>Versteckte Einstellungen einbeziehen ({0})</FixWorld_settings_resetIncludeHidden>
+	<FixWorld_settings_hiddenSettingsHeader>Versteckte Mod-Einstellungen:</FixWorld_settings_hiddenSettingsHeader>
+	<FixWorld_settings_resetSuccessMessage>{0} Einstellungen wurden zurückgesetzt.</FixWorld_settings_resetSuccessMessage>
+
+	<FixWorld_setting_showNews_label>Mod-Update-Neuigkeiten anzeigen</FixWorld_setting_showNews_label>
+	<FixWorld_setting_showNews_desc>Ermöglicht neu installierten Mods, ihre neuen Features in einem
+		Popupfenster zu präsentieren, wenn du dein Spiel startest.</FixWorld_setting_showNews_desc>
+	<FixWorld_setting_allNews_label>Alle Mod-Update-Neuigkeiten</FixWorld_setting_allNews_label>
+	<FixWorld_setting_allNews_desc>Zeigt alle Mod-Update-Neuigkeiten an, auch jene, die bereits
+		angezeigt wurden.</FixWorld_setting_allNews_desc>
+	<FixWorld_setting_allNews_button>Jetzt anzeigen</FixWorld_setting_allNews_button>
+	<FixWorld_setting_allNews_fail>Keiner der aktiven Mods hat eine Update-Neuigkeit.</FixWorld_setting_allNews_fail>
+	<FixWorld_setting_unnamed_mod>(namenlose Mod)</FixWorld_setting_unnamed_mod>
+	<FixWorld_setting_show_settings>Einstellungen anzeigen</FixWorld_setting_show_settings>
+	<FixWorld_setting_mod_name_title>Einstellungen für {0}</FixWorld_setting_mod_name_title>
+	<FixWorld_setting_expand_mod>Öffnen</FixWorld_setting_expand_mod>
+	<FixWorld_setting_collapse_mod>Schließen</FixWorld_setting_collapse_mod>
+	<FixWorld_setting_quickstartSettings_label>Schnellstart-Konfiguration</FixWorld_setting_quickstartSettings_label>
+	<FixWorld_setting_logPublisherSettings_label>Publisher-Einstellungen loggen</FixWorld_setting_logPublisherSettings_label>
+	<FixWorld_setting_ignoredUpdateNews_label>Ignorierte Anbieter von Mod-Update-Neuigkeiten</FixWorld_setting_ignoredUpdateNews_label>
+
+	<FixWorld_features_title>Neue Mod-Features</FixWorld_features_title>
+	<FixWorld_features_description>Die folgenden Mod-Updates wurden installiert. Hier siehst du die
+		neuen Features und Verbesserungen, die mit den Updates eingeführt wurden.\n\nDu kannst
+		dieses Dialogfenster in Optionen &gt; Mod-Einstellungen deaktivieren.</FixWorld_features_description>
+	<FixWorld_features_update>{0} v{1}</FixWorld_features_update>
+	<FixWorld_features_link>Link</FixWorld_features_link>
+	<FixWorld_features_linkDesc>Öffnet eine Seite in deinem Browser, auf der du ggf. mehr über dieses
+		Update erfährst.\n\nAdresse: {0}</FixWorld_features_linkDesc>
+	<FixWorld_features_ignoreTooltip>Über zukünftige Updates dieser Mod benachrichtigen</FixWorld_features_ignoreTooltip>
+	<FixWorld_features_confirmIgnoreTitle>Bestätigen</FixWorld_features_confirmIgnoreTitle>
+	<FixWorld_features_confirmIgnore>Zukünftige Update-Neuigkeiten von {0} ignorieren?\n\nKann in
+		Mod-Einstellungen &gt; Alle Mod-Update-Neuigkeiten wieder aktiviert werden.</FixWorld_features_confirmIgnore>
+	<FixWorld_features_filterBtn>Nach Mod filtern</FixWorld_features_filterBtn>
+	<FixWorld_features_filterStatus>Aktueller Filter: {0}</FixWorld_features_filterStatus>
+	<FixWorld_features_filterAllMods>Alle Mods</FixWorld_features_filterAllMods>
+	<FixWorld_features_filterDropdownEntry>{0} ({1} Neuigkeiten{2})</FixWorld_features_filterDropdownEntry>
+	<FixWorld_features_filterIgnoredModSuffix>, ignoriert</FixWorld_features_filterIgnoredModSuffix>
+
+	<FixWorld_copiedToClipboard>In die Zwischenablage kopiert.</FixWorld_copiedToClipboard>
+
+	<FixWorld_logs_copy>Kopieren</FixWorld_logs_copy>
+	<FixWorld_logs_shareBtn>Logs hochladen</FixWorld_logs_shareBtn>
+	<FixWorld_logs_shareConfirmTitle>Bestätigen</FixWorld_logs_shareConfirmTitle>
+	<FixWorld_logs_shareConfirmMessage>Logs jetzt hochladen?\n\nWenn du das tust, werden deine Logs
+		auf einen öffentlichen Server hochgeladen, außerdem erhältst du einen Link, den du mit
+		anderen teilen kannst. Das ist nützlich, wenn du Hilfe bei einem Problem brauchst oder einem
+		Mod-Autor ein Problem melden möchtest.\n\nEs werden keine privaten Informationen
+		preisgegeben.</FixWorld_logs_shareConfirmMessage>
+	<FixWorld_logs_publisherTitle>Log-Publisher</FixWorld_logs_publisherTitle>
+	<FixWorld_logs_uploading>Lade hoch{0}</FixWorld_logs_uploading>
+	<FixWorld_logs_shortening>Rufe Link ab{0}</FixWorld_logs_shortening>
+	<FixWorld_logs_uploaded>Hochladen erfolgreich!</FixWorld_logs_uploaded>
+	<FixWorld_logs_uploadError>Fehler beim Hochladen: {0}</FixWorld_logs_uploadError>
+	<FixWorld_logs_abortBtn>Abbrechen</FixWorld_logs_abortBtn>
+	<FixWorld_logs_retryBtn>Wiederholen</FixWorld_logs_retryBtn>
+	<FixWorld_logs_browseBtn>Im Browser öffnen</FixWorld_logs_browseBtn>
+	<FixWorld_logs_useRecommendedSettings>Empfohlene Einstellungen nutzen</FixWorld_logs_useRecommendedSettings>
+	<FixWorld_logs_shortUrls>Kurze URL generieren</FixWorld_logs_shortUrls>
+	<FixWorld_logs_shortUrls_tip>Erzeugt beim Hochladen einen kürzeren Link. Nicht für die Nutzung
+		auf Steam empfohlen - kurze Links werden automatisch entfernt.</FixWorld_logs_shortUrls_tip>
+	<FixWorld_logs_platformInfo>Plattforminformationen einfügen</FixWorld_logs_platformInfo>
+	<FixWorld_logs_platformInfo_tip>Fügt Informationen über deine CPU, deinen Arbeitsspeicher und
+		deine Grafikkarte in die Logs ein.</FixWorld_logs_platformInfo_tip>
+	<FixWorld_logs_unlimitedLogSize>Unbegrenzte Log-Größe erlauben</FixWorld_logs_unlimitedLogSize>
+	<FixWorld_logs_unlimitedLogSize_tip>Bei Deaktivierung wird die Log-Größe auf 10.000 Zeilen
+		begrenzt, um Probleme mit sehr langen Logs zu verhindern.</FixWorld_logs_unlimitedLogSize_tip>
+	<FixWorld_logs_toClipboardBtn>In die Zwischenablage</FixWorld_logs_toClipboardBtn>
+	<FixWorld_logs_uploadBtn>Hochladen</FixWorld_logs_uploadBtn>
+
+	<FixWorld_logs_filesBtn>Daten</FixWorld_logs_filesBtn>
+	<FixWorld_logs_openLogFile>Log-Datei öffnen</FixWorld_logs_openLogFile>
+	<FixWorld_logs_openSaveDir>Ordner mit Speicherständen öffnen</FixWorld_logs_openSaveDir>
+	<FixWorld_logs_openModsDir>Ordner mit Mods öffnen</FixWorld_logs_openModsDir>
+
+	<FixWorld_restart_language_text>Die Sprache wurde geändert. Das Spiel wird jetzt automatisch neu
+		gestartet.</FixWorld_restart_language_text>
+
+	<FixWorld_loadOrderWarning_title>Falsche Reihenfolge beim Laden der Mods</FixWorld_loadOrderWarning_title>
+	<FixWorld_loadOrderWarning_text>Die FixWorld-Mod&lt;/b&gt; sollte immer nach
+		&lt;b&gt;Core&lt;/b&gt; geladen werden, um Probleme zu vermeiden.\n\nBitte passe deine
+		Mod-Reihenfolge im Mods-Menü an und starte das Spiel neu.</FixWorld_loadOrderWarning_text>
+
+	<FixWorld_updateRequired_title>Aktualisierung der Bibliothek erforderlich</FixWorld_updateRequired_title>
+	<FixWorld_updateRequired_text>&lt;b&gt;{0}&lt;/b&gt; benötigt die Version &lt;b&gt;{1}&lt;/b&gt;
+		von der &lt;b&gt;FixWorld-Bibliothek&lt;/b&gt;, um richtig zu funktionieren.\n\nWillst du sie
+		jetzt aktualisieren?</FixWorld_updateRequired_text>
+	<FixWorld_updateRequired_updateBtn>Aktualisieren</FixWorld_updateRequired_updateBtn>
+
+	<test_enumSetting_DefaultValue>Standardwert</test_enumSetting_DefaultValue>
+	<test_enumSetting_ValueOne>Wert Eins</test_enumSetting_ValueOne>
+	<test_enumSetting_ValueTwo>Wert Zwei</test_enumSetting_ValueTwo>
+
+</LanguageData>

@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: MPL-2.0
+using System;
+using HarmonyLib;
+using Verse;
+
+namespace FixWorld.Patches
+{
+	/// <summary>
+	/// Hooks into the flow of the vanilla MonoBehavior.OnGUI()
+	/// This allows to take advantage of automatic UI scaling and prevents GUI updates during a loading screen.
+	/// </summary>
+	[HarmonyPatch(typeof(UIRoot))]
+	[HarmonyPatch("UIRootOnGUI")]
+	[HarmonyPatch(new Type[0])]
+	internal static class UIRoot_OnGUI_Patch
+	{
+		[HarmonyPostfix]
+		private static void OnGUIHook()
+		{
+			FixWorldController.Instance.OnGUI();
+		}
+	}
+}

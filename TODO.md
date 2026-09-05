@@ -49,9 +49,16 @@ or revise that architecture in this task list.
 - [x] Phase 1: Shared base classes and their contracts only: service
       ownership, typed telemetry registration and common module lifecycle.
       No runtime wiring or diagnostics migration in this slice.
-- [ ] Phase 2: refactor runtime/DDS/installation first. Start with runtime-owned
-      Shared services and a typed DDS V2 lifecycle module, then installation and
-      coordinated restart. Remove old paths at each cutover; see binding scope.
+- [ ] Phase 2a (active): embed HugsLib as FixWorld.Foundation, independent of the
+      research copy and original HugsLib. Bind initialization/logging/termination;
+      test isolation and build, then in-game coexistence. See binding scope.
+      - [x] Import isolated source/license, own project and package integration.
+      - [x] Connect one Verse.Mod entry and fork lifecycle logging; preserve DDS.
+      - [x] Compiled-assembly isolation checks and local/CI-reference builds.
+      - [ ] In-game smoke: startup, existing DDS, quit, original HugsLib alongside.
+- [ ] Phase 2b: move DDS into its owning module on the embedded foundation.
+- [ ] Phase 2c: move Doorstop installation/detection/restart into FixWorldInstaller.
+      Remove replaced ownership at each cutover; retain one runtime and restart.
 - [ ] Phase 3: complete the Pathfinding module, common measurement and
       presentation contracts; remove replaced central field lists and forwarding.
 - [ ] Phase 4: migrate remaining modules, including DDS and startup diagnostics,
