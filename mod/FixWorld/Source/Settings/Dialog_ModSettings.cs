@@ -23,6 +23,7 @@ namespace FixWorld.Settings
 		private const float ScrollBarWidthMargin = 18f;
 
 		private readonly ModSettingsPack currentPack;
+		private readonly TextMeasurementCache textMeasurements;
 		private readonly string currentPackName;
 		private readonly Color ModEntryLineColor = new Color(0.3f, 0.3f, 0.3f);
 		private readonly Color BadValueOutlineColor = new Color(.9f, .1f, .1f, 1f);
@@ -45,6 +46,7 @@ namespace FixWorld.Settings
 		public Dialog_ModSettings(ModSettingsPack pack)
 		{
 			currentPack = pack ?? throw new ArgumentNullException(nameof(pack));
+			textMeasurements = FixWorldController.Instance.TextMeasurements;
 			currentPackName = pack.EntryName.NullOrEmpty()
 				? "FixWorld_setting_unnamed_mod".Translate().ToString()
 				: pack.EntryName;
@@ -242,8 +244,7 @@ namespace FixWorld.Settings
 			var labelRect = handle.CustomDrawer == null ? leftHalfRect : trimmedEntryRect;
 			// reduce text size if label is long and wraps over to the second line
 			var controlInfo = handleControlInfo[handle];
-			var cachedTitle = controlInfo.HandleTitle ?? (controlInfo.HandleTitle = new CachedLabel(handle.Title));
-			if (cachedTitle.GetHeight(labelRect.width) > labelRect.height)
+			if (textMeasurements.Height(handle.Title, labelRect.width, GameFont.Small) > labelRect.height)
 			{
 				Text.Font = GameFont.Tiny;
 				labelRect = new Rect(labelRect.x, labelRect.y - 1f, labelRect.width, labelRect.height + 2f);
@@ -252,7 +253,7 @@ namespace FixWorld.Settings
 			{
 				Text.Font = GameFont.Small;
 			}
-			Widgets.Label(labelRect, cachedTitle.Text);
+			Widgets.Label(labelRect, handle.Title);
 			Text.Font = GameFont.Small;
 			GenUI.ResetLabelAlign();
 			var valueChanged = false;
@@ -538,7 +539,6 @@ namespace FixWorld.Settings
 			public bool BadInput;
 			public string InputValue;
 			public bool ValidationScheduled;
-			public CachedLabel HandleTitle;
 
 			public HandleControlInfo(SettingHandle handle)
 			{

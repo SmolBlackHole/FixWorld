@@ -11,6 +11,9 @@ The implemented measurement API and ownership are documented in
 [Typed telemetry and profiling](telemetry.md). The older migration phases below
 are historical design context, not instructions to restore the removed runtime.
 
+The current shared cache contract and settings cutover are in
+[Typed caches](caching.md).
+
 Status: **binding, approved 2026-09-05**. This document records the agreed
 architecture, not a claim that every existing subsystem already conforms.
 Changes to its ownership boundaries or migration order require an explicit user

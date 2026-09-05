@@ -30,6 +30,9 @@ namespace FixWorld
         /// <summary>Shared typed measurements and snapshot registrations. Resolve slots once during initialization.</summary>
         protected LibraryDiagnostics Diagnostics => FixWorldController.Instance.Diagnostics;
 
+        /// <summary>Shared cache registry. Resolve a typed handle during initialization.</summary>
+        protected FixWorld.Caching.CacheStore Caches => FixWorldController.Instance.Caches;
+
         /// <summary>
         /// The ModSettingsPack specific to your mod.
         /// Use this to create settings handles that represent the values of saved settings.

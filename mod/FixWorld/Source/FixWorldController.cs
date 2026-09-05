@@ -2,6 +2,7 @@
 using System;
 using System.Diagnostics;
 using FixWorld.Telemetry;
+using FixWorld.Caching;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -138,6 +139,8 @@ namespace FixWorld
         private readonly Func<LibraryState> captureLibraryState;
 
         public LibraryDiagnostics Diagnostics { get; private set; }
+        public CacheStore Caches { get; private set; }
+        internal TextMeasurementCache TextMeasurements { get; private set; }
 
         public ModSettingsManager Settings { get; private set; }
         public UpdateFeatureManager UpdateFeatures { get; private set; }
@@ -166,6 +169,8 @@ namespace FixWorld
             try
             {
                 Diagnostics = new LibraryDiagnostics();
+                Caches = new CacheStore(Diagnostics.Store, Diagnostics.Profiler);
+                TextMeasurements = new TextMeasurementCache(Caches);
                 ReadOwnVersion();
                 Logger.Message("version {0}", LibraryVersion);
                 PrepareReflection();
@@ -293,6 +298,7 @@ namespace FixWorld
         internal void OnUpdate()
         {
             if (initializationInProgress || shuttingDown || Diagnostics == null) return;
+            Caches.BindCurrentThread();
             Diagnostics.RecordFrame();
             using var measurement = Diagnostics.Update.Measure();
             try
@@ -319,7 +325,10 @@ namespace FixWorld
             finally
             {
                 measurement.Complete();
-                try { Diagnostics.PublishIfDue(Stopwatch.GetTimestamp(), captureLibraryState); }
+                try
+                {
+                    if (Diagnostics.PublishIfDue(Stopwatch.GetTimestamp(), captureLibraryState)) Caches.Publish();
+                }
                 catch (Exception error) { Logger.ReportException(error, "telemetry publication", true); }
             }
         }
@@ -459,7 +468,11 @@ namespace FixWorld
             {
                 Logger.ReportException(e);
             }
-            finally { Diagnostics?.Dispose(); }
+            finally
+            {
+                try { Caches?.Dispose(); }
+                finally { Diagnostics?.Dispose(); }
+            }
         }
 
         internal void OnGameInitializationStart(Game game)
@@ -639,6 +652,7 @@ namespace FixWorld
 
         private void OnDefsLoaded()
         {
+            Caches?.InvalidateAll();
             try
             {
                 UtilityWorldObjectManager.OnDefsLoaded();

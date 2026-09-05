@@ -10,7 +10,11 @@ The approved [slice plan](docs/fork-refactor-plan.md) controls execution.
 
 - [x] Slice 1: typed telemetry/profiling, real callers, focused tests,
       verification and commit. No lifecycle/cache/scheduler redesign.
-- [ ] Slice 2: audit and migrate typed caching after Slice 1 is complete.
+- [x] Slice 2: shared typed caching and complete settings text-cache
+      cutover. Exact scope and verification are in the slice plan.
+- [ ] Known fork defect: News `DestroyLoadedImages` destroys textures borrowed
+      from ContentFinder/placeholder assets as well as its own loaded images.
+      Separate owned/borrowed image lifetime before migrating News image caching.
 
 ## Legacy checklist
 

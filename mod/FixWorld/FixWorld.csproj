@@ -36,7 +36,7 @@
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>none</DebugType>
-    <Optimize>false</Optimize>
+    <Optimize>true</Optimize>
     <OutputPath>Mods\FixWorld\v1.6\Assemblies\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
@@ -100,6 +100,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Source\Profiling\*.cs" />
     <Compile Include="Source\Telemetry\*.cs" />
+    <Compile Include="Source\Caching\*.cs" />
     <Compile Include="Source\Core\Dialog_LibraryUpdateRequired.cs" />
     <Compile Include="Source\Core\FixWorldMod.cs" />
     <Compile Include="Source\Core\FixWorldTextures.cs" />
@@ -118,7 +119,7 @@
     <Compile Include="Source\Patches\MainMenuDrawer_Quickstart_Patch.cs" />
     <Compile Include="Source\Patches\UIRoot_OnGUI_Patch.cs" />
     <Compile Include="Source\Quickstart\QuickstartStatusBox.cs" />
-    <Compile Include="Source\Settings\CachedLabel.cs" />
+    <Compile Include="Source\Settings\TextMeasurementCache.cs" />
     <Compile Include="Source\Settings\ContextMenuEntry.cs" />
     <Compile Include="Source\Settings\ModSettingsWidgets.cs" />
     <Compile Include="Source\Settings\ModSettingsWindowState.cs" />
