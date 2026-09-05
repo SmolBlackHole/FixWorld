@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 using System;
+using System.Diagnostics;
+using FixWorld.Telemetry;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -132,6 +134,10 @@ namespace FixWorld
         private readonly HashSet<Assembly> autoHarmonyPatchedAssemblies = new HashSet<Assembly>();
         private Dictionary<Assembly, ModContentPack> assemblyContentPacks;
         private bool initializationInProgress;
+        private bool shuttingDown;
+        private readonly Func<LibraryState> captureLibraryState;
+
+        public LibraryDiagnostics Diagnostics { get; private set; }
 
         public ModSettingsManager Settings { get; private set; }
         public UpdateFeatureManager UpdateFeatures { get; private set; }
@@ -149,6 +155,9 @@ namespace FixWorld
 
         private FixWorldController()
         {
+            captureLibraryState = () => new LibraryState(initializedMods.Count,
+                TickDelayScheduler?.GetAllPendingCallbacks().Count() ?? 0,
+                DistributedTicker?.CaptureTelemetry() ?? default);
         }
 
         // called during Verse.Mod instantiation
@@ -156,6 +165,7 @@ namespace FixWorld
         {
             try
             {
+                Diagnostics = new LibraryDiagnostics();
                 ReadOwnVersion();
                 Logger.Message("version {0}", LibraryVersion);
                 PrepareReflection();
@@ -282,7 +292,9 @@ namespace FixWorld
 
         internal void OnUpdate()
         {
-            if (initializationInProgress) return;
+            if (initializationInProgress || shuttingDown || Diagnostics == null) return;
+            Diagnostics.RecordFrame();
+            using var measurement = Diagnostics.Update.Measure();
             try
             {
                 if (DoLater != null) DoLater.OnUpdate();
@@ -294,19 +306,29 @@ namespace FixWorld
                     }
                     catch (Exception e)
                     {
+                        Diagnostics.RecordCallbackError();
                         Logger.ReportException(e, initializedMods[i].LogIdentifierSafe, true);
                     }
                 }
             }
             catch (Exception e)
             {
+                measurement.Fail();
                 Logger.ReportException(e, null, true);
+            }
+            finally
+            {
+                measurement.Complete();
+                try { Diagnostics.PublishIfDue(Stopwatch.GetTimestamp(), captureLibraryState); }
+                catch (Exception error) { Logger.ReportException(error, "telemetry publication", true); }
             }
         }
 
         internal void OnTick()
         {
-            if (initializationInProgress) return;
+            if (initializationInProgress || shuttingDown || Diagnostics == null) return;
+            Diagnostics.RecordTick();
+            using var measurement = Diagnostics.Tick.Measure();
             try
             {
                 DoLater.OnTick();
@@ -319,6 +341,7 @@ namespace FixWorld
                     }
                     catch (Exception e)
                     {
+                        Diagnostics.RecordCallbackError();
                         Logger.ReportException(e, initializedMods[i].LogIdentifierSafe, true);
                     }
                 }
@@ -327,13 +350,15 @@ namespace FixWorld
             }
             catch (Exception e)
             {
+                measurement.Fail();
                 Logger.ReportException(e, null, true);
             }
         }
 
         internal void OnFixedUpdate()
         {
-            if (initializationInProgress) return;
+            if (initializationInProgress || shuttingDown || Diagnostics == null) return;
+            using var measurement = Diagnostics.FixedUpdate.Measure();
             try
             {
                 for (int i = 0; i < initializedMods.Count; i++)
@@ -344,19 +369,22 @@ namespace FixWorld
                     }
                     catch (Exception e)
                     {
+                        Diagnostics.RecordCallbackError();
                         Logger.ReportException(e, initializedMods[i].LogIdentifierSafe, true);
                     }
                 }
             }
             catch (Exception e)
             {
+                measurement.Fail();
                 Logger.ReportException(e, null, true);
             }
         }
 
         internal void OnGUI()
         {
-            if (initializationInProgress) return;
+            if (initializationInProgress || shuttingDown || Diagnostics == null) return;
+            using var measurement = Diagnostics.OnGUI.Measure();
             try
             {
                 if (DoLater != null) DoLater.OnGUI();
@@ -369,12 +397,14 @@ namespace FixWorld
                     }
                     catch (Exception e)
                     {
+                        Diagnostics.RecordCallbackError();
                         Logger.ReportException(e, initializedMods[i].LogIdentifierSafe, true);
                     }
                 }
             }
             catch (Exception e)
             {
+                measurement.Fail();
                 Logger.ReportException(e, null, true);
             }
         }
@@ -408,6 +438,8 @@ namespace FixWorld
 
         internal void OnApplicationQuit()
         {
+            if (shuttingDown) return;
+            shuttingDown = true;
             try
             {
                 for (int i = 0; i < childMods.Count; i++)
@@ -427,6 +459,7 @@ namespace FixWorld
             {
                 Logger.ReportException(e);
             }
+            finally { Diagnostics?.Dispose(); }
         }
 
         internal void OnGameInitializationStart(Game game)

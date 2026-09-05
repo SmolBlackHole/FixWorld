@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using FixWorld.Telemetry;
 using UnityEngine;
 using Verse;
 
@@ -86,18 +87,8 @@ namespace FixWorld.Utils
         /// <summary>
         /// Returns the number of calls issued across all intervals during the last tick
         /// </summary>
-        public int DebugCountLastTickCalls()
-        {
-            return tickers.Sum(t => t.NumCallsLastTick);
-        }
-
-        /// <summary>
-        /// Returns the number of active tickers (intervals)
-        /// </summary>
-        public int DebugGetNumTickers()
-        {
-            return tickers.Count;
-        }
+        public TickSchedulerSnapshot CaptureTelemetry() =>
+            new(entries.Count, tickers.Count, tickers.Sum(t => t.NumCallsLastTick));
 
         internal void Initialize(int currentTick)
         {

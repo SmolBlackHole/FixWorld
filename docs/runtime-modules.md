@@ -2,6 +2,15 @@
 
 Parent: [Architecture](architecture.md)
 
+Current execution authority: [Fork refactor plan](fork-refactor-plan.md), approved
+2026-09-05 after the full rewrite/reset. Its telemetry-first slices supersede
+the earlier Foundation/Shared migration order below. The active fork lives
+directly in `mod/FixWorld`, not in `Source/Foundation`.
+
+The implemented measurement API and ownership are documented in
+[Typed telemetry and profiling](telemetry.md). The older migration phases below
+are historical design context, not instructions to restore the removed runtime.
+
 Status: **binding, approved 2026-09-05**. This document records the agreed
 architecture, not a claim that every existing subsystem already conforms.
 Changes to its ownership boundaries or migration order require an explicit user

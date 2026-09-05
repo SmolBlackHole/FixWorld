@@ -2,6 +2,18 @@
 
 Parent: [Project README](README.md)
 
+## Current rewrite
+
+The original implementation is archived. The legacy checklist below describes
+earlier work, not features currently active in the fork.
+The approved [slice plan](docs/fork-refactor-plan.md) controls execution.
+
+- [x] Slice 1: typed telemetry/profiling, real callers, focused tests,
+      verification and commit. No lifecycle/cache/scheduler redesign.
+- [ ] Slice 2: audit and migrate typed caching after Slice 1 is complete.
+
+## Legacy checklist
+
 FixWorld is under a **feature freeze**. RimWorld owns its original play-data
 loader and deferred work list. FixWorld keeps passive stage diagnostics, exposes
 that list through an isolated frame pump for the loading UI, and owns the DDS

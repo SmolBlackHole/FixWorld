@@ -292,6 +292,7 @@ namespace FixWorld.Logs
                     ListActiveMods(), "\n",
                     ListHarmonyPatches(), "\n",
                     ListPlatformInfo(), "\n",
+                    ListTelemetry(), "\n",
                     logSection);
                 return collatedData;
             }
@@ -300,6 +301,13 @@ namespace FixWorld.Logs
                 FixWorldController.Logger.ReportException(e);
             }
             return null;
+        }
+
+        private string ListTelemetry()
+        {
+            using var writer = new StringWriter();
+            FixWorldController.Instance.Diagnostics?.Store.WriteLog(writer);
+            return "FixWorld telemetry (published snapshots):\n" + writer;
         }
 
         private string NormalizeLineEndings(string log)

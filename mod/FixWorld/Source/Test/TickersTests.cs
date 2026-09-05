@@ -36,10 +36,11 @@ namespace FixWorld.Test {
 
 		public override void OnGUI() {
 			Find.WindowStack.ImmediateWindow(9999999, new Rect(50, 50, 280, 120), WindowLayer.Super, () => {
-				Widgets.Label(new Rect(0, 0, 300, 30), "DistributedTickScheduler entries: " + FixWorldController.Instance.DistributedTicker.DebugGetAllEntries().Count());
-				Widgets.Label(new Rect(0, 30, 300, 30), "DistributedTickScheduler calls last tick: " + FixWorldController.Instance.DistributedTicker.DebugCountLastTickCalls());
-				Widgets.Label(new Rect(0, 60, 300, 30), "DistributedTickScheduler active tickers: " + FixWorldController.Instance.DistributedTicker.DebugGetNumTickers());
-				Widgets.Label(new Rect(0, 90, 300, 30), "TickDelayScheduler entries: " + FixWorldController.Instance.TickDelayScheduler.GetAllPendingCallbacks().Count());
+				var state = Diagnostics.Snapshot?.State ?? default;
+				Widgets.Label(new Rect(0, 0, 300, 30), "DistributedTickScheduler entries: " + state.Distributed.Recipients);
+				Widgets.Label(new Rect(0, 30, 300, 30), "DistributedTickScheduler calls last tick: " + state.Distributed.LastTickCallbacks);
+				Widgets.Label(new Rect(0, 60, 300, 30), "DistributedTickScheduler active tickers: " + state.Distributed.Intervals);
+				Widgets.Label(new Rect(0, 90, 300, 30), "TickDelayScheduler entries: " + state.DelayedCallbacks);
 			}, false, false, 0);
 
 		}

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 using System;
+using FixWorld.Telemetry;
 using HarmonyLib;
 using FixWorld.Core;
 using FixWorld.Settings;
@@ -25,6 +26,9 @@ namespace FixWorld
         /// It will prefix everything with your ModIdentifier.
         /// </summary>
         protected ModLogger Logger { get; private set; }
+
+        /// <summary>Shared typed measurements and snapshot registrations. Resolve slots once during initialization.</summary>
+        protected LibraryDiagnostics Diagnostics => FixWorldController.Instance.Diagnostics;
 
         /// <summary>
         /// The ModSettingsPack specific to your mod.
