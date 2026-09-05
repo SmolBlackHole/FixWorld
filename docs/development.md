@@ -2,107 +2,67 @@
 
 Parent: [Documentation index](README.md)
 
-FixWorld targets .NET Framework 4.7.2 because that is the compatible runtime
-surface used by RimWorld. The repository uses .NET SDK 10 to build the projects.
-The complete build is Windows-only. It uses pinned, compile-only RimWorld
-`1.6.4871` and Harmony `2.4.1` reference packages when local game assemblies are
-not configured
-
 ## Prerequisites
 
-- Windows x64
-- RimWorld `1.6.4871 rev591`
-- Harmony installed as a RimWorld mod
-- .NET SDK 10
-- Python 3.11 or newer
-- Git
+Windows x64, .NET SDK 10, Python 3.11+ and Git. The fork targets .NET Framework
+4.7.2. Portable builds use compile-only RimWorld `1.6.4871` and Harmony `2.4.1`
+packages. No game assemblies are shipped in the ZIP.
 
-## Configure local references (optional)
-
-Copy the example file:
+## Checks, builds and packages
 
 ```powershell
-Copy-Item .\mod\FixWorld\Local.Build.props.example `
-    .\mod\FixWorld\Local.Build.props
+python tools/check.py
+python tools/build.py --package
 ```
 
-Edit the copy so `RimWorldRoot` points to the local game directory and
-`HarmonyAssemblyPath` points to the installed `0Harmony.dll`. The file is ignored
-by Git. When these files exist, local builds prefer the installed assemblies over
-the portable reference packages
+Checks cover repository hygiene, reachable Markdown documentation, Python
+syntax and unit tests, and Telemetry, Caching, News and Bootstrap contracts.
+Bootstrap tests start fixture processes, not RimWorld. Full native bootstrap
+acceptance remains separate. Windows checkout CRLF is accepted because Git
+normalizes tracked text to LF; ignored archives and local game data are not scanned.
 
-The same values can be supplied without a file:
+Builds stage all three binaries in `temp/build`. They do not deploy, start or
+stop RimWorld. `--package` writes `dist/FixWorld-pilot-win-x64.zip`, with a single
+`FixWorld/` mod directory. Its content is selected explicitly: mod metadata,
+definitions, translations, textures, Doorstop, licenses and our built binaries.
+Old DLLs, PDBs, sources, caches and logs in the content directory are not packaged.
+
+Build against installed references with:
 
 ```powershell
-$env:RIMWORLD_ROOT = '<RimWorldRoot>'
-$env:RIMWORLD_HARMONY_ASSEMBLY = '<HarmonyModRoot>\Current\Assemblies\0Harmony.dll'
+python tools/build.py --package --game-root '<RimWorldRoot>' --harmony '<HarmonyModRoot>/Current/Assemblies/0Harmony.dll'
 ```
 
-## Run repository checks
+Alternatively set `RIMWORLD_ROOT` and `RIMWORLD_HARMONY_ASSEMBLY`. Explicit invalid
+paths fail instead of silently using another reference version. Omit local paths
+for the same portable package build used in CI.
+
+After a local-reference build, the additional actual-assembly bootstrap fixture is:
 
 ```powershell
-python .\tools\check.py
+dotnet run --project mod/FixWorld/Tests/Bootstrap.Contracts/FixWorld.Bootstrap.Contracts.csproj -c Release -- temp/build/FixWorld.Restart.exe temp/build/FixWorld.dll '<HarmonyDLL>' '<RimWorldRoot>/RimWorldWin64_Data/Managed'
 ```
 
-The check validates UTF-8 and LF text, the public Markdown link graph, tracked
-artifact policy, Python syntax, and the Shared and standalone pathfinding contract
-suites. The pathfinding suite links the pure shadow-grid source directly and does
-not require a RimWorld installation. Its optional `--benchmark` mode is described
-in [Pathfinding](pathfinding.md); timing results are not a CI pass/fail threshold.
+## Deploy and capture
 
-## Build and package
+Close the game before replacing its mod binaries. Extract the ZIP into the game's
+Mods directory, or overlay it onto `mod/FixWorld/Mods/FixWorld` when that directory
+is the target of the local Mods/FixWorld junction. Do not replace the junction itself.
 
 ```powershell
-python .\tools\build.py
-python .\tools\build.py --package
+python tools/rimworld_process.py --game-root '<RimWorldRoot>' --monitor 1
+python tools/telemetry.py collect --seconds 60 --game-root '<RimWorldRoot>'
 ```
 
-The normal build writes the mod assembly under `mod/FixWorld/Assemblies` and
-runtime components under `mod/FixWorld/Tools/Windows-x64`. Generated FixWorld
-assemblies and packages are ignored. The package command writes
-`dist/FixWorld-pilot-win-x64.zip`
+The launcher refuses a duplicate running process. It positions the initial game
+window and leaves the game open; a bootstrap restart may replace that process.
+The collector discovers subsequent telemetry sessions. See
+[capture semantics and analysis](harness.md). There is no legacy schema-19 runner.
 
-GitHub Actions runs the repository checks and the same package build on every
-push and pull request. A successful push to `main` publishes an immutable
-`pilot-N` prerelease with the Windows archive and its SHA-256 checksum. Releases
-remain marked as pilot builds until the in-game gates below are complete
+## Release boundary
 
-## Benchmark
-
-Set `RIMWORLD_ROOT` or pass `--game-root` explicitly:
-
-```powershell
-python .\tools\benchmark.py `
-    --game-root '<RimWorldRoot>' `
-    --live-mods `
-    --variant 'descriptive-variant-name'
-```
-
-The Runtime writes its versioned telemetry snapshot as typed benchmark JSON.
-Python starts RimWorld, waits for the report, validates its schema, writes one
-`loader-stages.csv`, then appends one result row. A run fails when relevant load
-errors are present or RimWorld changes the configured active-mod sequence during
-recovery. Do not compare runs with different mod lists, cache states, or source
-fixtures as if they were the same experiment
-
-Raw profiles, saves, logs, generated reports, and decompiled game code remain
-local. The tracked benchmark CSV contains only deliberately selected aggregate
-results
-
-## Main-branch release checklist
-
-Before merging a change into `main`:
-
-1. Run `python tools/check.py`
-2. Run `python tools/build.py --package` with the supported RimWorld build
-3. Complete at least one full-mod-list launch to the main menu
-4. Verify preloader status, uninstall, reinstall, and restart-loop prevention
-5. Verify the DDS cache on a rebuild and a warm start
-6. Inspect the archive for local configuration, saves, logs, and generated data
-7. Run a dedicated secret scan and review the Git history, not only the current tree
-8. Confirm all bundled binary versions and licenses in
-   [third-party notices](../THIRD_PARTY_NOTICES.md)
-
-CI proves that the portable references compile and that the distributable archive
-can be assembled. A green CI run is not evidence that the complete mod loads or
-behaves correctly in the game
+CI runs the same checks and portable package build. A successful main push
+publishes a pilot prerelease. Compile/test/package success is not an in-game
+compatibility claim. Before promotion, test startup, disable/re-enable, restart
+and the changed UI or gameplay behavior, then inspect the package and notices.
+See [bootstrap acceptance and recovery](windows-preloader.md).

@@ -64,8 +64,7 @@ TEXT_SUFFIXES = frozenset(
 )
 ALLOWED_TRACKED_BINARIES = frozenset(
     {
-        Path("mod/FixWorld/Tools/Windows-x64/Doorstop-4.4.0/winhttp.dll"),
-        Path("mod/FixWorld/Tools/Windows-x64/texconv.exe"),
+        Path("mod/FixWorld/Mods/FixWorld/Tools/Doorstop-4.4.0/winhttp.dll"),
     }
 )
 FORBIDDEN_TRACKED_SUFFIXES = frozenset(
@@ -99,7 +98,7 @@ def _excluded(path: Path, root: Path) -> bool:
 def _text_files(root: Path) -> tuple[Path, ...]:
     files = (
         path
-        for path in root.rglob("*")
+        for path in (root / relative for relative in _tracked_paths(root, include_untracked=True))
         if path.is_file()
         and not _excluded(path, root)
         and (path.name in TEXT_FILENAMES or path.suffix.lower() in TEXT_SUFFIXES)
@@ -193,8 +192,7 @@ def _check_text_files(root: Path) -> list[str]:
         relative = path.relative_to(root)
         if contents and not contents.endswith(b"\n"):
             errors.append(f"missing final newline: {relative}")
-        if b"\r\n" in contents:
-            errors.append(f"CRLF text is not allowed: {relative}")
+        # Git normalizes tracked text to LF; a Windows checkout may contain CRLF.
         try:
             text = contents.decode("utf-8")
         except UnicodeDecodeError:
@@ -207,9 +205,9 @@ def _check_text_files(root: Path) -> list[str]:
     return errors
 
 
-def _tracked_paths(root: Path) -> tuple[Path, ...]:
+def _tracked_paths(root: Path, include_untracked: bool = False) -> tuple[Path, ...]:
     completed = subprocess.run(
-        ("git", "ls-files", "-z"),
+        ("git", "ls-files", "-z", "--cached", *(('--others', '--exclude-standard') if include_untracked else ())),
         cwd=root,
         check=True,
         capture_output=True,

@@ -71,22 +71,6 @@ class RimWorldProcess:
     window: int
     actual_monitor: str
 
-    def close(self) -> None:
-        if self.process.poll() is not None:
-            return
-        USER32.PostMessageW(self.window, 0x0010, 0, 0)
-        try:
-            self.process.wait(timeout=10)
-            return
-        except subprocess.TimeoutExpired:
-            self.process.terminate()
-        try:
-            self.process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self.process.kill()
-            self.process.wait(timeout=5)
-
-
 USER32 = ctypes.WinDLL("user32", use_last_error=True)
 MONITOR_ENUM_PROC = ctypes.WINFUNCTYPE(
     wintypes.BOOL,
@@ -136,13 +120,6 @@ USER32.SetWindowPos.argtypes = (
 USER32.SetWindowPos.restype = wintypes.BOOL
 USER32.MonitorFromWindow.argtypes = (wintypes.HWND, wintypes.DWORD)
 USER32.MonitorFromWindow.restype = wintypes.HMONITOR
-USER32.PostMessageW.argtypes = (
-    wintypes.HWND,
-    wintypes.UINT,
-    wintypes.WPARAM,
-    wintypes.LPARAM,
-)
-USER32.PostMessageW.restype = wintypes.BOOL
 
 
 def resolve_game_root(value: Path | None) -> Path:
@@ -219,10 +196,8 @@ def launch(
         window = _find_window(process.pid)
         actual_monitor = _place_window(window, monitor, minimized)
         return RimWorldProcess(process, window, actual_monitor)
-    except Exception:
-        if process.poll() is None:
-            process.terminate()
-        raise
+    except (OSError, RuntimeError) as error:
+        raise RuntimeError(f"Started RimWorld PID {process.pid}, but window placement failed. The game was left open: {error}") from error
 
 
 def _enumerate_monitors() -> list[Monitor]:
@@ -362,7 +337,7 @@ def parse_args() -> argparse.Namespace:
         help="RimWorld directory. Defaults to RIMWORLD_ROOT.",
     )
     parser.add_argument("--monitor-name")
-    parser.add_argument("--monitor", type=int, choices=range(1, 17), default=2)
+    parser.add_argument("--monitor", type=int, choices=range(1, 17), default=1)
     parser.add_argument("--minimized", action="store_true")
     return parser.parse_args()
 

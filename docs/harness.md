@@ -5,8 +5,8 @@ Parent: [Typed telemetry](telemetry.md)
 The current fork exports published module DTOs through the same contracts used
 by logs. `tools/telemetry.py` collects and analyzes those records locally. It does
 not use the HugsLib Shell wrapper, upload data, launch RimWorld or close it.
-The old `tools/benchmark.py` is a legacy loader/schema-19 runner, not the entry
-point for this rewrite. Do not run it against the new fork.
+The old loader/schema-19 runner has been removed. Start the game yourself or use
+`tools/rimworld_process.py`; neither the launcher nor collector closes the game.
 
 ## Capture a manually started game
 

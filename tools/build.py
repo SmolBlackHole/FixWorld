@@ -6,9 +6,12 @@ import hashlib
 import os
 from pathlib import Path
 import subprocess
+import zipfile
 
 
 ROOT = Path(__file__).resolve().parent.parent
+MOD = ROOT / "mod" / "FixWorld"
+OUTPUT = ROOT / "temp" / "build"
 
 
 def find_dotnet_sdk() -> Path:
@@ -42,7 +45,7 @@ def find_dotnet_sdk() -> Path:
     raise RuntimeError("No usable .NET SDK was found on PATH or in DOTNET_ROOT.")
 
 
-def run_build(project: Path, target: str | None = None) -> None:
+def run_build(project: Path, properties: tuple[str, ...] = ()) -> None:
     dotnet = find_dotnet_sdk()
     environment = os.environ.copy()
     environment.update({"DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_NOLOGO": "1"})
@@ -54,8 +57,7 @@ def run_build(project: Path, target: str | None = None) -> None:
         "Release",
         "--nologo",
     ]
-    if target:
-        command.append(f"-target:{target}")
+    command.extend(properties)
     subprocess.run(
         command,
         cwd=ROOT,
@@ -65,11 +67,20 @@ def run_build(project: Path, target: str | None = None) -> None:
     print(f"SDK: {dotnet}")
 
 
-def build_mod() -> Path:
-    build_runtime_components()
-    run_build(ROOT / "mod" / "FixWorld" / "Source" / "Mod" / "FixWorld.Mod.csproj")
-
-    assembly = ROOT / "mod" / "FixWorld" / "Assemblies" / "FixWorld.Mod.dll"
+def build_mod(game_root: Path | None = None, harmony: Path | None = None) -> Path:
+    properties = [f"-p:OutputPath={OUTPUT.as_posix()}/",
+                  f"-p:DocumentationFile={(OUTPUT / 'FixWorld.xml').as_posix()}"]
+    if game_root is not None:
+        managed = game_root.resolve() / "RimWorldWin64_Data" / "Managed"
+        if not (managed / "Assembly-CSharp.dll").is_file():
+            raise RuntimeError(f"Game references missing: {managed}")
+        properties.append(f"-p:RimWorldManagedPath={managed.as_posix()}")
+    if harmony is not None:
+        if not harmony.is_file():
+            raise RuntimeError(f"Harmony assembly missing: {harmony}")
+        properties.append(f"-p:HarmonyAssemblyPath={harmony.resolve().as_posix()}")
+    run_build(MOD / "FixWorld.csproj", tuple(properties))
+    assembly = OUTPUT / "FixWorld.dll"
     if not assembly.is_file():
         raise RuntimeError(f"Build succeeded, but the mod DLL is missing: {assembly}")
     digest = hashlib.sha256(assembly.read_bytes()).hexdigest().upper()
@@ -78,36 +89,52 @@ def build_mod() -> Path:
     return assembly
 
 
+def package_files(content: Path, output: Path) -> dict[str, Path]:
+    """Explicit distribution boundary: assets and our binaries, never references."""
+    files: dict[str, Path] = {}
+    for directory in ("About", "Defs", "Languages", "Textures", "Tools/Doorstop-4.4.0"):
+        for path in sorted((content / directory).rglob("*")):
+            if path.is_file() and path.suffix.lower() in {
+                ".xml", ".png", ".jpg", ".jpeg", ".txt", ".json"
+            }:
+                files[path.relative_to(content).as_posix()] = path
+    for name in ("LoadFolders.xml", "Tools/Doorstop-4.4.0/winhttp.dll"):
+        files[name] = content / name
+    for name in ("FixWorld.dll", "FixWorld.Bootstrap.dll"):
+        files[f"v1.6/Assemblies/{name}"] = output / name
+    for name in ("FixWorld.Restart.exe", "FixWorld.Restart.exe.config"):
+        files[f"Tools/{name}"] = output / name
+    files["LICENSE"] = ROOT / "LICENSE"
+    files["THIRD_PARTY_NOTICES.md"] = ROOT / "THIRD_PARTY_NOTICES.md"
+    files["HugsLib-NOTICE.txt"] = MOD / "NOTICE.txt"
+    files["HugsLib-license.txt"] = MOD / "license.txt"
+    for name, path in files.items():
+        if not path.is_file():
+            raise RuntimeError(f"Required package file missing: {name} ({path})")
+    if "About/About.xml" not in files:
+        raise RuntimeError("Required package metadata missing: About/About.xml")
+    return files
+
+
 def package_mod() -> Path:
-    build_runtime_components()
-    run_build(
-        ROOT / "mod" / "FixWorld" / "Source" / "Mod" / "FixWorld.Mod.csproj",
-        "Package",
-    )
+    files = package_files(MOD / "Mods" / "FixWorld", OUTPUT)
     package = ROOT / "dist" / "FixWorld-pilot-win-x64.zip"
-    if not package.is_file():
-        raise RuntimeError(f"Package target did not create the expected ZIP: {package}")
+    package.parent.mkdir(parents=True, exist_ok=True)
+    temporary = package.with_suffix(".zip.tmp")
+    with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, path in sorted(files.items()):
+            archive.write(path, "FixWorld/" + name)
+    temporary.replace(package)
     digest = hashlib.sha256(package.read_bytes()).hexdigest().upper()
     print(f"Package: {package}")
     print(f"SHA-256: {digest}")
     return package
 
 
-def build_runtime_components() -> None:
-    run_build(
-        ROOT / "mod" / "FixWorld" / "Source" / "Runtime" / "FixWorld.Runtime.csproj"
-    )
-    run_build(
-        ROOT / "mod" / "FixWorld" / "Source" / "Loader" / "FixWorld.Loader.csproj"
-    )
-    run_build(
-        ROOT / "mod" / "FixWorld" / "Source" / "Preloader" / "FixWorld.Preloader.csproj"
-    )
-    run_build(ROOT / "mod" / "FixWorld" / "Source" / "Tool" / "FixWorld.Tool.csproj")
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build the FixWorld mod.")
+    parser.add_argument("--game-root", type=Path, default=os.environ.get("RIMWORLD_ROOT"))
+    parser.add_argument("--harmony", type=Path, default=os.environ.get("RIMWORLD_HARMONY_ASSEMBLY"))
     parser.add_argument(
         "--package",
         action="store_true",
@@ -118,10 +145,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    build_mod(args.game_root, args.harmony)
     if args.package:
         package_mod()
-    else:
-        build_mod()
     return 0
 
 

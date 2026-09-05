@@ -202,6 +202,27 @@ legacy benchmark compatibility and automatic game termination.
   Concurrent user formatting/modernization retained; unavailable net472
   ThrowIfNull calls use explicit checks. Native capture acceptance remains open.
 
-Autonomous continuation remains authorized, one scoped slice at a time.
-Scheduling/jobs follow the user-prioritized capture slice. DDS remains excluded. Do not treat desktop
-bootstrap verification as proof of native Doorstop/Unity Mono behavior.
+## Approved continuation: tooling, UI, then DDS
+
+Latest user order supersedes the earlier scheduling priority:
+
+1. Commit the native bootstrap/version ownership fixes (done: `1d96561`).
+2. Adapt current build/check/package/start tools to the fork (complete). Remove the legacy
+   loader benchmark. Verify portable and local builds, contract suites and archive
+   boundaries, then commit separately. No gameplay or UI changes in this slice.
+3. Restore the existing loading visual style, tips labeled `Tip`, and the in-game
+   main-bar diagnostics entry using fork lifecycle and shared telemetry. Preserve
+   RimWorld's loader ownership. Test rendering and loading where native tooling permits.
+4. Restore DDS as a separate fork-native slice, reusing shared caching, telemetry
+   and profiling. Keep proven worker lifetime safeguards and maintenance controls.
+   Do not revive the archived runtime framework or add speculative abstractions.
+
+Autonomous continuation and game starts/screenshots/clicks for validation are
+authorized. Keep unrelated live saves and configuration intact. Native behavior
+must be distinguished from compilation and desktop contract checks.
+
+Tooling verification: 14 Python tests; 48 telemetry, 36 caching, 22 News and 61
+portable bootstrap checks. Actual-assembly bootstrap fixture: 63 checks. Both
+portable and installed-reference Release builds passed with zero warnings/errors.
+ZIP integrity and explicit binary/license boundaries passed. Pyright on changed
+Python modules and repository checks passed. No live game was replaced or stopped.

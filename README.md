@@ -59,13 +59,15 @@ python .\tools\build.py --package
 
 The portable build uses pinned, compile-only RimWorld `1.6.4871` and Harmony
 reference packages. For local development against the exact installed binaries,
-copy `mod/FixWorld/Local.Build.props.example` to
-`mod/FixWorld/Local.Build.props` and set the RimWorld and Harmony paths. Local
+pass `--game-root <RimWorldRoot>` and `--harmony <0Harmony.dll>` to the build
+script. Builds go to `temp/build`, not the live game. Local
 game assemblies are never committed or redistributed by this repository
 
 ## Documentation
 
 Start at the [documentation index](docs/README.md):
+
+The [fork source overview](mod/FixWorld/README.md) describes the package layout.
 
 - [Architecture](docs/architecture.md) explains the preloader, loader, runtime,
   mod bridge, ownership, and failure boundaries
