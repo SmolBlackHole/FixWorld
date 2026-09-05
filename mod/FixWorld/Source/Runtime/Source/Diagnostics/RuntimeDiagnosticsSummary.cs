@@ -308,6 +308,15 @@ namespace FixWorld.Diagnostics
                 CultureInfo.InvariantCulture));
             text.Append(",failures:");
             text.Append(shadow.Failures.ToString(CultureInfo.InvariantCulture));
+            text.Append(",queryAnswered:");
+            text.Append(shadow.QueriesAnswered.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",queryConnected:");
+            text.Append(shadow.QueriesConnected.ToString(
+                CultureInfo.InvariantCulture));
+            text.Append(",queryUnavailable:");
+            text.Append(shadow.QueriesUnavailable.ToString(
+                CultureInfo.InvariantCulture));
             return text.ToString();
         }
 
@@ -524,6 +533,13 @@ namespace FixWorld.Diagnostics
             text.AppendLine(
                 "  Timing: nested Rebuild is included in full/incremental " +
                 "update timing");
+            text.AppendLine(
+                "  Queries: " + shadow.QueriesAnswered.ToString(
+                    CultureInfo.InvariantCulture) + " answered, " +
+                shadow.QueriesConnected.ToString(
+                    CultureInfo.InvariantCulture) + " connected, " +
+                shadow.QueriesUnavailable.ToString(
+                    CultureInfo.InvariantCulture) + " unavailable");
             text.AppendLine(
                 "  Failures: " + shadow.Failures.ToString(
                     CultureInfo.InvariantCulture));

@@ -136,6 +136,13 @@ answer gameplay queries or claim a RimWorld reachability match rate. See
 [the runtime shadow observer](pathfinding.md#runtime-shadow-observer) for scope,
 activation, and the live-test procedure.
 
+The global binary graph is exercised by bounded endpoint probes at path-batch
+scheduling. Query counters distinguish answered/connected results from unavailable
+samples (for example, a busy or uninitialized map). `ShadowGridQuery` measures
+the adapter and query work. These are cardinal, binary `OnCell` probes, not
+RimWorld `CanReach` answers or validation of pawn traversal rules. No result is
+used to accept, reject, or modify a path request.
+
 ## In-game UI
 
 The normal Mod presents Startup, Preloader, Stages, DDS cache, Runtime, Issues,

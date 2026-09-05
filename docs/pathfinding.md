@@ -540,9 +540,93 @@ memory, dirty-set size, neighbor visits, and upward propagation depth.
 
 ### Phase 4: Add the portal graph
 
-Build boundary portals and the global connectivity graph. Mirror reachability
-queries, compare every result with RimWorld, and report mismatches by traversal
-profile and invalidation cause.
+The first slice joins matching binary/cardinal components across super-chunk
+boundaries and exposes global connectivity queries. Endpoints in different local
+components of one super-chunk can still connect through an external route; a local
+component mismatch is not a global rejection. A scalar whole-map flood fill is
+the independent oracle for this model.
+
+The runtime slice keeps the existing per-map gate as the ownership boundary for
+completed topology. Observational readers skip a busy map instead of blocking
+gameplay or reading partially updated arrays. A bounded sample of real request
+endpoints exercises the model, but its answers do not affect scheduling, paths,
+or reachability. Those probes measure binary connectivity only, not pawn movement
+rules or `Touch` target semantics.
+
+Later, add supported traversal semantics, mirror reachability queries, compare
+every supported result with RimWorld, and report mismatches by traversal profile
+and invalidation cause before any gameplay cutover.
+
+#### Implemented binary graph slice
+
+`ShadowConnectivityGrid.AreConnected` maps endpoints to super-chunk components
+and compares their global disjoint-set roots. Matching cells along each east and
+north shared boundary add undirected connections. `GraphEdgeCount` counts these
+boundary-cell links, not unique component pairs or coalesced portal spans.
+`GraphNodeCount` counts local components, including isolated components.
+
+The graph reuses preallocated storage (one `int` parent and one `bool` activity
+slot per possible super-chunk component, with 1,024 reserved slots per chunk).
+If any super-chunk summary changes, the graph is rebuilt from all current
+super-chunk mappings and boundary links. Resetting the active roots handles both
+splits and merges. This is intentionally not an incremental global graph-repair
+algorithm: local hierarchy work stays incremental, but changed global topology
+currently incurs a whole graph rebuild, included in `ShadowGridRebuild` timing.
+Unchanged summaries skip that work; queries allocate no scratch arrays.
+
+The core requires exclusive ownership and rejects queries with pending changes.
+The observer's `TryQuery` uses its existing per-map gate and returns the completed
+generation with the answer. Missing, disabled, busy, and out-of-bounds queries
+are unavailable, not disconnected. It does not initialize a grid or read live
+map cells during a query. The completed generation may lag newly changed world
+state until the next update barrier; it is not a promise of gameplay freshness.
+
+The existing `ScheduleBatchedPathJobs` prefix examines at most eight requests and
+probes the first eligible `OnCell` pair, after `GatherData`. `ShadowGridQuery`
+includes bounded request selection, adapter work, and counter recording, so its
+call count can exceed the answered/unavailable totals when no eligible pair is
+found. It is also included in outer tick/pathfinder timings. No probe result is
+written into the request. The log exposes `queryAnswered`, `queryConnected`, and
+`queryUnavailable`; the same totals appear in the Shadow grid UI.
+
+Global contracts use an independent scalar whole-map flood fill for randomized
+edits, splits/merges, thin and partial maps, blocked endpoints, and routes leaving
+and re-entering the same super-chunk. Warm repeated queries allocate zero bytes
+in the standalone allocation check. Runtime adapter contracts check unavailable
+states, generation consistency, nonblocking reads, and per-map failure isolation.
+The first in-game global-query run passed the observational smoke test below;
+this does not authorize gameplay cutover.
+
+Local Release/.NET Framework harness checkpoint (250x250, 2026-09-05): full
+grid+graph construction/population median 2.69 ms (three samples), and 20,000
+mixed same/cross-super-chunk queries median 0.51 ms. The hierarchy workload with
+the graph included measured 0.13 ms for 32 localized edits and 0.29 ms for 32
+dispersed edits (five-sample medians), both with zero measured allocations.
+These are synthetic costs, not Unity/Mono timings or an in-game speedup claim.
+
+#### Live global-query checkpoint (2026-09-05)
+
+A paused loaded-colony baseline recorded one full observation at 9.233 ms,
+including a nested 4.873 ms rebuild, and one connected query at 0.510 ms.
+After subtracting this initial baseline, normal play recorded 702 incremental
+updates (2.7 ms total) and 702 timed probes (about 1.2 ms total), with 565 answered
+binary queries, all connected. No binary cell changed and no chunk rebuilt.
+
+The following mixed interval included a user-reported clock jump to daytime,
+ordinary simulation, and wall removal. Two observed phases each changed 20 cell
+states, together causing 22 leaf, 10 region, and 6 super-chunk rebuilds. The full
+interval recorded 567 incremental updates (about 1.6 ms including graph work)
+and 567 timed probes (about 0.9 ms), with 435 connected answers. Both intervals
+had zero observer failures and zero unavailable queries; no second full rebuild
+occurred. Times are differences of rounded cumulative log totals. No negative
+live query was observed, and clock changes prevent treating the mixed interval
+as a controlled same-workload timing comparison.
+
+Captures are local under `data/profiling/captures/pathfinding/`:
+`shadow-graph-baseline-20260905-020751`, `shadow-graph-normal-20260905-021006`, and
+`shadow-graph-edits-20260905-021640`, each with logs and interpretation notes.
+This demonstrates inexpensive maintenance and queries in the observed workloads,
+not saved game work: the shadow graph still executes alongside RimWorld.
 
 ### Standalone hierarchy harness
 

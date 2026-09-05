@@ -186,10 +186,11 @@ is not. A Boids-style neighborhood update can rebuild the directly affected
 leaves and boundaries, while component and portal changes propagate through a
 small parent hierarchy only when their summaries actually change.
 
-Current slice: attach the validated cardinal, binary-passability hierarchy to
-RimWorld's connectivity update barrier as a per-map observer. Record full/incremental
-sampling and rebuild costs in the existing profiler, with changed/rebuilt counters
-in the UI and log. No game query consumer, global portal graph, or path reuse yet.
+Current slice: connect the validated cardinal, binary-passability hierarchy across
+super-chunk boundaries and add observational global connectivity queries. Publish
+completed updates under the per-map gate, test answers against a scalar whole-map
+oracle, and measure bounded real-request probes in the existing profiler/UI/log.
+No gameplay query replacement, pawn-specific traversal semantics, or path reuse.
 Experiment A's remaining gameplay and queue-delay checks stay open.
 
 - [ ] For future shadow-vs-game mismatches, retain a bounded reproducer with masks,
@@ -224,9 +225,22 @@ Experiment A's remaining gameplay and queue-delay checks stay open.
       only when a child summary changes, and a 32-by-32 super-chunk only when its
       region summary changes.
       Summary comparisons include perimeter occupancy as well as component IDs.
-- [ ] Publish topology coherently at an update barrier. Readers must observe the
+- [x] Publish topology coherently at an update barrier. Readers must observe the
       complete old generation or the complete new generation, never a mixture of
       partially rebuilt leaves and parents.
+- [x] Join matching super-chunk boundary components into a global binary/cardinal
+      graph. Handle component splits/merges and routes leaving/re-entering the
+      endpoints' shared super-chunk. Query without per-request allocations.
+- [x] Compare global binary answers with an independent whole-map scalar oracle
+      across randomized edits and boundary regressions. This is not a comparison
+      with RimWorld's pawn-specific reachability.
+- [x] Run the global-query build in-game: observe answered/connected/unavailable
+      counters and ShadowGridQuery timing during ordinary play and wall edits.
+      Measure full/incremental costs again with the graph included. Query results
+      remain observational and are not a pawn-specific correctness oracle.
+      Normal play and mixed wall-edit intervals passed on 2026-09-05: zero
+      observer failures and no unavailable probes. No live negative answer or
+      gameplay speedup was demonstrated; see docs/pathfinding.md.
 - [x] Feed RimWorld invalidation events into the shadow hierarchy, but keep
       vanilla connectivity and reachability authoritative.
       Per-map observer is wired after ComputeAll/UpdateIncrementally. Local-reference

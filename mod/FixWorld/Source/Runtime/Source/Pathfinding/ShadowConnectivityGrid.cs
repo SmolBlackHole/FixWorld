@@ -9,9 +9,6 @@ namespace FixWorld.Pathfinding
         private const int SuperChunkSize = 32;
         private const ulong EastSourceMask = 0x7F7F7F7F7F7F7F7FUL;
         private const ulong WestSourceMask = 0xFEFEFEFEFEFEFEFEUL;
-
-        private readonly int width;
-        private readonly int height;
         private readonly int leafColumns;
         private readonly int leafRows;
         private readonly int regionColumns;
@@ -39,11 +36,12 @@ namespace FixWorld.Pathfinding
         private readonly int[] boundaryBuild;
         private readonly int[] unionParents;
         private readonly int[] unionMinimums;
+        private readonly int[] globalParents;
+        private readonly bool[] globalActive;
         private int dirtyLeafCount;
         private int dirtyRegionCount;
         private int dirtySuperChunkCount;
         private bool pendingChanges;
-        private long generation;
 
         internal ShadowConnectivityGrid(int width, int height)
         {
@@ -57,8 +55,8 @@ namespace FixWorld.Pathfinding
                 throw new ArgumentOutOfRangeException(nameof(height));
             }
 
-            this.width = width;
-            this.height = height;
+            Width = width;
+            Height = height;
             leafColumns = ((width - 1) >> 3) + 1;
             leafRows = ((height - 1) >> 3) + 1;
             regionColumns = (leafColumns + 1) >> 1;
@@ -89,6 +87,9 @@ namespace FixWorld.Pathfinding
             boundaryBuild = NewLabels(128);
             unionParents = new int[1024];
             unionMinimums = new int[1024];
+            int globalNodeCapacity = CheckedProduct(superChunkCount, 1024);
+            globalParents = new int[globalNodeCapacity];
+            globalActive = new bool[globalNodeCapacity];
             for (int i = 0; i < leafCount; i++)
             {
                 EnqueueLeaf(i);
@@ -107,9 +108,12 @@ namespace FixWorld.Pathfinding
             pendingChanges = true;
         }
 
-        public int Width => width;
-        public int Height => height;
-        public long Generation => generation;
+        public int Width { get; }
+        public int Height { get; }
+        public long Generation { get; private set; }
+        public long GraphRebuildCount { get; private set; }
+        public int GraphNodeCount { get; private set; }
+        public int GraphEdgeCount { get; private set; }
 
         public bool SetWalkable(int x, int z, bool walkable)
         {
@@ -198,9 +202,37 @@ namespace FixWorld.Pathfinding
                 }
             }
             dirtySuperChunkCount = 0;
+            if (changedSuperChunks > 0)
+            {
+                RebuildGlobalGraph();
+            }
+
             pendingChanges = false;
-            generation++;
+            Generation++;
             return new ShadowRebuildStats(rebuiltLeaves, changedLeaves, rebuiltRegions, changedRegions, rebuiltSuperChunks, changedSuperChunks);
+        }
+
+        public bool AreConnected(int startX, int startZ, int targetX, int targetZ)
+        {
+            ValidateCell(startX, startZ);
+            ValidateCell(targetX, targetZ);
+            if (pendingChanges)
+            {
+                throw new InvalidOperationException("The shadow connectivity grid has pending changes.");
+            }
+
+            int startComponent = GetComponent(startX, startZ, SuperChunkSize);
+            int targetComponent = GetComponent(targetX, targetZ, SuperChunkSize);
+            if (startComponent < 0 || targetComponent < 0)
+            {
+                return false;
+            }
+
+            int startSuperChunk = (startX >> 5) + ((startZ >> 5) * superChunkColumns);
+            int targetSuperChunk = (targetX >> 5) + ((targetZ >> 5) * superChunkColumns);
+            int startNode = (startSuperChunk * 1024) + startComponent;
+            int targetNode = (targetSuperChunk * 1024) + targetComponent;
+            return FindGlobal(startNode) == FindGlobal(targetNode);
         }
 
         public int GetComponent(int x, int z, int chunkSize)
@@ -377,6 +409,90 @@ namespace FixWorld.Pathfinding
             FinalizeMapping(1024);
             BuildSuperChunkBoundary(index);
             return PublishMapping(superChunkLabels, superChunkBoundary, superChunkBuilt, index, 1024, 128);
+        }
+
+        private void RebuildGlobalGraph()
+        {
+            int nodes = 0;
+            int superChunkCount = superChunkColumns * superChunkRows;
+            for (int superChunk = 0; superChunk < superChunkCount; superChunk++)
+            {
+                int offset = superChunk * 1024;
+                for (int slot = 0; slot < 1024; slot++)
+                {
+                    globalActive[offset + slot] = false;
+                }
+
+                for (int slot = 0; slot < 1024; slot++)
+                {
+                    int component = superChunkLabels[offset + slot];
+                    if (component < 0)
+                    {
+                        continue;
+                    }
+
+                    int node = offset + component;
+                    globalParents[node] = node;
+                    if (!globalActive[node])
+                    {
+                        globalActive[node] = true;
+                        nodes++;
+                    }
+                }
+            }
+
+            int edges = 0;
+            for (int superZ = 0; superZ < superChunkRows; superZ++)
+            {
+                for (int superX = 0; superX < superChunkColumns; superX++)
+                {
+                    int first = superX + (superZ * superChunkColumns);
+                    int firstBoundary = first * 128;
+                    if (superX + 1 < superChunkColumns)
+                    {
+                        int second = first + 1;
+                        int secondBoundary = second * 128;
+                        for (int position = 0; position < SuperChunkSize; position++)
+                        {
+                            int firstComponent = superChunkBoundary[firstBoundary + 32 + position];
+                            int secondComponent = superChunkBoundary[secondBoundary + position];
+                            if (firstComponent < 0 || secondComponent < 0)
+                            {
+                                continue;
+                            }
+
+                            UnionGlobal(
+                                (first * 1024) + firstComponent,
+                                (second * 1024) + secondComponent);
+                            edges++;
+                        }
+                    }
+
+                    if (superZ + 1 < superChunkRows)
+                    {
+                        int second = first + superChunkColumns;
+                        int secondBoundary = second * 128;
+                        for (int position = 0; position < SuperChunkSize; position++)
+                        {
+                            int firstComponent = superChunkBoundary[firstBoundary + 96 + position];
+                            int secondComponent = superChunkBoundary[secondBoundary + 64 + position];
+                            if (firstComponent < 0 || secondComponent < 0)
+                            {
+                                continue;
+                            }
+
+                            UnionGlobal(
+                                (first * 1024) + firstComponent,
+                                (second * 1024) + secondComponent);
+                            edges++;
+                        }
+                    }
+                }
+            }
+
+            GraphNodeCount = nodes;
+            GraphEdgeCount = edges;
+            GraphRebuildCount++;
         }
 
         private bool PublishMapping(int[] published, int[] publishedBoundary, bool[] built, int index, int size, int boundarySize)
@@ -591,6 +707,43 @@ namespace FixWorld.Pathfinding
             return root;
         }
 
+        private int FindGlobal(int node)
+        {
+            int root = node;
+            while (globalParents[root] != root)
+            {
+                root = globalParents[root];
+            }
+
+            while (globalParents[node] != node)
+            {
+                int next = globalParents[node];
+                globalParents[node] = root;
+                node = next;
+            }
+
+            return root;
+        }
+
+        private void UnionGlobal(int first, int second)
+        {
+            int firstRoot = FindGlobal(first);
+            int secondRoot = FindGlobal(second);
+            if (firstRoot == secondRoot)
+            {
+                return;
+            }
+
+            if (firstRoot > secondRoot)
+            {
+                int swap = firstRoot;
+                firstRoot = secondRoot;
+                secondRoot = swap;
+            }
+
+            globalParents[secondRoot] = firstRoot;
+        }
+
         private void Union(int first, int second)
         {
             int firstRoot = Find(first);
@@ -613,9 +766,9 @@ namespace FixWorld.Pathfinding
         {
             EnqueueLeaf(leafX + (leafZ * leafColumns));
             bool left = (x & 7) == 0 && leafX > 0;
-            bool right = (x & 7) == 7 && x + 1 < width;
+            bool right = (x & 7) == 7 && x + 1 < Width;
             bool down = (z & 7) == 0 && leafZ > 0;
-            bool up = (z & 7) == 7 && z + 1 < height;
+            bool up = (z & 7) == 7 && z + 1 < Height;
             if (left)
             {
                 EnqueueLeaf((leafX - 1) + (leafZ * leafColumns));
@@ -692,12 +845,12 @@ namespace FixWorld.Pathfinding
 
         private void ValidateCell(int x, int z)
         {
-            if (x < 0 || x >= width)
+            if (x < 0 || x >= Width)
             {
                 throw new ArgumentOutOfRangeException(nameof(x));
             }
 
-            if (z < 0 || z >= height)
+            if (z < 0 || z >= Height)
             {
                 throw new ArgumentOutOfRangeException(nameof(z));
             }

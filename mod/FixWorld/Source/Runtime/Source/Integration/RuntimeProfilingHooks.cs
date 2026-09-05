@@ -643,12 +643,87 @@ namespace FixWorld.Integration
                     ___tmpCurrentWork.Count,
                     totalQueueDelay,
                     maximumQueueDelay);
+                ProbeShadowGridQuery(___tmpCurrentWork);
                 __state = Begin(RuntimeHotpath.PathFinderPathScheduling);
             }
 
             [HarmonyPostfix]
             private static void Postfix(long __state) =>
                 End(RuntimeHotpath.PathFinderPathScheduling, __state);
+        }
+
+        private static void ProbeShadowGridQuery(List<PathRequest> requests)
+        {
+            if (!ShadowGridObserver.Enabled || requests == null)
+            {
+                return;
+            }
+
+            long startedAt = long.MinValue;
+            bool queryAttempted = false;
+            try
+            {
+                startedAt = Begin(RuntimeHotpath.ShadowGridQuery);
+                int sampleCount = Math.Min(requests.Count, 8);
+                for (int index = 0; index < sampleCount; index++)
+                {
+                    PathRequest request = requests[index];
+                    if (request == null)
+                    {
+                        continue;
+                    }
+
+                    PathEndMode endMode = request.EndMode;
+                    Map map = request.map;
+                    IntVec3 start = request.Start;
+                    LocalTargetInfo target = request.Target;
+                    if (endMode != PathEndMode.OnCell || map == null ||
+                        !start.IsValid || !target.IsValid ||
+                        !target.Cell.IsValid)
+                    {
+                        continue;
+                    }
+
+                    IntVec3 destination = target.Cell;
+                    queryAttempted = true;
+                    bool answered = RuntimeHost.TryQueryShadowGrid(
+                        map,
+                        start,
+                        destination,
+                        out bool connected,
+                        out _);
+                    RuntimeHost.ObserveShadowGridQuery(answered, connected);
+                    return;
+                }
+            }
+            catch
+            {
+                if (queryAttempted)
+                {
+                    // Shadow probes are observational. A query adapter failure
+                    // must never abort the game's path batch.
+                    try
+                    {
+                        RuntimeHost.ObserveShadowGridQuery(false, false);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+            finally
+            {
+                if (startedAt != long.MinValue)
+                {
+                    try
+                    {
+                        End(RuntimeHotpath.ShadowGridQuery, startedAt);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
         }
 
         [HarmonyPatch]

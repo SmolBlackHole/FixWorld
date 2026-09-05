@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
+using System.Threading;
 
 using FixWorld.Diagnostics;
 using FixWorld.Pathfinding;
@@ -22,7 +23,14 @@ internal static class ObserverContracts
         MapsAndSeamsRemainIsolated();
         InvalidDeltasAreSkipped();
         ErrorsDisableOnlyOneMap();
+        MissingStateIsUnavailable();
+        BlockedAndDisconnectedQueries();
+        SplitAndMergeQueries();
+        DisabledAndFailureQueries();
+        ConcurrentQueriesSeeCompletedGenerations();
         NoUpdateAllocationsAfterWarmup();
+        NoQueryAllocationsAfterWarmup();
+        QueryTelemetryCounters();
         Console.WriteLine(
             "FixWorld observer contracts passed: " + assertions + " assertions.");
     }
@@ -177,6 +185,254 @@ internal static class ObserverContracts
         }
     }
 
+    private static void MissingStateIsUnavailable()
+    {
+        var map = new Map(4, 1, true);
+        var observer = new ShadowGridObserver(new RuntimeTelemetryStore());
+        Assert(!observer.TryQuery(
+                map,
+                new IntVec3(0, 0, 0),
+                new IntVec3(3, 0, 0),
+                out bool connected,
+                out long generation) && !connected && generation == 0L,
+            "A query initialized or read an unobserved map.");
+        Assert(map.WalkableReads == 0,
+            "A missing-state query read Verse map state.");
+    }
+
+    private static void BlockedAndDisconnectedQueries()
+    {
+        var map = new Map(4, 1, true);
+        var observer = new ShadowGridObserver(new RuntimeTelemetryStore());
+        observer.Observe(map, [], true);
+        Assert(observer.TryQuery(
+                map,
+                new IntVec3(0, 0, 0),
+                new IntVec3(3, 0, 0),
+                out bool connected,
+                out long generation) && connected && generation > 0L,
+            "A connected pair was not answered from the completed grid.");
+
+        map.SetWalkable(1, 0, false);
+        observer.Observe(map, [new IntVec3(1, 0, 0)], false);
+        Assert(observer.TryQuery(
+                map,
+                new IntVec3(0, 0, 0),
+                new IntVec3(3, 0, 0),
+                out connected,
+                out generation) && !connected,
+            "A blocked pair was reported as connected.");
+    }
+
+    private static void SplitAndMergeQueries()
+    {
+        var map = new Map(17, 1, true);
+        var observer = new ShadowGridObserver(new RuntimeTelemetryStore());
+        observer.Observe(map, [], true);
+        map.SetWalkable(8, 0, false);
+        observer.Observe(map, [new IntVec3(8, 0, 0)], false);
+        Assert(observer.TryQuery(
+                map,
+                new IntVec3(0, 0, 0),
+                new IntVec3(16, 0, 0),
+                out bool connected,
+                out long generation) && !connected,
+            "A bridge removal did not split the queried regions.");
+
+        map.SetWalkable(8, 0, true);
+        observer.Observe(map, [new IntVec3(8, 0, 0)], false);
+        Assert(observer.TryQuery(
+                map,
+                new IntVec3(0, 0, 0),
+                new IntVec3(16, 0, 0),
+                out connected,
+                out generation) && connected,
+            "A bridge restoration did not merge the queried regions.");
+    }
+
+    private static void DisabledAndFailureQueries()
+    {
+        var failing = new Map(4, 1, true) { ThrowOnRead = true };
+        var healthy = new Map(4, 1, true);
+        var telemetry = new RuntimeTelemetryStore();
+        var observer = new ShadowGridObserver(telemetry);
+        observer.Observe(failing, [], true);
+        Assert(!observer.TryQuery(
+                failing,
+                new IntVec3(0, 0, 0),
+                new IntVec3(3, 0, 0),
+                out bool connected,
+                out long generation) && !connected && generation == 0L,
+            "A failed map remained queryable.");
+
+        var boundsMap = new Map(4, 1, true);
+        var boundsObserver = new ShadowGridObserver(new RuntimeTelemetryStore());
+        boundsObserver.Observe(boundsMap, [], true);
+        Assert(!boundsObserver.TryQuery(
+                boundsMap,
+                new IntVec3(-1, 0, 0),
+                new IntVec3(3, 0, 0),
+                out connected,
+                out generation) && !connected && generation == 0L,
+            "An out-of-bounds query was not treated as unavailable.");
+        Assert(boundsObserver.TryQuery(
+                boundsMap,
+                new IntVec3(0, 0, 0),
+                new IntVec3(3, 0, 0),
+                out connected,
+                out generation) && connected,
+            "An invalid query disabled a healthy map.");
+
+        observer.Observe(healthy, [], true);
+        Assert(observer.TryQuery(
+                healthy,
+                new IntVec3(0, 0, 0),
+                new IntVec3(3, 0, 0),
+                out connected,
+                out generation) && connected,
+            "A failed map disabled another map's observer.");
+    }
+
+    private static void ConcurrentQueriesSeeCompletedGenerations()
+    {
+        var map = new Map(65, 1, true);
+        var observer = new ShadowGridObserver(new RuntimeTelemetryStore());
+        observer.Observe(map, [], true);
+        Assert(observer.TryQuery(
+                map,
+                new IntVec3(0, 0, 0),
+                new IntVec3(64, 0, 0),
+                out bool baselineConnected,
+                out long baselineGeneration) && baselineConnected,
+            "The concurrency fixture did not start connected.");
+
+        map.SetWalkable(32, 0, false);
+        var deltas = new List<IntVec3>(1024);
+        for (int i = 0; i < 1024; i++)
+        {
+            deltas.Add(new IntVec3(i % 65, 0, 0));
+        }
+
+        using var readStarted = new ManualResetEventSlim(false);
+        using var continueRead = new ManualResetEventSlim(false);
+        map.BeforeRead = delegate
+        {
+            readStarted.Set();
+            continueRead.Wait();
+        };
+        Exception updateFailure = null;
+        var updater = new Thread((ThreadStart)delegate
+        {
+            try
+            {
+                observer.Observe(map, deltas, false);
+            }
+            catch (Exception exception)
+            {
+                updateFailure = exception;
+            }
+        });
+        updater.IsBackground = true;
+        updater.Start();
+        bool reachedReadGate = readStarted.Wait(TimeSpan.FromSeconds(1));
+        Thread queryThread = null;
+        bool queryFinished = false;
+        bool busyAnswered = true;
+        bool busyConnected = false;
+        long busyGeneration = -1L;
+        try
+        {
+            if (reachedReadGate)
+            {
+                queryThread = new Thread((ThreadStart)delegate
+                {
+                    busyAnswered = observer.TryQuery(
+                        map,
+                        new IntVec3(0, 0, 0),
+                        new IntVec3(64, 0, 0),
+                        out busyConnected,
+                        out busyGeneration);
+                });
+                queryThread.IsBackground = true;
+                queryThread.Start();
+                queryFinished = queryThread.Join(TimeSpan.FromSeconds(1));
+            }
+        }
+        finally
+        {
+            continueRead.Set();
+            if (queryThread != null && queryThread.IsAlive)
+            {
+                queryThread.Join(TimeSpan.FromSeconds(1));
+            }
+
+            if (updater.IsAlive)
+            {
+                updater.Join(TimeSpan.FromSeconds(1));
+            }
+        }
+
+        Assert(reachedReadGate,
+            "The update fixture did not reach its map read gate.");
+        Assert(queryFinished && !busyAnswered && !busyConnected &&
+               busyGeneration == 0L,
+            "A query blocked on an in-progress map update.");
+        Assert(!updater.IsAlive &&
+               (queryThread == null || !queryThread.IsAlive),
+            "The bounded concurrency fixture left a worker alive.");
+        Assert(updateFailure == null,
+            "The concurrent observer update failed: " + updateFailure);
+
+        Assert(observer.TryQuery(
+                map,
+                new IntVec3(0, 0, 0),
+                new IntVec3(64, 0, 0),
+                out bool connected,
+                out long generation) && generation == baselineGeneration + 1L &&
+                !connected,
+            "The completed update did not publish one disconnected generation.");
+    }
+
+    private static void NoQueryAllocationsAfterWarmup()
+    {
+        var map = new Map(8, 8, true);
+        var observer = new ShadowGridObserver(new RuntimeTelemetryStore());
+        observer.Observe(map, [], true);
+        observer.TryQuery(
+            map,
+            new IntVec3(0, 0, 0),
+            new IntVec3(7, 7, 0),
+            out bool connected,
+            out long generation);
+        long before = AllocatedBytes();
+        for (int i = 0; i < 32; i++)
+        {
+            observer.TryQuery(
+                map,
+                new IntVec3(0, 0, 0),
+                new IntVec3(7, 7, 0),
+                out connected,
+                out generation);
+        }
+        long after = AllocatedBytes();
+        if (before >= 0 && after >= 0)
+        {
+            Assert(after - before == 0,
+                "A shadow query allocated " + (after - before) + " bytes.");
+        }
+    }
+
+    private static void QueryTelemetryCounters()
+    {
+        var telemetry = new RuntimeTelemetryStore();
+        telemetry.ObserveShadowGridQuery(true, true);
+        telemetry.ObserveShadowGridQuery(true, false);
+        telemetry.ObserveShadowGridQuery(false, false);
+        Assert(telemetry.QueryAnswered == 2 && telemetry.QueryConnected == 1 &&
+               telemetry.QueryUnavailable == 1,
+            "Shadow query telemetry did not distinguish answer states.");
+    }
+
     private static Map PatternMap(int width, int height)
     {
         var map = new Map(width, height, false);
@@ -237,18 +493,11 @@ internal static class ObserverContracts
 
 namespace Verse
 {
-    public struct IntVec3 : IEquatable<IntVec3>
+    public struct IntVec3(int x, int y, int z) : IEquatable<IntVec3>
     {
-        public IntVec3(int x, int y, int z)
-        {
-            this.x = x;
-            this.y = y;
-            this.z = z;
-        }
-
-        public int x;
-        public int y;
-        public int z;
+        public int x = x;
+        public int y = y;
+        public int z = z;
 
         public readonly bool Equals(IntVec3 other) => x == other.x && y == other.y && z == other.z;
 
@@ -281,6 +530,8 @@ namespace Verse
 
         public bool ThrowOnRead { get; set; }
 
+        public Action BeforeRead { get; set; }
+
         public int WalkableReads { get; private set; }
 
         public bool WalkableByAny(IntVec3 cell)
@@ -308,6 +559,7 @@ namespace Verse
 
         internal bool ReadWalkable(IntVec3 cell)
         {
+            BeforeRead?.Invoke();
             if (ThrowOnRead)
             {
                 throw new InvalidOperationException("stub map read failure");
@@ -356,7 +608,8 @@ namespace FixWorld.Diagnostics
     {
         ShadowGridFull,
         ShadowGridIncremental,
-        ShadowGridRebuild
+        ShadowGridRebuild,
+        ShadowGridQuery
     }
 
     internal sealed class RuntimeTelemetryStore
@@ -368,6 +621,9 @@ namespace FixWorld.Diagnostics
         internal int LastSampledCells { get; private set; }
         internal int LastChangedCells { get; private set; }
         internal int TimingCalls { get; private set; }
+        internal int QueryAnswered { get; private set; }
+        internal int QueryConnected { get; private set; }
+        internal int QueryUnavailable { get; private set; }
 
         internal long StartRuntimeHotpath(RuntimeHotpath hotpath)
         {
@@ -397,5 +653,20 @@ namespace FixWorld.Diagnostics
         }
 
         internal void ObserveShadowGridFailure() => ShadowFailureCount++;
+
+        internal void ObserveShadowGridQuery(bool answered, bool connected)
+        {
+            if (!answered)
+            {
+                QueryUnavailable++;
+                return;
+            }
+
+            QueryAnswered++;
+            if (connected)
+            {
+                QueryConnected++;
+            }
+        }
     }
 }

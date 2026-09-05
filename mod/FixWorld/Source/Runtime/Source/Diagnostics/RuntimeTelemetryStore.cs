@@ -80,6 +80,9 @@ namespace FixWorld.Diagnostics
         private long shadowRebuiltRegions;
         private long shadowRebuiltSuperChunks;
         private long shadowSampledCells;
+        private long shadowQueriesAnswered;
+        private long shadowQueriesConnected;
+        private long shadowQueriesUnavailable;
         private double estimatedDurationMilliseconds;
         private LoadingLiveState liveState;
         private Profiler<PlayDataLoadStage> profiler;
@@ -347,6 +350,21 @@ namespace FixWorld.Diagnostics
         internal void ObserveShadowGridFailure() =>
             Interlocked.Increment(ref shadowFailures);
 
+        internal void ObserveShadowGridQuery(bool answered, bool connected)
+        {
+            if (!answered)
+            {
+                Interlocked.Increment(ref shadowQueriesUnavailable);
+                return;
+            }
+
+            Interlocked.Increment(ref shadowQueriesAnswered);
+            if (connected)
+            {
+                Interlocked.Increment(ref shadowQueriesConnected);
+            }
+        }
+
         internal RuntimeProfilingSnapshot CaptureRuntimeProfiling(
             bool publish = false) =>
             new(
@@ -400,7 +418,10 @@ namespace FixWorld.Diagnostics
                     Interlocked.Read(ref shadowChangedRegions),
                     Interlocked.Read(ref shadowRebuiltSuperChunks),
                     Interlocked.Read(ref shadowChangedSuperChunks),
-                    Interlocked.Read(ref shadowFailures)));
+                    Interlocked.Read(ref shadowFailures),
+                    Interlocked.Read(ref shadowQueriesAnswered),
+                    Interlocked.Read(ref shadowQueriesConnected),
+                    Interlocked.Read(ref shadowQueriesUnavailable)));
 
         internal RuntimeDiagnosticsSnapshot Complete(
             string source,

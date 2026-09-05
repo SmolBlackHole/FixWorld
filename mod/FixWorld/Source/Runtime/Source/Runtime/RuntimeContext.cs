@@ -230,6 +230,22 @@ namespace FixWorld.Runtime
         internal void ObserveShadowGrid(Map map, List<IntVec3> deltas, bool fullRebuild) =>
             shadowGrid.Observe(map, deltas, fullRebuild);
 
+        internal bool TryQueryShadowGrid(
+            Map map,
+            IntVec3 start,
+            IntVec3 target,
+            out bool connected,
+            out long generation) =>
+            shadowGrid.TryQuery(
+                map,
+                start,
+                target,
+                out connected,
+                out generation);
+
+        internal void ObserveShadowGridQuery(bool answered, bool connected) =>
+            telemetry.ObserveShadowGridQuery(answered, connected);
+
         internal void ObserveReachabilityCache(bool hit) =>
             telemetry.ObserveReachabilityCache(hit);
 

@@ -281,12 +281,13 @@ namespace FixWorld.Diagnostics
         ReachabilityCacheLookup,
         ShadowGridFull,
         ShadowGridIncremental,
-        ShadowGridRebuild
+        ShadowGridRebuild,
+        ShadowGridQuery
     }
 
     internal static class RuntimeHotpathCatalog
     {
-        internal const int Count = 28;
+        internal const int Count = 29;
 
         internal static string GetName(RuntimeHotpath hotpath)
         {
@@ -348,6 +349,8 @@ namespace FixWorld.Diagnostics
                     return "ShadowGridObserver incremental update";
                 case RuntimeHotpath.ShadowGridRebuild:
                     return "ShadowConnectivityGrid.Rebuild";
+                case RuntimeHotpath.ShadowGridQuery:
+                    return "ShadowConnectivityGrid query";
                 default:
                     throw new ArgumentOutOfRangeException(nameof(hotpath));
             }
@@ -531,7 +534,10 @@ namespace FixWorld.Diagnostics
             long changedRegions,
             long rebuiltSuperChunks,
             long changedSuperChunks,
-            long failures)
+            long failures,
+            long queriesAnswered,
+            long queriesConnected,
+            long queriesUnavailable)
         {
             FullUpdates = fullUpdates;
             IncrementalUpdates = incrementalUpdates;
@@ -544,6 +550,9 @@ namespace FixWorld.Diagnostics
             RebuiltSuperChunks = rebuiltSuperChunks;
             ChangedSuperChunks = changedSuperChunks;
             Failures = failures;
+            QueriesAnswered = queriesAnswered;
+            QueriesConnected = queriesConnected;
+            QueriesUnavailable = queriesUnavailable;
         }
 
         internal long FullUpdates { get; }
@@ -567,6 +576,12 @@ namespace FixWorld.Diagnostics
         internal long ChangedSuperChunks { get; }
 
         internal long Failures { get; }
+
+        internal long QueriesAnswered { get; }
+
+        internal long QueriesConnected { get; }
+
+        internal long QueriesUnavailable { get; }
     }
 
     internal readonly struct RuntimeProfilingSnapshot

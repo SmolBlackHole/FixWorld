@@ -166,6 +166,32 @@ namespace FixWorld.Runtime
         internal static void ObserveShadowGrid(Map map, List<IntVec3> deltas, bool fullRebuild) =>
             Volatile.Read(ref current)?.ObserveShadowGrid(map, deltas, fullRebuild);
 
+        internal static bool TryQueryShadowGrid(
+            Map map,
+            IntVec3 start,
+            IntVec3 target,
+            out bool connected,
+            out long generation)
+        {
+            RuntimeContext context = Volatile.Read(ref current);
+            if (context == null)
+            {
+                connected = false;
+                generation = 0L;
+                return false;
+            }
+
+            return context.TryQueryShadowGrid(
+                map,
+                start,
+                target,
+                out connected,
+                out generation);
+        }
+
+        internal static void ObserveShadowGridQuery(bool answered, bool connected) =>
+            Volatile.Read(ref current)?.ObserveShadowGridQuery(answered, connected);
+
         internal static void ObserveReachabilityCache(bool hit) => Volatile.Read(ref current)?.ObserveReachabilityCache(hit);
 
         internal static string ClearDdsCache()

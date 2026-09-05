@@ -57,6 +57,7 @@ internal static class Program
         IncrementalContracts();
         PartialSuperChunkContracts();
         RandomContracts();
+        GlobalConnectivityContracts.Run(Assert);
     }
 
     private static void InputContracts()
@@ -65,7 +66,7 @@ internal static class Program
             () => new ShadowConnectivityGrid(0, 1));
         AssertThrows<ArgumentOutOfRangeException>(
             () => new ShadowConnectivityGrid(1, 0));
-        ShadowConnectivityGrid grid = new ShadowConnectivityGrid(4, 3);
+        var grid = new ShadowConnectivityGrid(4, 3);
         Assert(!grid.IsWalkable(0, 0), "A new grid was not initially blocked.");
         Assert(!grid.SetWalkable(0, 0, false), "An unchanged blocked cell was changed.");
         Assert(grid.SetWalkable(0, 0, true), "A blocked cell did not become walkable.");
@@ -238,7 +239,7 @@ internal static class Program
 
     private static void RandomContracts()
     {
-        Random random = new Random(668);
+        var random = new Random(668);
         for (int sample = 0; sample < 18; sample++)
         {
             int width = 1 + random.Next(34);
@@ -404,7 +405,7 @@ internal static class Program
     {
         int width = map.GetLength(0);
         int height = map.GetLength(1);
-        ShadowConnectivityGrid grid = new ShadowConnectivityGrid(width, height);
+        var grid = new ShadowConnectivityGrid(width, height);
         for (int x = 0; x < width; x++)
         {
             for (int z = 0; z < height; z++)
@@ -591,7 +592,7 @@ internal static class Program
                             continue;
                         }
                         int label = next++;
-                        Queue<Cell> queue = new Queue<Cell>();
+                        var queue = new Queue<Cell>();
                         labels[x, z] = label;
                         queue.Enqueue(new Cell(x, z));
                         while (queue.Count > 0)
@@ -661,7 +662,7 @@ internal static class Program
         const int width = 250;
         const int height = 250;
         bool[,] map = new bool[width, height];
-        Random random = new Random(668);
+        var random = new Random(668);
         for (int x = 0; x < width; x++)
         {
             for (int z = 0; z < height; z++)
@@ -695,6 +696,7 @@ internal static class Program
         int[,] dispersedEdits = DispersedEdits(width, height);
         BenchmarkIncremental("incremental fixed32", map, fixedEdits);
         BenchmarkIncremental("incremental dispersed32", map, dispersedEdits);
+        GlobalConnectivityContracts.RunBenchmark();
     }
 
     private static BenchmarkResult Measure(string name, Action action)
@@ -721,7 +723,7 @@ internal static class Program
 
     private static BenchmarkResult[] MeasureSamples(string name, Action action)
     {
-        BenchmarkResult[] samples = new BenchmarkResult[5];
+        var samples = new BenchmarkResult[5];
         for (int index = 0; index < samples.Length; index++)
         {
             samples[index] = Measure(name, action);
@@ -764,8 +766,8 @@ internal static class Program
         ShadowConnectivityGrid grid = LoadMap(original);
         grid.Rebuild();
         bool[,] current = Clone(original);
-        BenchmarkResult[] samples = new BenchmarkResult[5];
-        ShadowRebuildStats lastStats = default(ShadowRebuildStats);
+        var samples = new BenchmarkResult[5];
+        var lastStats = default(ShadowRebuildStats);
         int changed = 0;
         for (int sample = 0; sample < samples.Length; sample++)
         {
@@ -867,10 +869,7 @@ internal static class Program
         return (Func<long>)method.CreateDelegate(typeof(Func<long>));
     }
 
-    private static long ReadAllocatedBytes()
-    {
-        return AllocatedBytesReader();
-    }
+    private static long ReadAllocatedBytes() => AllocatedBytesReader();
 
     private static string FormatBytes(long bytes)
     {

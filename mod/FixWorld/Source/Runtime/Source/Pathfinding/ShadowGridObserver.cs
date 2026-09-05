@@ -128,6 +128,66 @@ namespace FixWorld.Pathfinding
             }
         }
 
+        // This is deliberately a read-only, best-effort adapter. The update
+        // callback owns the same per-map gate, so a successful query sees one
+        // completed generation rather than a mixture of parent and child data.
+        // Queries never initialize a map or read Verse map state.
+        internal bool TryQuery(
+            Map map,
+            IntVec3 start,
+            IntVec3 target,
+            out bool connected,
+            out long generation)
+        {
+            connected = false;
+            generation = 0L;
+            if (!Enabled || map == null || !states.TryGetValue(map, out MapState state))
+            {
+                return false;
+            }
+
+            if (!System.Threading.Monitor.TryEnter(state.Sync))
+            {
+                return false;
+            }
+
+            try
+            {
+                if (state.Disabled || state.Grid == null)
+                {
+                    return false;
+                }
+
+                if ((uint)start.x >= (uint)state.Width ||
+                    (uint)start.z >= (uint)state.Height ||
+                    (uint)target.x >= (uint)state.Width ||
+                    (uint)target.z >= (uint)state.Height)
+                {
+                    return false;
+                }
+
+                ShadowConnectivityGrid grid = state.Grid;
+                connected = grid.AreConnected(
+                    start.x,
+                    start.z,
+                    target.x,
+                    target.z);
+                generation = grid.Generation;
+                return true;
+            }
+            catch (Exception exception)
+            {
+                connected = false;
+                generation = 0L;
+                DisableLocked(state, exception);
+                return false;
+            }
+            finally
+            {
+                System.Threading.Monitor.Exit(state.Sync);
+            }
+        }
+
         private static MapState CreateState(Map map) => new();
 
         private static void SampleFull(
