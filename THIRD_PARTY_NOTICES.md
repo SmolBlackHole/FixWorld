@@ -2,23 +2,24 @@
 
 Parent: [Project README](README.md)
 
-FixWorld redistributes two unmodified Windows x64 binaries. They are not covered
-by FixWorld's MPL-2.0 license.
+The current fork redistributes the unmodified UnityDoorstop Windows x64 binary.
+It is not covered by FixWorld's MPL-2.0 license. The original DDS tooling remains
+archived and is not part of the current package.
 
 ## UnityDoorstop 4.4.0
 
 - Project: [NeighTools/UnityDoorstop](https://github.com/NeighTools/UnityDoorstop)
 - Release and source tag: [v4.4.0](https://github.com/NeighTools/UnityDoorstop/releases/tag/v4.4.0)
-- Bundled file: `mod/FixWorld/Tools/Windows-x64/Doorstop-4.4.0/winhttp.dll`
+- Bundled file: `mod/FixWorld/Mods/FixWorld/Tools/Doorstop-4.4.0/winhttp.dll`
 - License: GNU Lesser General Public License 2.1
 - Local license copy:
-  `mod/FixWorld/Tools/Windows-x64/Doorstop-4.4.0/UnityDoorstop-LICENSE.txt`
+  `mod/FixWorld/Mods/FixWorld/Tools/Doorstop-4.4.0/UnityDoorstop-LICENSE.txt`
 
 The bundled manifest records the upstream artifact URL and expected hashes.
 FixWorld loads UnityDoorstop as a separate proxy DLL and does not incorporate its
 source into FixWorld assemblies.
 
-## DirectXTex texconv
+## DirectXTex texconv (archived, not bundled by this fork)
 
 - Project: [Microsoft DirectXTex](https://github.com/microsoft/DirectXTex)
 - Bundled file: `mod/FixWorld/Tools/Windows-x64/texconv.exe`

@@ -11,6 +11,7 @@ namespace FixWorld.Core
 	{
 		public FixWorldMod(ModContentPack content) : base(content)
 		{
+			if (!BootstrapIntegration.PrepareAttachment(content)) return;
 			FixWorldController.EarlyInitialize(content);
 		}
 	}

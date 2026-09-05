@@ -8,6 +8,13 @@ The original implementation is archived. The legacy checklist below describes
 earlier work, not features currently active in the fork.
 The approved [slice plan](docs/fork-refactor-plan.md) controls execution.
 
+- [x] Bootstrap/installer/restart implementation: one early core and normal mod
+      attachment, explicit lifecycle, owned installation and acknowledged helper.
+- [ ] In-game bootstrap acceptance: remove the legacy installation explicitly,
+      then test clean first boot, one restart, normal attach, Mods-tab restart
+      and disabled ModConfig. Desktop process tests do not replace this.
+- [ ] Next infrastructure slice: Scheduling/Jobs, before reintroducing DDS.
+
 - [x] Slice 1: typed telemetry/profiling, real callers, focused tests,
       verification and commit. No lifecycle/cache/scheduler redesign.
 - [x] Slice 2: shared typed caching and complete settings text-cache

@@ -3,6 +3,7 @@ using System;
 using System.Diagnostics;
 using FixWorld.Telemetry;
 using FixWorld.Caching;
+using FixWorld.Bootstrap;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -37,14 +38,12 @@ namespace FixWorld
         private const string HarmonyInstanceIdentifier = "smolblackhole.fixworld";
         private const string HarmonyDebugCommandLineArg = "harmony_debug";
 
-        private static bool earlyInitializationCompleted;
-        private static bool lateInitializationCompleted;
-
+        private static readonly object InstanceSync = new();
         private static FixWorldController instance;
 
         public static FixWorldController Instance
         {
-            get { return instance ?? (instance = new FixWorldController()); }
+            get { lock (InstanceSync) return instance ?? (instance = new FixWorldController()); }
         }
 
         private static VersionFile libraryVersionFile;
@@ -72,22 +71,40 @@ namespace FixWorld
         // most of the initialization happens during Verse.Mod instantiation. Pretty much no vanilla data is yet loaded at this point.
         internal static void EarlyInitialize(ModContentPack contentPack)
         {
-            OwnContentPack = contentPack;
             try
             {
-                if (earlyInitializationCompleted)
+                BootSession.Current.Attach(typeof(FixWorldController).Assembly, contentPack, () =>
                 {
-                    Logger.Warning("Attempted repeated early initialization of controller: " + Environment.StackTrace);
-                    return;
-                }
-                earlyInitializationCompleted = true;
-                CreateSceneObject();
-                Instance.InitializeController();
+                    OwnContentPack = contentPack;
+                    Instance.InitializeController();
+                    CreateSceneObject();
+                });
+                BootstrapIntegration.ConfirmAttachment();
             }
             catch (Exception e)
             {
+                BootSession.Current.Fail(e);
+                Instance.DisposeCore();
                 Logger.Error("An exception occurred during early initialization: " + e);
             }
+        }
+
+        // Called by the in-process preloader, before ModContentPack attachment.
+        // No Verse/Unity state, scene objects or mod callbacks may be used here.
+        public static void StartEarly()
+        {
+            BootSession.Current.StartCore(typeof(FixWorldController).Assembly, () =>
+            {
+                var controller = Instance;
+                try
+                {
+                    controller.Diagnostics = new LibraryDiagnostics();
+                    controller.Caches = new CacheStore(controller.Diagnostics.Store, controller.Diagnostics.Profiler);
+                    BootstrapIntegration.RegisterTelemetry(controller.Diagnostics);
+                }
+                catch { controller.DisposeCore(); throw; }
+            });
+            BootstrapIntegration.Publish();
         }
 
         private static ModLogger _logger;
@@ -104,6 +121,7 @@ namespace FixWorld
             // this must execute in the main thread
             LongEventHandler.ExecuteWhenFinished(() =>
             {
+                if (!BootSession.Current.IsAttached) return;
                 if (GameObject.Find(SceneObjectName) != null)
                 {
                     Logger.Error("Another version of the library is already loaded. The FixWorld assembly should be loaded as a standalone mod.");
@@ -168,8 +186,6 @@ namespace FixWorld
         {
             try
             {
-                Diagnostics = new LibraryDiagnostics();
-                Caches = new CacheStore(Diagnostics.Store, Diagnostics.Profiler);
                 TextMeasurements = new TextMeasurementCache(Caches);
                 ReadOwnVersion();
                 Logger.Message("version {0}", LibraryVersion);
@@ -195,6 +211,7 @@ namespace FixWorld
             catch (Exception e)
             {
                 Logger.ReportException(e);
+                throw;
             }
         }
 
@@ -233,26 +250,29 @@ namespace FixWorld
         // called during static constructor initialization
         internal void LateInitialize()
         {
+            if (!BootSession.Current.IsAttached) return;
             try
             {
-                if (!earlyInitializationCompleted)
+                BootSession.Current.BeginCompletion(() =>
                 {
-                    Logger.Error("Attempted late initialization before early initialization: " + Environment.StackTrace);
-                    return;
-                }
-                if (lateInitializationCompleted)
-                {
-                    Logger.Warning("Attempted repeated late initialization of controller: " + Environment.StackTrace);
-                    return;
-                }
-                lateInitializationCompleted = true;
-                RegisterOwnSettings();
-                QuickstartController.OnLateInitialize();
-                LongEventHandler.ExecuteWhenFinished(HarmonyUtility.LogHarmonyPatchIssueErrors);
-                LongEventHandler.QueueLongEvent(LoadReloadInitialize, "Initializing", true, null);
+                    RegisterOwnSettings();
+                    QuickstartController.OnLateInitialize();
+                    LongEventHandler.ExecuteWhenFinished(HarmonyUtility.LogHarmonyPatchIssueErrors);
+                    LongEventHandler.QueueLongEvent(() =>
+                    {
+                        try
+                        {
+                            BootSession.Current.Complete(LoadReloadInitialize);
+                            BootstrapIntegration.Publish();
+                        }
+                        catch (Exception error) { DisposeCore(); Logger.ReportException(error); }
+                    }, "Initializing", true, null);
+                });
+                BootstrapIntegration.Publish();
             }
             catch (Exception e)
             {
+                DisposeCore();
                 Logger.Error("An exception occurred during late initialization: " + e);
             }
         }
@@ -288,6 +308,7 @@ namespace FixWorld
             catch (Exception e)
             {
                 Logger.ReportException(e);
+                if (BootSession.Current.Phase == BootPhase.Completing) throw;
             }
             finally
             {
@@ -297,7 +318,7 @@ namespace FixWorld
 
         internal void OnUpdate()
         {
-            if (initializationInProgress || shuttingDown || Diagnostics == null) return;
+            if (BootSession.Current.Phase != BootPhase.Ready || initializationInProgress || shuttingDown || Diagnostics == null) return;
             Caches.BindCurrentThread();
             Diagnostics.RecordFrame();
             using var measurement = Diagnostics.Update.Measure();
@@ -335,7 +356,7 @@ namespace FixWorld
 
         internal void OnTick()
         {
-            if (initializationInProgress || shuttingDown || Diagnostics == null) return;
+            if (BootSession.Current.Phase != BootPhase.Ready || initializationInProgress || shuttingDown || Diagnostics == null) return;
             Diagnostics.RecordTick();
             using var measurement = Diagnostics.Tick.Measure();
             try
@@ -366,7 +387,7 @@ namespace FixWorld
 
         internal void OnFixedUpdate()
         {
-            if (initializationInProgress || shuttingDown || Diagnostics == null) return;
+            if (BootSession.Current.Phase != BootPhase.Ready || initializationInProgress || shuttingDown || Diagnostics == null) return;
             using var measurement = Diagnostics.FixedUpdate.Measure();
             try
             {
@@ -392,7 +413,7 @@ namespace FixWorld
 
         internal void OnGUI()
         {
-            if (initializationInProgress || shuttingDown || Diagnostics == null) return;
+            if (BootSession.Current.Phase != BootPhase.Ready || initializationInProgress || shuttingDown || Diagnostics == null) return;
             using var measurement = Diagnostics.OnGUI.Measure();
             try
             {
@@ -470,9 +491,18 @@ namespace FixWorld
             }
             finally
             {
-                try { Caches?.Dispose(); }
-                finally { Diagnostics?.Dispose(); }
+                BootSession.Current.Stop();
+                DisposeCore();
             }
+        }
+
+        private void DisposeCore()
+        {
+            // Failed attachment precedes cache thread binding. Normal quit is on
+            // its bound main thread. No worker shutdown protocol is needed here.
+            if (BootSession.Current.Phase == BootPhase.Failed) HarmonyInst?.UnpatchAll(HarmonyInstanceIdentifier);
+            try { Caches?.Dispose(); }
+            finally { Diagnostics?.Dispose(); }
         }
 
         internal void OnGameInitializationStart(Game game)
@@ -755,6 +785,7 @@ namespace FixWorld
             catch (Exception e)
             {
                 Logger.ReportException(e);
+                throw;
             }
         }
 

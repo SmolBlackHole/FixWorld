@@ -1,95 +1,154 @@
-# Windows preloader
+# Windows bootstrap and restart
 
 Parent: [Documentation index](README.md)
 
-FixWorld uses [UnityDoorstop 4.4.0](https://github.com/NeighTools/UnityDoorstop/releases/tag/v4.4.0)
-for its early Windows x64 process entry.
+This documents the current HugsLib-based fork. The old Preloader -> Loader ->
+Runtime chain, timeline environment-variable contract and DDS read-ahead are
+archived, not dependencies of this implementation.
 
-## First boot
+## Ownership
 
-The normal RimWorld mod owns installation policy. On the first launch it:
+- `Bootstrap/` builds one engine-independent `FixWorld.Bootstrap.dll`.
+  Doorstop targets its `Doorstop.Entrypoint.Start()`. The normal mod references
+  this same assembly. `BootSession` is functional state, not telemetry.
+- `FixWorldController` remains the sole owner of diagnostics, profiler and caches.
+  Early entry creates those services only. Mod attachment supplies ModContentPack,
+  settings, reflection bindings, library hooks and child-mod initialization.
+- `Bootstrap/Installation.cs` owns disk inspection, installation and confirmation.
+  The mod adapter owns when to install/restart, not a second runtime framework.
+- `Bootstrap/Restart.cs` owns both sides of the restart protocol. The dedicated
+  `FixWorld.Restart.exe` compiles that source and has no dependency on game DLLs.
+- `Source/Patches/Restart_Patch.cs` intercepts GenCommandLine.Restart centrally.
+  Mods-tab, language and quick-restart callers keep using the original method.
 
-1. validates the bundled Doorstop and FixWorld preloader;
-2. refuses to overwrite an unknown `winhttp.dll` or Doorstop configuration;
-3. removes the superseded `FixWorld.dll` deployment if present;
-4. installs the managed files next to `RimWorldWin64.exe`;
-5. records a pending restart atomically; and
-6. starts a hidden FixWorld helper, closes the current process, and starts one
-   replacement process only after the old process has exited.
+## First installation
 
-The same coordinated restart replaces RimWorld's Mods-tab restart while the
-FixWorld Runtime is active. The helper preserves the original command line and
-working directory, but removes inherited loader state before starting RimWorld.
-This allows Doorstop and the FixWorld loading UI to initialize again and avoids
-overlapping RimWorld processes.
+The normal `FixWorldMod` constructor checks the bootstrap before initializing
+the library. A cold, missing or repairable owned installation installs Doorstop
+and queues the coordinated restart through ExecuteWhenFinished on the main
+thread. It does not initialize the full library during this installation launch.
+The static late initializer also respects this state.
 
-The managed files are:
+Installation validates the bundled UnityDoorstop 4.4.0 SHA-256 and required files.
+The game root receives only winhttp.dll, doorstop_config.ini and
+FixWorld.bootstrap.json. There is no deletion of FixWorld.dll.
 
-- `winhttp.dll`, the verified UnityDoorstop 4.4.0 binary;
-- `doorstop_config.ini`, marked as FixWorld-owned; and
-- `FixWorld.preloader.json`, the versioned installation manifest.
+The versioned manifest records expected proxy/config/bootstrap hashes, bootstrap
+path and restartPending. Writes are atomic per file, not a multi-file transaction.
+The pending ownership record precedes writes. During repair it retains the prior
+proxy/config hashes so an interrupted replacement remains identifiable.
+Missing owned files are repairable. Modified/foreign files cause a conflict,
+not an overwrite. A matching proxy hash alone does not prove ownership.
 
-The manifest records its schema, Doorstop version and hash, configuration hash,
-preloader path and hash, and whether the first restart is still pending. This lets
-FixWorld distinguish an owned outdated installation from another proxy DLL and
-repair a moved or updated mod without overwriting foreign files
+A pending attempt is not automatically retried after a failure. An installed
+bootstrap that did not enter this process does not trigger another restart.
+The user can recover explicitly; failed bootstrap activation is logged, not
+silently treated as successful normal initialization.
 
-If the first restart does not activate the preloader, FixWorld does not restart
-again. The normal RimWorld loader continues and FixWorld stays disabled for that
-launch
+## Subsequent launch
 
-## Normal boot
+The preloader executes inside RimWorld, not in a separate process:
 
 ```text
-RimWorldWin64.exe
-  -> UnityDoorstop
-  -> FixWorld.Preloader
-     -> verify that smolblackhole.fixworld is active in ModsConfig.xml
-     -> wait for Assembly-CSharp
-     -> resolve the installed Harmony 2 assembly
-  -> FixWorld.Loader
-     -> validate the RimWorld MVID and runtime contract
-     -> load FixWorld.Runtime
-  -> FixWorld.Runtime.StartEarly()
-     -> install the safe LoadAllPlayData bootstrap hook
-     -> activate runtime hooks at the play-data boundary
-     -> observe RimWorld's original loader and route DDS cache hits
-  -> CreateModClasses
-     -> FixWorld.Mod attaches settings and its ModContentPack
+Doorstop
+  -> active ModsConfig check
+  -> wait for Assembly-CSharp and loaded Harmony 2
+  -> load adjacent canonical FixWorld.dll
+  -> StartEarly: one engine-independent service graph
+
+RimWorld creates FixWorldMod normally
+  -> attach the same assembly/controller to its ModContentPack
+  -> initialize mod-dependent services and queue Unity proxy creation
+  -> static late initialization schedules remaining library initialization
+  -> Ready only after that work succeeds
 ```
 
-The delayed hook activation is intentional. Installing runtime hooks at the
-Doorstop entry caused Unity resource initialization while the engine was not ready.
-The bootstrap hook enters early but installs stage and texture hooks only at
-`PlayDataLoader.LoadAllPlayData()`
+The preloader observes the Harmony assembly actually loaded by the game. It does
+not scan Workshop folders, pick a DLL heuristically or enforce a fixed game MVID.
+Early entry timing therefore depends on when that dependency becomes available.
 
-The installed Doorstop entry is inert when FixWorld is disabled in RimWorld's
-active mod list. In that state the preloader does not start the assembly timeline,
-DDS read-ahead, loader, runtime, or Harmony hooks for the launch.
+The activation check reads the effective save directory, including
+`-savedatafolder=...` and the separate argument form. Missing config or inactive
+FixWorld prevents early core loading. Malformed/unreadable config fails closed
+with a bootstrap log. There are no DDS jobs, Unity calls or Harmony patches on
+the disabled entry path.
 
-The normal `FixWorld.Mod.dll` is not a second runtime. It remains the RimWorld-facing
-installer, settings UI, and `ModContentPack` adapter for the already running
-`FixWorld.Runtime`
+Lifecycle phases distinguish Cold, Waiting, Starting, CoreReady, Attaching,
+Attached, Completing, Ready, RestartPending, Disabled, Failed and Stopped.
+Repeated calls reuse the same identity and services. Different assembly or
+content ownership is rejected. Failure is not published as completion.
+Per-frame/tick readiness reads do not take the lifecycle mutation lock.
 
-After the runtime hooks are active, the mod confirms the installation and clears
-`restartPending`. If Doorstop is active but the runtime did not activate, FixWorld
-disables itself for that launch and leaves the original RimWorld loader intact
+The normal Mod constructor is not suppressed or manually instantiated.
+RimWorld still registers the assembly and supplies its ModContentPack.
+Unity setup remains at the existing main-thread/long-event boundary.
+The profiler/store do not decide whether bootstrap succeeded. The typed
+`fixworld.bootstrap` telemetry record presents phase and failure independently.
 
-## DDS read-ahead
+## Restart protocol
 
-DDS read-ahead is optional best-effort preloader work. Its failure cannot disable
-the loader bridge. The default budget is the smaller of 256 MiB and one eighth of
-available physical memory. `FIXWORLD_DDS_READ_AHEAD_MIB=0` disables read-ahead only
+1. Parent creates a unique ready/commit/cancel handshake and starts a hidden helper.
+2. Helper validates target, working directory, arguments and parent PID/start time.
+3. Helper signals ready. Only after acknowledgement does the parent commit and
+   call the game's shutdown function.
+4. Helper waits for the identified parent to exit. Cancellation or a missing
+   commit prevents launch. It never kills the game.
+5. Helper starts one replacement with preserved arguments/working directory,
+   without inherited DOORSTOP_INITIALIZED or old FixWorld readiness markers.
 
-## Status, repair, and removal
+Readiness has a bounded timeout. A hung shutdown leaves the helper waiting rather
+than creating a second game. Shutdown exceptions cancel the helper. A failed
+replacement launch is recorded in FixWorld.Restart.log beside the helper.
+The game-root FixWorld.Bootstrap.log covers early-entry failures.
+Normal runtime messages use the fork's logger.
 
-Close RimWorld before manually changing the installation:
+## Package layout
+
+Build output belongs under `mod/FixWorld/Mods/FixWorld`:
+
+```text
+v1.6/Assemblies/FixWorld.dll
+v1.6/Assemblies/FixWorld.Bootstrap.dll
+Tools/FixWorld.Restart.exe
+Tools/FixWorld.Restart.exe.config
+Tools/Doorstop-4.4.0/winhttp.dll
+Tools/Doorstop-4.4.0/UnityDoorstop-LICENSE.txt
+Tools/Doorstop-4.4.0/manifest.json
+```
+
+The main project builds Bootstrap and RestartHelper project references. There is
+no copy of FixWorld.dll in Tools and no dependency on archived source. Native
+Doorstop remains an unmodified separately licensed binary.
+
+**Legacy installs are not adopted automatically.** Close RimWorld and use the old
+installation's removal procedure before testing this package. Do not blindly
+delete winhttp.dll or another loader's configuration. The new installer reports
+unknown/legacy files as a conflict.
+
+## Verification
+
+Build the fork with the local-reference command described in
+[telemetry](telemetry.md#verification), redirecting output into
+`temp/fork-validation` to avoid game deployment.
+
+Run:
 
 ```powershell
-.\Tools\Windows-x64\FixWorld.Tool.exe preloader status
-.\Tools\Windows-x64\FixWorld.Tool.exe preloader install
-.\Tools\Windows-x64\FixWorld.Tool.exe preloader uninstall
+dotnet run --project mod/FixWorld/Tests/Bootstrap.Contracts/FixWorld.Bootstrap.Contracts.csproj -c Release -- <FixWorld.Restart.exe> <FixWorld.dll> <0Harmony.dll> <RimWorld-Managed-directory>
 ```
 
-The tool and normal mod use the same installation implementation. Uninstall removes
-only files proven to be FixWorld-owned. Linux remains a separate future port
+The helper path alone runs the engine-independent suite. The four arguments add
+isolated processes that invoke the actual managed Doorstop entry against real
+managed game references: enabled entry, dependency wait, repeated core identity
+and disabled entry. No native game process is started.
+
+Tests cover lifecycle failure/duplication/concurrency, config parsing, owned
+installation/repair/conflict/pending states, quoting, helper readiness failure,
+shutdown cancellation, process-exit ordering and preserved launch state.
+Installation fixtures use synthetic binaries in temporary directories, never
+the real game root.
+
+Still required in-game: clean first install -> one restart -> ready library;
+normal boot -> same controller attachment; Mods-tab restart; disabled FixWorld
+-> no core initialization. Desktop CLR tests do not prove native Doorstop
+injection, Unity Mono loading or the engine's shutdown behavior.

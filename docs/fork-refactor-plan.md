@@ -110,8 +110,39 @@ existing News UI and scheduler. Do not build a changelog publishing system here.
 
 ## Deferred
 
-Scheduling/jobs require their own later slice. Do not import them now. Likewise,
-do not revive old runtime orchestration or move DDS/installer code in this task.
+Scheduling/jobs and DDS follow the user-prioritized bootstrap slice. Do not
+revive the archived Loader/Runtime chain, DDS, loading UI or scheduler here.
+
+## Slice 4: bootstrap, installation and restart (implemented, in-game acceptance open)
+
+Approved by the user after the archive/fork audit. First normal Mod construction
+installs Doorstop and requests one coordinated restart. On subsequent enabled
+launches the in-process preloader starts only the controller's engine-independent
+core; normal Mod construction attaches ModContentPack/settings to that same
+instance. Existing late initialization and Unity callbacks remain with the fork.
+
+- One engine-independent FixWorld.Bootstrap assembly in the canonical v1.6
+  Assemblies directory supplies explicit lifecycle states, installation and
+  restart contracts. Doorstop targets its entry point. No duplicate runtime DLL.
+- Wait for Assembly-CSharp and the Harmony assembly actually loaded by the game,
+  then load the canonical adjacent FixWorld.dll once. Verify assembly identity
+  when the normal Mod attaches. No heuristic Harmony search or hardcoded MVID.
+- A completed state is published only after success. Installation-only, disabled,
+  failed and restart-pending launches cannot run the late initializer. Core
+  services are created once and disposed on failed attach/shutdown.
+- Reuse installation invariants: versioned manifest, verified bundled proxy,
+  owned-file checks, atomic per-file writes, repair and restart-loop prevention.
+  Remove the old migration deleting FixWorld.dll. No live installation changes
+  during implementation. An existing foreign/legacy installation is not adopted
+  silently.
+- One dedicated helper validates launch arguments/parent identity, acknowledges
+  readiness, waits for commit and parent exit, clears inherited loader markers,
+  then launches once. All GenCommandLine.Restart callers use one Harmony adapter.
+- Tests cover phase ordering, duplicate/failing start, assembly identity,
+  activation/config paths, install/repair/conflicts/pending confirmation and real
+  child-process restart handshakes. Build every changed project and rerun the
+  93 earlier contracts. Real Doorstop/Unity startup remains an explicit in-game
+  acceptance step; do not claim it from desktop tests.
 
 ## Verification record
 
@@ -132,7 +163,14 @@ do not revive old runtime orchestration or move DDS/installer code in this task.
   zero warnings/errors. Removed the old untyped image-loading API. Source
   inspection confirmed WindowStack calls PostClose on direct removal. Actual
   Unity decoding, rendering and in-game window behavior remain unverified.
+- Slice 4: local verification PASS. 63 bootstrap checks, including acknowledged
+  helper/parent/child process fixtures, actual managed entry enabled/disabled,
+  same assembly/controller/service graph, and nonblocking state reads. All 93
+  earlier contracts still pass. Complete local-reference build: zero warnings
+  and errors. Bundled Doorstop hash matches the archived pinned binary. No
+  native game process, live installation or deployment performed. The in-game
+  first-install/attach/restart/disable sequence remains an acceptance item.
 
 Autonomous continuation remains authorized, one scoped slice at a time.
-Scheduling/jobs follow the user-prioritized News fix. DDS and installation have
-not been migrated.
+Scheduling/jobs follow bootstrap. DDS remains excluded. Do not treat desktop
+bootstrap verification as proof of native Doorstop/Unity Mono behavior.

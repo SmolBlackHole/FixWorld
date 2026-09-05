@@ -1,0 +1,10 @@
+{
+    "name": "UnityDoorstop",
+    "version": "4.4.0",
+    "platform": "windows-x64",
+    "releaseUrl": "https://github.com/NeighTools/UnityDoorstop/releases/tag/v4.4.0",
+    "artifactUrl": "https://github.com/NeighTools/UnityDoorstop/releases/download/v4.4.0/doorstop_win_release_4.4.0.zip",
+    "artifactSha256": "C5C06EFC2719D0853A6AA4838A28A8EAD5FFE2B8E3FB366FD579EC5134FF89DD",
+    "winhttpSha256": "93406D0A02E7C164B89828CBFE3B289930A112D2ECA50BD4A52E72ECE169E6A8",
+    "license": "LGPL-2.1"
+}

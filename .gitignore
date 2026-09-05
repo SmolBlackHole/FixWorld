@@ -46,6 +46,9 @@ Thumbs.db
 /mod/FixWorld/Tools/Windows-x64/FixWorld.Tool.exe.config
 /mod/FixWorld/Tools/Windows-x64/FixWorld.Tool.pdb
 TestResults/
+/mod/FixWorld/Mods/FixWorld/Tools/FixWorld.Restart.exe
+/mod/FixWorld/Mods/FixWorld/Tools/FixWorld.Restart.exe.config
+/mod/FixWorld/Mods/FixWorld/Tools/FixWorld.Restart.pdb
 
 # Python
 __pycache__/
