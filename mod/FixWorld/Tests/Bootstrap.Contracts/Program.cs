@@ -28,6 +28,8 @@ internal static class Program
                 return 2;
             if (args.Length > 0 && args[0] == "parent")
                 return Parent(args);
+            if (args.Length > 0 && args[0] == "maintenance-parent")
+                return MaintenanceParent(args);
             if (args.Length > 0 && (args[0] == "core" || args[0] == "entry" || args[0] == "disabled"))
             { Core(args); return 0; }
             if (args.Length != 1 && args.Length != 4)
@@ -40,7 +42,8 @@ internal static class Program
                 Config(root);
                 InstallationTests(root);
                 Processes(root, Path.GetFullPath(args[0]));
-                if (args.Length == 4)
+                MaintenanceTests(root, Path.GetFullPath(args[0]));
+                if (args.Length >= 4)
                     EntryFixtures(root, args);
             }
             finally { Directory.Delete(root, true); }
@@ -164,7 +167,9 @@ internal static class Program
         installation.Install();
         installation.ConfirmAttached();
         installation.Uninstall();
+        Check(!File.Exists(Path.Combine(game, "FixWorld.bootstrap.json")), "successful uninstall removes ownership manifest");
         installation.Install();
+        Check(installation.Inspect().Status == InstallationStatus.Current, "next normal startup can install Doorstop again");
         installation.ConfirmAttached();
         byte[] priorConfig = File.ReadAllBytes(Path.Combine(game, "doorstop_config.ini"));
         string movedBootstrap = Path.Combine(bundle, "moved bootstrap.dll");
@@ -190,7 +195,7 @@ internal static class Program
         installation.Uninstall();
         string loadedBootstrap = typeof(Installation).Assembly.Location;
         var loaded = new Installation(game, proxy, loadedBootstrap, helper, Installation.Hash(proxy));
-        loaded.Install();
+        loaded.CreateMaintenance(InstallationAction.Install).Execute();
         loaded.ConfirmAttached();
         string manifestPath = Path.Combine(game, "FixWorld.bootstrap.json");
         string manifest = File.ReadAllText(manifestPath).Replace(Installation.Hash(loadedBootstrap), new string('0', 64));
@@ -198,6 +203,18 @@ internal static class Program
         Check(loaded.Inspect().Status == InstallationStatus.RepairRequired, "loaded package update has old manifest hash");
         loaded.ConfirmAttached();
         Check(loaded.Inspect().Status == InstallationStatus.Current && !loaded.Inspect().RestartPending, "loaded owned update confirmed without restart");
+        string ownedManifest = File.ReadAllText(manifestPath);
+        using (var lockedProxy = new FileStream(Path.Combine(game, "winhttp.dll"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Throws<IOException>(loaded.Uninstall, "locked proxy interrupts uninstall");
+            Check(!File.Exists(Path.Combine(game, "doorstop_config.ini")) && File.Exists(Path.Combine(game, "winhttp.dll")), "partial removal leaves only locked native file");
+            Check(File.ReadAllText(manifestPath) == ownedManifest && loaded.Inspect().Status == InstallationStatus.RepairRequired,
+                "partial uninstall preserves ownership proof for retry");
+        }
+        loaded.Uninstall();
+        Check(!File.Exists(manifestPath) && File.Exists(loadedBootstrap), "retry removes manifest last and retains mod DLL");
+        loaded.Install();
+        loaded.ConfirmAttached();
         File.WriteAllText(Path.Combine(game, "doorstop_config.ini"), "foreign config");
         Throws<InvalidOperationException>(loaded.ConfirmAttached, "loaded update cannot adopt foreign config");
         File.Delete(Path.Combine(game, "doorstop_config.ini"));
@@ -231,6 +248,7 @@ internal static class Program
         Check(lines.Skip(3).SequenceEqual(arguments.Skip(3).Select(Restart.Encode)), "actual Windows command-line quoting preserved");
         Check(!File.Exists(Path.Combine(result, "duplicate")), "reentrant restart ignored");
         Check(File.ReadAllLines(Path.Combine(result, "launches")).Length == 1, "one replacement launch");
+        WaitForFixtureChild(result);
     }
     private static int Parent(string[] args)
     {
@@ -243,6 +261,7 @@ internal static class Program
             { using var process = Process.GetProcessById(pid); alive = !process.HasExited; }
             catch (ArgumentException) { alive = false; }
             File.AppendAllText(Path.Combine(args[1], "launches"), "child\n");
+            File.WriteAllText(Path.Combine(args[1], "child-pid"), Process.GetCurrentProcess().Id.ToString());
             var lines = new[] { alive ? "parent-alive" : "parent-exited",
                 Environment.GetEnvironmentVariable("DOORSTOP_INITIALIZED") == null ? "clean" : "dirty", Environment.CurrentDirectory }
                 .Concat(args.Skip(3).Select(Restart.Encode));
@@ -260,6 +279,101 @@ internal static class Program
         }, Console.Error.WriteLine);
         return success ? 0 : 1;
     }
+    private static void MaintenanceTests(string root, string helper)
+    {
+        string game = Path.Combine(root, "maintenance-game"), bundle = Path.Combine(root, "maintenance-bundle");
+        Directory.CreateDirectory(game);
+        Directory.CreateDirectory(bundle);
+        string proxy = Path.Combine(bundle, "winhttp.dll"), bootstrap = Path.Combine(bundle, "bootstrap.dll");
+        File.WriteAllText(Path.Combine(game, "RimWorldWin64.exe"), "fixture game");
+        File.WriteAllText(proxy, "fixture proxy");
+        File.WriteAllText(bootstrap, "fixture bootstrap");
+        var installation = new Installation(game, proxy, bootstrap, helper, Installation.Hash(proxy));
+        foreach (var action in new[] { InstallationAction.Install, InstallationAction.Reinstall, InstallationAction.Uninstall })
+        {
+            string result = Path.Combine(root, "maintenance-" + action);
+            Directory.CreateDirectory(result);
+            string[] args = { "maintenance-parent", result, helper, game, proxy, bootstrap, Installation.Hash(proxy), action.ToString() };
+            using var parent = Process.Start(new ProcessStartInfo(typeof(Program).Assembly.Location, Restart.Quote(args))
+            { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden, WorkingDirectory = root });
+            Check(parent.WaitForExit(15000) && parent.ExitCode == 0, action + " fixture parent exits normally");
+            string output = Path.Combine(result, "child");
+            if (action == InstallationAction.Uninstall)
+            {
+                WaitForFixtureChild(result, "helper-pid");
+                Check(!File.Exists(output), "uninstall helper exits without launching a replacement");
+                Check(installation.Inspect().Status == InstallationStatus.Missing && !File.Exists(Path.Combine(game, "FixWorld.bootstrap.json")),
+                    "uninstall helper removes owned native files and manifest after parent exit");
+            }
+            else
+            {
+                Check(SpinWait.SpinUntil(() => File.Exists(output), 10000), action + " replacement launched after maintenance");
+                Check(File.ReadAllText(output) == "correct", action + " maintenance complete before replacement launch");
+                WaitForFixtureChild(result);
+            }
+            Check(File.Exists(Path.Combine(result, "unchanged-before-exit")), action + " does not modify native files while parent is alive");
+            if (action != InstallationAction.Uninstall)
+                installation.ConfirmAttached();
+        }
+        Check(installation.Inspect().Status == InstallationStatus.Missing, "uninstall leaves a clean installation state");
+        var request = installation.CreateMaintenance(InstallationAction.Install);
+        File.WriteAllText(Path.Combine(game, "winhttp.dll"), "foreign appeared after planning");
+        Throws<InvalidOperationException>(request.Execute, "maintenance revalidates ownership immediately before write");
+        Check(File.ReadAllText(Path.Combine(game, "winhttp.dll")) == "foreign appeared after planning", "conflicting native file preserved");
+        File.Delete(Path.Combine(game, "winhttp.dll"));
+        installation.Install();
+        Check(installation.Inspect().RestartPending, "next automatic install is permitted after uninstall");
+        installation.CreateMaintenance(InstallationAction.Reinstall).Execute();
+        Check(installation.Inspect().Status == InstallationStatus.Current, "explicit reinstall can repair interrupted owned pending install");
+        installation.ConfirmAttached();
+        installation.Uninstall();
+    }
+
+    private static int MaintenanceParent(string[] args)
+    {
+        string result = args[1], marker = Path.Combine(result, "marker");
+        var installation = new Installation(args[3], args[4], args[5], args[2], args[6]);
+        var action = (InstallationAction)Enum.Parse(typeof(InstallationAction), args[7]);
+        if (File.Exists(marker))
+        {
+            File.WriteAllText(Path.Combine(result, "child-pid"), Process.GetCurrentProcess().Id.ToString());
+            var state = installation.Inspect();
+            bool correct = action != InstallationAction.Uninstall && state.Status == InstallationStatus.Current && state.RestartPending;
+            File.WriteAllText(Path.Combine(result, "child"), correct ? "correct" : state.Message);
+            return correct ? 0 : 1;
+        }
+        File.WriteAllText(marker, Process.GetCurrentProcess().Id.ToString());
+        string native = Path.Combine(args[3], "winhttp.dll");
+        bool existed = File.Exists(native);
+        using var nativeLock = existed ? new FileStream(native, FileMode.Open, FileAccess.Read, FileShare.Read) : null;
+        return Restart.Request(args[2], () =>
+        {
+            if (action == InstallationAction.Uninstall)
+            {
+                using var self = Process.GetCurrentProcess();
+                foreach (var candidate in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(args[2])))
+                    using (candidate)
+                        if (candidate.StartTime >= self.StartTime)
+                            File.WriteAllText(Path.Combine(result, "helper-pid"), candidate.Id.ToString());
+            }
+            if (File.Exists(native) == existed)
+                File.WriteAllText(Path.Combine(result, "unchanged-before-exit"), "yes");
+            Environment.Exit(0);
+        }, Console.Error.WriteLine, installation.CreateMaintenance(action)) ? 0 : 1;
+    }
+
+    private static void WaitForFixtureChild(string directory, string marker = "child-pid")
+    {
+        int childId = int.Parse(File.ReadAllText(Path.Combine(directory, marker)));
+        try
+        {
+            using var child = Process.GetProcessById(childId);
+            if (!child.WaitForExit(5000))
+                throw new TimeoutException("Fixture replacement did not exit.");
+        }
+        catch (ArgumentException) { }
+    }
+
     private static void EntryFixtures(string root, string[] args)
     {
         string fixture = Path.Combine(root, "entry");
@@ -280,11 +394,22 @@ internal static class Program
                 Restart.Quote(new[] { mode, core, Path.GetFullPath(args[2]), Path.GetFullPath(args[3]), "-savedatafolder=" + save }))
             {
                 UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
                 CreateNoWindow = true,
                 WindowStyle = ProcessWindowStyle.Hidden,
                 WorkingDirectory = fixture
             });
-            Check(process.WaitForExit(10000) && process.ExitCode == 0, "actual assembly entry fixture: " + mode);
+            var output = process.StandardOutput.ReadToEndAsync();
+            var error = process.StandardError.ReadToEndAsync();
+            bool exited = process.WaitForExit(15000);
+            if (!exited)
+                process.Kill();
+            process.WaitForExit();
+            string bootstrapLog = Path.Combine(fixture, "FixWorld.Bootstrap.log");
+            if (File.Exists(bootstrapLog))
+                Console.WriteLine(File.ReadAllText(bootstrapLog));
+            Check(exited && process.ExitCode == 0, "actual assembly entry fixture: " + mode + "\n" + output.Result + error.Result);
         }
     }
     private static void Core(string[] args)
@@ -313,7 +438,7 @@ internal static class Program
             Check(BootSession.Current.Phase == BootPhase.Waiting, "entry waits for engine dependencies");
             Assembly.LoadFrom(Path.Combine(args[3], "Assembly-CSharp.dll"));
             Assembly.LoadFrom(args[2]);
-            Check(BootSession.Current.Phase == BootPhase.CoreReady, "assembly-load event automatically starts early core");
+            Check(BootSession.Current.Phase == BootPhase.CoreReady, "assembly-load event automatically starts early core: " + BootSession.Current.Phase + " " + BootSession.Current.Failure);
         }
         var assembly = Assembly.LoadFrom(args[1]);
         var versionFile = assembly.GetType("FixWorld.Core.VersionFile", true);
@@ -339,4 +464,5 @@ internal static class Program
         type.GetMethod("DisposeCore", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(instance, null);
         Console.WriteLine("PASS: actual fork early core starts without native Unity calls and reuses its assembly/controller/services (desktop CLR).");
     }
+
 }

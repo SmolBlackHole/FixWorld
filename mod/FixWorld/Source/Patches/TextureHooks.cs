@@ -36,7 +36,7 @@ namespace FixWorld.Patches
             catch (Exception error)
             {
                 Uninstall();
-                Log.Warning("[FixWorld] DDS hooks unavailable; using RimWorld textures: " + error);
+                BootEnvironment.Log("DDS hooks unavailable; using RimWorld textures: " + error);
             }
         }
         internal static void Uninstall()

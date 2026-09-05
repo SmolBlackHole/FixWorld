@@ -47,6 +47,28 @@ silently treated as successful normal initialization.
 
 ## Subsequent launch
 
+### Explicit installation maintenance
+
+The diagnostics window's **Doorstop** page provides install, reinstall and
+uninstall. Status inspection happens on page entry or Refresh status, not on
+each frame. Each operation requires confirmation and shutdown; save the colony
+first. The helper validates ownership before acknowledging the request, waits
+for RimWorld to exit, validates again and applies the change. Install and reinstall
+launch the game once afterward; uninstall leaves it closed for mod removal.
+Foreign proxy/config files are never overwritten or removed.
+
+Uninstall removes the owned `winhttp.dll` and `doorstop_config.ini`, then deletes
+`FixWorld.bootstrap.json` last. Mod files, DDS packs, settings and saves are
+untouched. A partial removal retains the ownership record for repair.
+
+FixWorld's runtime always starts through Doorstop. Without it, the ordinary Mod
+constructor performs only installation and restart. There is no separate normal
+runtime or persistent installation opt-out. After uninstall, remove or disable
+FixWorld before launching again; otherwise the same first-install flow runs again.
+Disabling FixWorld still prevents its normal mod construction and early services.
+
+### Early startup
+
 The preloader executes inside RimWorld, not in a separate process:
 
 ```text
@@ -147,6 +169,13 @@ installation/repair/conflict/pending states, quoting, helper readiness failure,
 shutdown cancellation, process-exit ordering and preserved launch state.
 Installation fixtures use synthetic binaries in temporary directories, never
 the real game root.
+
+The fixtures cover installation after removal, foreign residual files and disabled
+activation. Actual-assembly fixtures check core identity but do not invoke
+native menu initialization. Desktop CLR cannot fully patch the game's Mono/Unity
+methods (`Dictionary.TryAdd` and native patch support differ); these observer
+failures are recorded in `FixWorld.Bootstrap.log` without failing core startup.
+Passing these fixtures does not establish that early hooks work in-game.
 
 Still required in-game: clean first install -> one restart -> ready library;
 normal boot -> same controller attachment; Mods-tab restart; disabled FixWorld

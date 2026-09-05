@@ -14,6 +14,10 @@
         <Compile Include="../../Source/Textures/TextureDimensions.cs" Link="TextureDimensions.cs" />
         <Compile Include="../../Source/Textures/DdsPayload.cs" Link="DdsPayload.cs" />
         <Compile Include="../../Source/Textures/DdsBudget.cs" Link="DdsBudget.cs" />
+        <Compile Include="../../Source/Textures/TextureDdsCacheSnapshot.cs"
+            Link="TextureDdsCacheSnapshot.cs" />
+        <Compile Include="../../Source/Telemetry/TelemetryStore.cs" Link="TelemetryStore.cs" />
+        <Compile Include="../../Source/Telemetry/TelemetryWriter.cs" Link="TelemetryWriter.cs" />
         <Compile Include="../../Source/Textures/DdsSettings.cs" Link="DdsSettings.cs" />
         <Compile Include="../../Source/Settings/ModSettingsPack.cs" Link="ModSettingsPack.cs" />
         <Compile Include="../../Source/Settings/SettingHandle.cs" Link="SettingHandle.cs" />

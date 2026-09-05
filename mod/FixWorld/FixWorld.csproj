@@ -116,6 +116,7 @@
         <Compile Include="Source\Core\BootstrapIntegration.cs" />
         <Compile Include="Source\UI\*.cs" />
         <Compile Include="Source\Patches\LoadingHooks.cs" />
+        <Compile Include="Source\Patches\ModLoadingHooks.cs" />
         <Compile Include="Source\Patches\DeferredWorkPump.cs" />
         <Compile Include="Source\Patches\Restart_Patch.cs" />
         <Compile Include="Source\Profiling\*.cs" />

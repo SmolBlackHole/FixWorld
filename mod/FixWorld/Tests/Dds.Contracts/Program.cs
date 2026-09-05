@@ -20,11 +20,26 @@ internal static class Program
             IndexWrite(root);
             Dimensions(root);
             Payload();
+            Progress();
             BudgetAndSettingsContracts.Run(root, Check);
             ConverterContracts.Run(root, Check);
         }
         finally { Directory.Delete(root, true); }
         Console.WriteLine($"PASS: {checks} DDS storage, payload and converter-process contracts. No Unity or real texture conversion.");
+    }
+
+    private static void Progress()
+    {
+        var data = new TextureDdsCacheSnapshot(true, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
+            plannedMods: 5, processedMods: 2, currentMod: "fixture.mod");
+        Check(data.RemainingMods == 3 && data.CurrentMod == "fixture.mod", "Progress retains current mod and remaining count");
+        Check(TextureDdsCacheSnapshot.Disabled(0).RemainingMods == 0, "Disabled progress is empty");
+        using var store = new FixWorld.Telemetry.TelemetryStore();
+        using var registration = store.Register(TextureDdsCacheSnapshot.Contract);
+        registration.Publish(data);
+        using var output = new StringWriter();
+        store.WriteJson(output);
+        Check(output.ToString().Contains("batch_remaining_mods") && output.ToString().Contains("fixture.mod"), "Progress uses shared JSON export");
     }
 
     private static void Check(bool condition, string message)

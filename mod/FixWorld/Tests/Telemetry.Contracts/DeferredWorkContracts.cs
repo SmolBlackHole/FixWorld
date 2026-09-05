@@ -61,14 +61,15 @@ namespace Verse
         internal static bool executingToExecuteWhenFinished = false;
         internal static readonly List<Action> toExecuteWhenFinished = new();
     }
-    internal sealed class ModContentPack
+    internal sealed partial class ModContentPack
     {
         internal Action ReloadContent(Action callback) => () => callback();
     }
-    internal static class Log
+    internal static partial class Log
     {
         internal static readonly List<string> Errors = new();
-        internal static void Error(string message) => Errors.Add(message);
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        internal static void Error(string text) => Errors.Add(text);
     }
     internal static class Prefs { internal static bool LogVerbose => true; }
     internal static class DeepProfiler

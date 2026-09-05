@@ -12,7 +12,7 @@ namespace FixWorld.Bootstrap
     public static class Restart
     {
         private static int requested;
-        public static bool Request(string helperPath, Action shutdown, Action<string> reportError)
+        public static bool Request(string helperPath, Action shutdown, Action<string> reportError, InstallationMaintenance maintenance = null)
         {
             if (Interlocked.CompareExchange(ref requested, 1, 0) != 0)
                 return true;
@@ -28,6 +28,12 @@ namespace FixWorld.Bootstrap
                 var arguments = new List<string> { parent.Id.ToString(CultureInfo.InvariantCulture),
                     parent.StartTime.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture), token,
                     Encode(Environment.CurrentDirectory), Encode(parent.MainModule.FileName) };
+                if (maintenance != null)
+                {
+                    maintenance.Validate();
+                    arguments.Add("--maintenance");
+                    arguments.Add(maintenance.Serialize());
+                }
                 for (int i = 1; i < command.Length; ++i)
                     arguments.Add(Encode(command[i]));
                 using var helper = Process.Start(new ProcessStartInfo(Path.GetFullPath(helperPath), Quote(arguments))
@@ -67,7 +73,17 @@ namespace FixWorld.Bootstrap
             if (!Directory.Exists(directory) || !File.Exists(executable))
                 throw new FileNotFoundException("Restart target or working directory missing.");
             var childArgs = new List<string>();
-            for (int i = 5; i < arguments.Length; ++i)
+            InstallationMaintenance maintenance = null;
+            int firstChildArgument = 5;
+            if (arguments.Length > 5 && arguments[5] == "--maintenance")
+            {
+                if (arguments.Length < 7)
+                    throw new ArgumentException("Missing installation maintenance request.");
+                maintenance = InstallationMaintenance.Deserialize(arguments[6]);
+                maintenance.Validate();
+                firstChildArgument = 7;
+            }
+            for (int i = firstChildArgument; i < arguments.Length; ++i)
                 childArgs.Add(Decode(arguments[i]));
             using var parent = Process.GetProcessById(parentId);
             if (parentId == Process.GetCurrentProcess().Id || parent.StartTime.ToUniversalTime().Ticks != started)
@@ -82,6 +98,9 @@ namespace FixWorld.Bootstrap
                 if (cancel.WaitOne(0))
                     return;
             if (cancel.WaitOne(0))
+                return;
+            maintenance?.Execute();
+            if (maintenance?.Action == InstallationAction.Uninstall)
                 return;
             var start = new ProcessStartInfo(executable, Quote(childArgs)) { UseShellExecute = false, WorkingDirectory = directory };
             // Never inherit Doorstop's already-initialized flag into a fresh game.

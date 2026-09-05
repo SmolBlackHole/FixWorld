@@ -65,7 +65,12 @@ namespace FixWorld.Bootstrap
         {
             try
             {
-                if (!BootSession.Current.Enter(BootEnvironment.IsActive(BootEnvironment.SaveDataFolder(Environment.GetCommandLineArgs()))))
+                if (!BootEnvironment.IsActive(BootEnvironment.SaveDataFolder(Environment.GetCommandLineArgs())))
+                {
+                    BootSession.Current.Enter(false);
+                    return;
+                }
+                if (!BootSession.Current.Enter(true))
                     return;
                 AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
                 TryStart();

@@ -26,6 +26,15 @@ The approved [slice plan](docs/fork-refactor-plan.md) controls execution.
       10,471-hit/5-build smoke passed. See [DDS](docs/dds-cache.md).
 - [ ] Native DDS maintenance buttons and colony/menu transitions during a long
       background build. No general scheduler rewrite is required ahead of DDS.
+- [ ] Native check of the new Loading stages, Mod loading and Profiling pages,
+      including filtering, expansion and retained scroll. Production adapters
+      pass fixture tests; the running game still uses the previous build.
+- [ ] Native Doorstop maintenance acceptance: uninstall leaves the game closed;
+      launching with FixWorld still enabled runs installation and restart again.
+      Runtime execution always uses Doorstop. Verify post-exit maintenance;
+      desktop fixtures do not prove Unity shutdown or native menu interaction.
+- [ ] Separate experiment: prioritize large mods during DDS builds. Measure time
+      to useful cache coverage; keep the current worker order until then.
 - [x] Local JSONL capture and Python collector: shared contracts, counter metadata,
       local tests and Release build. See [harness](docs/harness.md).
 - [ ] In-game capture acceptance after deployment: manually launched game,

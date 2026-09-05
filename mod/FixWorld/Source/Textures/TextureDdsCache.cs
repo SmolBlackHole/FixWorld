@@ -75,6 +75,8 @@ namespace FixWorld.Textures
         private bool stopped;
         private int scheduledBuilds;
         private int completedBuilds;
+        private int plannedMods, processedMods;
+        private string currentMod;
 
         private long hits;
         private long misses;
@@ -622,6 +624,8 @@ namespace FixWorld.Textures
             completedBuilds = 0;
             lastError = null;
             var plans = buildPlans.ToArray();
+            if (plans.Length > 0)
+            { plannedMods = plans.Length; processedMods = 0; currentMod = null; }
             workerActive = true;
             Task.Factory.StartNew(() =>
             {
@@ -642,7 +646,11 @@ namespace FixWorld.Textures
                         cancellation.Token.ThrowIfCancellationRequested();
                         if (Volatile.Read(ref maintenanceRequested) != 0)
                             MaintainStore();
+                        lock (sync)
+                            currentMod = plan.PackageId;
                         BuildAndPublish(plan, cancellation.Token);
+                        lock (sync)
+                        { processedMods++; currentMod = null; }
                     }
                     MaintainStore();
                 }
@@ -653,6 +661,7 @@ namespace FixWorld.Textures
                     lock (sync)
                     {
                         workerActive = false;
+                        currentMod = null;
                         nextMaintenanceTimestamp = Stopwatch.GetTimestamp() + MaintenanceIntervalSeconds * Stopwatch.Frequency;
                         if (stopped)
                             DisposeStore();
@@ -1052,7 +1061,8 @@ namespace FixWorld.Textures
                 Interlocked.Read(ref workerFallbackMods), Busy, failedBuildPlans.Count, lastError, cacheRoot,
                 Interlocked.Read(ref minimumFreeBytes), Interlocked.Read(ref availableFreeBytes),
                 Interlocked.Read(ref effectiveBudgetBytes), Volatile.Read(ref reserveWarning),
-                maximumOverridden, minimumFreeOverridden, Volatile.Read(ref maintenanceRequested) != 0);
+                maximumOverridden, minimumFreeOverridden, Volatile.Read(ref maintenanceRequested) != 0,
+                plannedMods, processedMods, currentMod);
         }
 
         private bool Configure()
@@ -1362,133 +1372,4 @@ namespace FixWorld.Textures
         }
     }
 
-    internal sealed class TextureDdsCacheSnapshot
-    {
-        internal TextureDdsCacheSnapshot(
-            bool enabled,
-            long hits,
-            long misses,
-            long created,
-            long invalidated,
-            long excluded,
-            long unsupported,
-            long budgetSkipped,
-            long failed,
-            long buildMilliseconds,
-            long cacheBytes,
-            long maxCacheBytes,
-            int workerCount,
-            long workerPreparedMods,
-            long workerAppliedMods,
-            long workerFallbackMods, bool busy = false, int retryMods = 0, string error = null, string root = null,
-            long minimumFreeBytes = 0, long availableFreeBytes = -1, long effectiveBudgetBytes = 0,
-            string reserveWarning = null, bool maximumOverridden = false, bool minimumFreeOverridden = false,
-            bool maintenancePending = false)
-        {
-            Enabled = enabled;
-            Busy = busy;
-            RetryMods = retryMods;
-            Error = error;
-            Root = root;
-            MinimumFreeBytes = minimumFreeBytes;
-            AvailableFreeBytes = availableFreeBytes;
-            EffectiveBudgetBytes = effectiveBudgetBytes;
-            ReserveWarning = reserveWarning;
-            MaximumOverridden = maximumOverridden;
-            MinimumFreeOverridden = minimumFreeOverridden;
-            MaintenancePending = maintenancePending;
-            Hits = hits;
-            Misses = misses;
-            Created = created;
-            Invalidated = invalidated;
-            Excluded = excluded;
-            Unsupported = unsupported;
-            BudgetSkipped = budgetSkipped;
-            Failed = failed;
-            BuildMilliseconds = buildMilliseconds;
-            CacheBytes = cacheBytes;
-            MaxCacheBytes = maxCacheBytes;
-            WorkerCount = workerCount;
-            WorkerPreparedMods = workerPreparedMods;
-            WorkerAppliedMods = workerAppliedMods;
-            WorkerFallbackMods = workerFallbackMods;
-        }
-
-        internal bool Busy { get; }
-        internal int RetryMods { get; }
-        internal string Error { get; }
-        internal string Root { get; }
-        internal long MinimumFreeBytes { get; }
-        internal long AvailableFreeBytes { get; }
-        internal long EffectiveBudgetBytes { get; }
-        internal string ReserveWarning { get; }
-        internal bool MaximumOverridden { get; }
-        internal bool MinimumFreeOverridden { get; }
-        internal bool MaintenancePending { get; }
-        internal static TelemetryContract<TextureDdsCacheSnapshot> Contract { get; } = new("fixworld.dds", 1, (data, writer) =>
-        {
-            writer.Value("enabled", data.Enabled);
-            writer.Value("worker_running", data.Busy);
-            writer.Value("cache_root", data.Root);
-            writer.Value("last_error", data.Error);
-            writer.Value("failed_mods_retryable", data.RetryMods);
-            writer.Counter("cache_hits", data.Hits);
-            writer.Counter("cache_misses", data.Misses);
-            writer.Counter("created", data.Created);
-            writer.Counter("failed", data.Failed);
-            writer.Counter("invalidated", data.Invalidated);
-            writer.Counter("excluded", data.Excluded);
-            writer.Counter("unsupported", data.Unsupported);
-            writer.Counter("budget_skipped", data.BudgetSkipped);
-            writer.Counter("build_ms", data.BuildMilliseconds);
-            writer.Value("cache_bytes", data.CacheBytes);
-            writer.Value("max_cache_bytes", data.MaxCacheBytes);
-            writer.Value("minimum_free_bytes", data.MinimumFreeBytes);
-            writer.Value("available_free_bytes", data.AvailableFreeBytes);
-            writer.Value("effective_budget_bytes", data.EffectiveBudgetBytes);
-            writer.Value("reserve_warning", data.ReserveWarning);
-            writer.Value("maximum_environment_override", data.MaximumOverridden);
-            writer.Value("minimum_free_environment_override", data.MinimumFreeOverridden);
-            writer.Value("maintenance_pending", data.MaintenancePending);
-            writer.Value("workers", data.WorkerCount);
-        });
-
-        public bool Enabled { get; private set; }
-        public long Hits { get; private set; }
-        public long Misses { get; private set; }
-        public long Created { get; private set; }
-        public long Invalidated { get; private set; }
-        public long Excluded { get; private set; }
-        public long Unsupported { get; private set; }
-        public long BudgetSkipped { get; private set; }
-        public long Failed { get; private set; }
-        public long BuildMilliseconds { get; private set; }
-        public long CacheBytes { get; private set; }
-        public long MaxCacheBytes { get; private set; }
-        public int WorkerCount { get; private set; }
-        public long WorkerPreparedMods { get; private set; }
-        public long WorkerAppliedMods { get; private set; }
-        public long WorkerFallbackMods { get; private set; }
-
-        internal static TextureDdsCacheSnapshot Disabled(int workerCount)
-        {
-            return new TextureDdsCacheSnapshot(
-                false,
-                0L,
-                0L,
-                0L,
-                0L,
-                0L,
-                0L,
-                0L,
-                0L,
-                0L,
-                0L,
-                0L,
-                workerCount,
-                0L,
-                0L,
-                0L);
-        }
-    }
 }

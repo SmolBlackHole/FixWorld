@@ -12,5 +12,8 @@
         <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472"
             Version="1.0.3" PrivateAssets="all" />
         <Compile Include="../Bootstrap/Restart.cs" Link="Restart.cs" />
+        <Compile Include="../Bootstrap/Installation.cs" Link="Installation.cs" />
+        <Compile Include="../Bootstrap/InstallationMaintenance.cs" Link="InstallationMaintenance.cs" />
+        <Reference Include="System.Runtime.Serialization" />
     </ItemGroup>
 </Project>

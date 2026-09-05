@@ -60,7 +60,8 @@ namespace FixWorld.Bootstrap
             string actualConfig = File.Exists(Config) ? Hash(Config) : null;
             if ((actualProxy != null && actualProxy != manifest.ProxyHash && (!pending || actualProxy != manifest.PreviousProxyHash)) ||
                 (actualConfig != null && actualConfig != manifest.ConfigHash && (!pending || actualConfig != manifest.PreviousConfigHash)))
-                return State(InstallationStatus.Conflict, pending, "Installed files differ from the ownership manifest; no files will be overwritten.");
+                return new InstallationState(InstallationStatus.Conflict, pending,
+                    "Installed files differ from the ownership manifest; no files will be overwritten.");
             bool current = actualProxy == manifest.ProxyHash && actualConfig == manifest.ConfigHash && File.Exists(bootstrap) &&
                 manifest.ProxyHash == expectedProxyHash && manifest.BootstrapHash == Hash(bootstrap) &&
                 string.Equals(manifest.BootstrapPath, bootstrap, StringComparison.OrdinalIgnoreCase) &&
@@ -69,14 +70,16 @@ namespace FixWorld.Bootstrap
                 current ? "Doorstop installation is current." : "Owned bootstrap installation needs repair.");
         }
 
-        public void Install()
+        public void Install() => Install(false);
+
+        private void Install(bool explicitMaintenance)
         {
             if (Environment.OSVersion.Platform != PlatformID.Win32NT)
                 throw new PlatformNotSupportedException("Windows bootstrap only.");
             if (!File.Exists(Path.Combine(gameRoot, "RimWorldWin64.exe")))
                 throw new FileNotFoundException("RimWorldWin64.exe is missing.");
             var state = Inspect();
-            if (state.Status == InstallationStatus.Conflict || state.RestartPending)
+            if (state.Status == InstallationStatus.Conflict || (state.RestartPending && !explicitMaintenance))
                 throw new InvalidOperationException(state.Message + " Automatic installation/restart is not retried.");
             if (!File.Exists(proxySource) || Hash(proxySource) != expectedProxyHash)
                 throw new InvalidDataException("Bundled Doorstop failed verification.");
@@ -126,12 +129,46 @@ namespace FixWorld.Bootstrap
 
         public void Uninstall()
         {
-            if (Inspect().Status == InstallationStatus.Conflict)
+            var state = Inspect();
+            if (state.Status == InstallationStatus.Conflict)
                 throw new InvalidOperationException("Refusing to remove unowned files.");
-            // No broad directory deletion and no deletion of the mod assembly.
+            // Keep ownership proof until both native files are gone, including
+            // when removal is interrupted by a locked file. Never delete mod DLLs.
             File.Delete(Config);
             File.Delete(Proxy);
             File.Delete(ManifestPath);
+        }
+
+        public InstallationMaintenance CreateMaintenance(InstallationAction action)
+        {
+            var request = new InstallationMaintenance(action, gameRoot, proxySource, bootstrap, Helper, expectedProxyHash);
+            request.Validate();
+            return request;
+        }
+
+        internal void ValidateMaintenance(InstallationAction action)
+        {
+            if (!Enum.IsDefined(typeof(InstallationAction), action))
+                throw new ArgumentOutOfRangeException(nameof(action));
+            if (Inspect().Status == InstallationStatus.Conflict)
+                throw new InvalidOperationException("Refusing to modify unowned bootstrap files.");
+            if (!File.Exists(Path.Combine(gameRoot, "RimWorldWin64.exe")))
+                throw new FileNotFoundException("RimWorldWin64.exe is missing.");
+            if (action == InstallationAction.Uninstall)
+                return;
+            if (!File.Exists(proxySource) || Hash(proxySource) != expectedProxyHash)
+                throw new InvalidDataException("Bundled Doorstop failed verification.");
+            if (!File.Exists(bootstrap) || !File.Exists(Helper))
+                throw new FileNotFoundException("Bootstrap DLL or restart helper is missing.");
+        }
+
+        internal void ApplyMaintenance(InstallationAction action)
+        {
+            ValidateMaintenance(action);
+            if (action == InstallationAction.Uninstall)
+                Uninstall();
+            else
+                Install(true);
         }
 
         private string Configuration() => Marker + "\n# UnityDoorstop 4.4.0, Windows x64\n[General]\nenabled=true\ntarget_assembly=" + bootstrap +

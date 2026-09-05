@@ -6,6 +6,7 @@
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
     <ItemGroup>
+        <ProjectReference Include="../../Bootstrap/FixWorld.Bootstrap.csproj" />
         <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472"
             Version="1.0.3"
             PrivateAssets="all" />
@@ -18,5 +19,6 @@
         <Compile Include="../../Source/UI/LoadingProgress.cs" Link="LoadingProgress.cs" />
         <Compile Include="../../Source/UI/LoadingTips.cs" Link="LoadingTips.cs" />
         <Compile Include="../../Source/Patches/DeferredWorkPump.cs" Link="DeferredWorkPump.cs" />
+        <Compile Include="../../Source/Patches/ModLoadingHooks.cs" Link="ModLoadingHooks.cs" />
     </ItemGroup>
 </Project>

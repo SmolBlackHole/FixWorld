@@ -105,6 +105,8 @@ namespace FixWorld
                     BootstrapIntegration.RegisterTelemetry(controller.Diagnostics);
                     controller.Loading = new UI.LoadingProgress(controller.Diagnostics.Store);
                     Patches.LoadingHooks.Install(controller.Loading);
+                    controller.ModLoading = new ModLoadingTelemetry(controller.Diagnostics);
+                    Patches.ModLoadingHooks.Install(controller.ModLoading);
                     controller.Dds = new Textures.TextureDdsCache(controller.Caches, controller.Diagnostics);
                     Patches.TextureHooks.Install(controller.Dds);
                     controller.StartCapture();
@@ -181,6 +183,7 @@ namespace FixWorld
         public LibraryDiagnostics Diagnostics { get; private set; }
         public CacheStore Caches { get; private set; }
         internal UI.LoadingProgress Loading { get; private set; }
+        internal ModLoadingTelemetry ModLoading { get; private set; }
         internal Textures.TextureDdsCache Dds { get; private set; }
         internal TextMeasurementCache TextMeasurements { get; private set; }
 
@@ -382,6 +385,7 @@ namespace FixWorld
                     {
                         Caches.Publish();
                         Dds?.Publish();
+                        ModLoading?.Publish();
                     }
                 }
                 catch (Exception error) { Logger.ReportException(error, "telemetry publication", true); }
@@ -540,6 +544,8 @@ namespace FixWorld
             Patches.TextureHooks.Uninstall();
             Dds?.Dispose();
             Patches.LoadingHooks.Uninstall();
+            Patches.ModLoadingHooks.Uninstall();
+            ModLoading?.Dispose();
             Loading?.Dispose();
             // Failed attachment precedes cache thread binding. Normal quit is on
             // its bound main thread. The exporter has already been signaled above.

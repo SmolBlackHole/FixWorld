@@ -3,7 +3,10 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
+using FixWorld.Profiling;
 using FixWorld.Bootstrap;
+using FixWorld.Core;
 using FixWorld.Settings;
 using FixWorld.Telemetry;
 using FixWorld.Textures;
@@ -20,14 +23,19 @@ namespace FixWorld.UI
 
     public sealed class DiagnosticsWindow : Window
     {
-        private enum Page { Overview, Dds, Settings, Details }
-        private static readonly string[] PageNames = { "Overview", "DDS cache", "Settings", "Technical details" };
-        private readonly Vector2[] scroll = new Vector2[4];
-        private readonly float[] heights = new float[4];
+        private enum Page { Overview, Dds, Loading, Mods, Profiling, Doorstop, Settings, Details }
+        private static readonly string[] PageNames = { "Overview", "DDS cache", "Loading stages", "Mod loading", "Profiling", "Doorstop", "Settings", "Technical details" };
+        private readonly Vector2[] scroll = new Vector2[PageNames.Length];
+        private readonly float[] heights = new float[PageNames.Length];
+        private string modFilter = "", expandedMod;
+        private ProfileSnapshot<ProfileKey> shownProfile;
+        private ProfileMeasurement<ProfileKey>[] profileRows = Array.Empty<ProfileMeasurement<ProfileKey>>();
         private Page selected;
         private SettingsPanel generalSettings, ddsSettings;
         private string report = "", detailId;
         private float nextRefresh;
+        private string installationReadError;
+        private bool maintenanceRequested;
         private const float BodyX = 182f;
 
         public DiagnosticsWindow()
@@ -102,6 +110,10 @@ namespace FixWorld.UI
                 string caption = selected == Page.Settings ? "Library settings. Changes save when you leave this page."
                     : selected == Page.Dds ? "Cached textures and background conversion."
                     : selected == Page.Details ? "Published telemetry, without display formatting."
+                    : selected == Page.Loading ? "Observed stage durations. Missing observations are not zero-cost work."
+                    : selected == Page.Mods ? "Measured loading sections, not complete per-mod startup cost."
+                    : selected == Page.Profiling ? "Inclusive timings, sorted by total time. Nested scopes may overlap."
+                    : selected == Page.Doorstop ? "Early startup installation and removal."
                     : "Current runtime status. Measurements refresh twice per second.";
                 Label(new Rect(BodyX, 91, width, 40), caption, UiTheme.Muted);
                 var body = new Rect(BodyX, 135, width, rect.height - 145);
@@ -124,6 +136,13 @@ namespace FixWorld.UI
                 }
                 if (selected == Page.Details)
                     DrawDetailsSelector(ref body);
+                if (selected == Page.Mods)
+                {
+                    Widgets.Label(new Rect(body.x, body.y, 85, 30), "Filter mods");
+                    modFilter = Widgets.TextField(new Rect(body.x + 90, body.y, body.width - 90, 30), modFilter);
+                    body.y += 42;
+                    body.height -= 42;
+                }
                 int page = (int)selected;
                 var content = new Rect(0, 0, body.width - 18, Mathf.Max(body.height, heights[page]));
                 Widgets.BeginScrollView(body, ref scroll[page], content);
@@ -134,6 +153,14 @@ namespace FixWorld.UI
                         DrawOverview(content.width, ref y);
                     else if (selected == Page.Dds)
                         DrawDds(content.width, ref y);
+                    else if (selected == Page.Loading)
+                        DrawLoading(content.width, ref y);
+                    else if (selected == Page.Mods)
+                        DrawMods(content.width, ref y);
+                    else if (selected == Page.Profiling)
+                        DrawProfiling(content.width, ref y);
+                    else if (selected == Page.Doorstop)
+                        DrawDoorstop(content.width, ref y);
                     else
                     {
                         RefreshReport();
@@ -161,6 +188,8 @@ namespace FixWorld.UI
                 GUI.FocusControl(null);
                 FixWorldController.Instance.Settings.SaveChanges();
                 selected = page;
+                if (page == Page.Doorstop)
+                    RefreshInstallation();
                 nextRefresh = 0;
                 // Each page keeps its scroll and input objects across snapshot refreshes.
             }
@@ -170,6 +199,7 @@ namespace FixWorld.UI
             var controller = FixWorldController.Instance;
             Section(width, ref y, "Runtime");
             Row(width, ref y, "Bootstrap", BootSession.Current.Phase.ToString());
+            Row(width, ref y, "Startup", "Early via Doorstop");
             var library = controller.Diagnostics?.Snapshot;
             if (library != null)
             {
@@ -210,6 +240,14 @@ namespace FixWorld.UI
             if (data == null)
             { Note(width, ref y, "Waiting for the first DDS snapshot."); return; }
             Row(width, ref y, "Worker", DdsStatus(data));
+            if (data.PlannedMods > 0)
+            {
+                Row(width, ref y, "Mods processed / planned", Count(data.ProcessedMods) + " / " + Count(data.PlannedMods));
+                Row(width, ref y, "Mods remaining", Count(data.RemainingMods));
+                if (!string.IsNullOrEmpty(data.CurrentMod))
+                    Row(width, ref y, "Working on", data.CurrentMod);
+                Note(width, ref y, "Processed includes failed and skipped builds. Mod sizes differ; this is not a time estimate.");
+            }
             if (!string.IsNullOrEmpty(data.Error))
                 Note(width, ref y, data.Error, true);
             Section(width, ref y, "Storage");
@@ -301,6 +339,168 @@ namespace FixWorld.UI
             if (report.Length == 0)
                 report = "No published measurements yet.";
         }
+
+        private void RefreshInstallation()
+        {
+            try
+            { BootstrapIntegration.RefreshInstallation(); installationReadError = null; }
+            catch (Exception error) { installationReadError = error.Message; }
+        }
+
+        private void DrawDoorstop(float width, ref float y)
+        {
+            Row(width, ref y, "This launch", "Early via Doorstop");
+            if (Widgets.ButtonText(new Rect(8, y + 4, 160, 30), "Refresh status"))
+                RefreshInstallation();
+            y += 42;
+            if (installationReadError != null)
+            { Note(width, ref y, "Cannot inspect installation: " + installationReadError, true); return; }
+            var state = BootstrapIntegration.LastInstallationState;
+            if (!state.HasValue)
+            { Note(width, ref y, "Refresh to inspect the installation."); return; }
+            Row(width, ref y, "Installation", state.Value.Status.ToString());
+            Note(width, ref y, state.Value.Message, state.Value.Status == InstallationStatus.Conflict);
+            if (state.Value.RestartPending)
+                Note(width, ref y, "An earlier installation or removal is awaiting completion. Explicit maintenance can repair owned files.", true);
+            if (BootstrapIntegration.MaintenanceError != null)
+                Note(width, ref y, BootstrapIntegration.MaintenanceError, true);
+            if (maintenanceRequested)
+                Note(width, ref y, "Shutdown requested. Waiting for RimWorld to exit before changing files.");
+
+            Section(width, ref y, "Maintenance");
+            Note(width, ref y, "Uninstall closes RimWorld and removes FixWorld's owned Doorstop files. Remove or disable FixWorld before launching again, otherwise its normal installer will install Doorstop and restart the game. Settings, saves and DDS packs stay on disk.");
+            Note(width, ref y, "Save your game first. Install and reinstall restart RimWorld; uninstall leaves it closed. None of these actions saves your colony.", true);
+            bool enabled = GUI.enabled;
+            try
+            {
+                GUI.enabled = enabled && !maintenanceRequested && state.Value.Status != InstallationStatus.Conflict;
+                var action = state.Value.Status == InstallationStatus.Missing ? InstallationAction.Install : InstallationAction.Reinstall;
+                if (Widgets.ButtonText(new Rect(8, y, width - 16, 30), action == InstallationAction.Install ? "Install Doorstop..." : "Reinstall Doorstop..."))
+                    ConfirmMaintenance(action);
+                y += 40;
+                GUI.enabled = GUI.enabled && state.Value.Status != InstallationStatus.Missing;
+                if (Widgets.ButtonText(new Rect(8, y, width - 16, 30), "Uninstall Doorstop..."))
+                    ConfirmMaintenance(InstallationAction.Uninstall);
+                y += 40;
+            }
+            finally { GUI.enabled = enabled; }
+        }
+
+        private void ConfirmMaintenance(InstallationAction action)
+        {
+            bool uninstall = action == InstallationAction.Uninstall;
+            string effect = uninstall
+                ? "The game will stay closed so you can remove FixWorld. If FixWorld remains enabled, the next launch installs Doorstop again and restarts."
+                : "FixWorld will start early through Doorstop on the next launch.";
+            Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation(
+                action + " Doorstop and " + (uninstall ? "close" : "restart") + " RimWorld? Unsaved colony progress will be lost. " + effect,
+                () =>
+                {
+                    generalSettings?.CommitPending();
+                    ddsSettings?.CommitPending();
+                    FixWorldController.Instance.Settings.SaveChanges();
+                    maintenanceRequested = BootstrapIntegration.RequestMaintenance(action);
+                }));
+        }
+
+        private void DrawLoading(float width, ref float y)
+        {
+            var loading = FixWorldController.Instance.Loading;
+            var data = loading?.Current;
+            if (data == null)
+            { Note(width, ref y, "No loading snapshot yet."); return; }
+            Row(width, ref y, "Elapsed", (loading.Elapsed(data) / 1000).ToString("N1") + " s");
+            if (!string.IsNullOrEmpty(data.Failure))
+                Note(width, ref y, data.Failure, true);
+            for (int i = 0; i < LoadingProgress.Names.Length; i++)
+            {
+                if (i == (int)LoadingStage.Complete)
+                    continue;
+                double duration = data.Duration(i);
+                string value = duration > 0 ? duration.ToString("N1") + " ms" : "Not observed";
+                if (data.Active && i == (int)data.Stage)
+                    value = (Math.Max(0, loading.Elapsed(data) - data.ElapsedMilliseconds)).ToString("N1") + " ms (running)";
+                else if (i > (int)data.Stage)
+                    value = data.Active ? "Pending" : "Not reached";
+                Row(width, ref y, LoadingProgress.Names[i], value);
+            }
+        }
+        private void DrawProfiling(float width, ref float y)
+        {
+            var data = FixWorldController.Instance.Diagnostics?.Snapshot?.Profile;
+            if (data == null)
+            { Note(width, ref y, "No profiling snapshot yet."); return; }
+            if (!ReferenceEquals(data, shownProfile))
+            { shownProfile = data; profileRows = data.Where(r => r.Calls > 0).OrderByDescending(r => r.TotalStopwatchTicks).ToArray(); }
+            if (profileRows.Length == 0)
+            { Note(width, ref y, "No measured calls yet."); return; }
+            if (width >= 580)
+                TableRow(width, ref y, new[] { "Operation / owner", "Calls", "Total ms", "Avg ms", "Max ms" }, true);
+            foreach (var row in profileRows)
+            {
+                string title = row.Key.Operation + "\n" + row.Key.Owner + " / " + row.Key.Source;
+                if (row.Failures > 0)
+                    title += " (" + Count(row.Failures) + " failed)";
+                if (width >= 580)
+                    TableRow(width, ref y, new[]{title,Count(row.Calls),row.TotalTime.TotalMilliseconds.ToString("N2"),
+                        row.AverageTime.TotalMilliseconds.ToString("N3"),row.MaximumTime.TotalMilliseconds.ToString("N2")});
+                else
+                {
+                    Section(width, ref y, title);
+                    Row(width, ref y, "Calls / failures", Count(row.Calls) + " / " + Count(row.Failures));
+                    Row(width, ref y, "Total / average / max (ms)", row.TotalTime.TotalMilliseconds.ToString("N2") + " / " +
+                        row.AverageTime.TotalMilliseconds.ToString("N3") + " / " + row.MaximumTime.TotalMilliseconds.ToString("N2"));
+                }
+            }
+        }
+        private void DrawMods(float width, ref float y)
+        {
+            var data = FixWorldController.Instance.ModLoading?.Snapshot;
+            if (data == null)
+            { Note(width, ref y, "No mod loading measurements yet. New hooks take effect after restarting the game."); return; }
+            if (!string.IsNullOrEmpty(data.Failure))
+                Note(width, ref y, "Mod loading observations unavailable: " + data.Failure, true);
+            Note(width, ref y, "Assemblies/setup, constructors, XML file loading and deferred content are measured. Global Def processing and arbitrary deferred callbacks are not attributed.");
+            Note(width, ref y, "Click a mod name to show phase timings and captured messages.");
+            int shown = 0;
+            foreach (var mod in data.Mods)
+            {
+                if (mod.Name.IndexOf(modFilter, StringComparison.OrdinalIgnoreCase) < 0 &&
+                    mod.Id.IndexOf(modFilter, StringComparison.OrdinalIgnoreCase) < 0)
+                    continue;
+                shown++;
+                float top = y;
+                Row(width, ref y, mod.Name, mod.TotalMilliseconds.ToString("N1") + " ms observed");
+                if (Widgets.ButtonInvisible(new Rect(0, top, width, y - top)))
+                    expandedMod = expandedMod == mod.Id ? null : mod.Id;
+                Row(width, ref y, "Errors / warnings", Count(mod.Errors) + " / " + Count(mod.Warnings));
+                if (expandedMod != mod.Id)
+                    continue;
+                Note(width, ref y, mod.Id);
+                for (int i = 0; i < 4; i++)
+                    Row(width, ref y, ((ModLoadPart)i).ToString(), mod.Times[i].ToString("N1") + " ms");
+                Note(width, ref y, "Messages occurred in this loading context; this does not prove fault. Up to five distinct samples are kept.");
+                foreach (string message in mod.Messages)
+                    Note(width, ref y, message, true);
+                if (mod.Messages.Count == 0)
+                    Note(width, ref y, "No captured messages. This is not a complete mod error audit.");
+            }
+            if (shown == 0)
+                Note(width, ref y, "No mods match this filter.");
+        }
+        private static void TableRow(float width, ref float y, string[] values, bool heading = false)
+        {
+            float[] fractions = { .42f, .12f, .16f, .14f, .16f };
+            float height = 30;
+            for (int i = 0; i < values.Length; i++)
+                height = Mathf.Max(height, Text.CalcHeight(values[i], width * fractions[i] - 12) + 8);
+            if (!heading)
+                Widgets.DrawBoxSolid(new Rect(0, y, width, height - 2), UiTheme.Row);
+            float x = 0;
+            for (int i = 0; i < values.Length; i++)
+            { Label(new Rect(x + 6, y + 4, width * fractions[i] - 12, height - 8), values[i], heading ? UiTheme.Accent : GUI.color); x += width * fractions[i]; }
+            y += height;
+        }
         private static string DdsStatus(TextureDdsCacheSnapshot data) => !data.Enabled ? "Disabled"
             : data.Busy ? "Working" : data.MaintenancePending ? "Maintenance queued" : "Idle";
         private static string Count(long value) => value.ToString("N0");
@@ -316,8 +516,9 @@ namespace FixWorld.UI
         private static void Section(float width, ref float y, string title)
         {
             y += 12;
-            Label(new Rect(8, y, width - 16, 26), title, UiTheme.Accent);
-            y += 29;
+            float height = Mathf.Max(26, Text.CalcHeight(title, width - 16));
+            Label(new Rect(8, y, width - 16, height), title, UiTheme.Accent);
+            y += height + 3;
             Widgets.DrawBoxSolid(new Rect(8, y, width - 16, 1), UiTheme.Pending);
             y += 9;
         }

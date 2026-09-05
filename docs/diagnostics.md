@@ -26,8 +26,9 @@ windows. Omitting that background caused the reported brief blank image.
 
 The `FixWorld` main-bar entry toggles a resizable native diagnostics window.
 `Options -> Mod options -> FixWorld` opens the same diagnostics window, including
-from the main menu. Navigation provides Overview, DDS cache, Settings and Technical
-details. General settings are embedded; DDS limits and reserve are on the DDS page.
+from the main menu. Navigation provides Overview, DDS cache, Loading stages,
+Mod loading, Profiling, Doorstop, Settings and Technical details. General settings are
+embedded; DDS limits and reserve are on the DDS page.
 Both use the same SettingsPanel as the standalone settings dialog, including
 validation, hover info/context icons and reset. Valid text edits commit and save
 when leaving the page or closing the window. Other mods keep their own settings.
@@ -40,6 +41,34 @@ navigation. Settings controls are retained rather than recreated on refresh.
 
 UiTheme shares dark/cyan colors with the loading screen. Early rendering does not
 load settings icons or access the later window stack. There is no theme editor.
+
+Doorstop provides explicit install/reinstall/uninstall with confirmation.
+Install and reinstall restart the game; uninstall leaves it closed for removal
+of FixWorld. If FixWorld remains enabled, the next ordinary mod start installs
+Doorstop again and restarts. There is no separate runtime without Doorstop.
+See [bootstrap maintenance](windows-preloader.md#explicit-installation-maintenance).
+
+### Loading and profiling views
+
+Loading stages distinguishes observed durations, the running stage and boundaries
+that were not observed. Profiling lists calls, total, average and maximum time,
+sorted by total time. These are inclusive scopes, not an additive tick breakdown.
+
+Mod loading shows observed time by package ID for assemblies/setup, deferred
+content, XML file loading and mod constructors. Filter by name or ID; click a row
+to expand its phases and messages. Shared Def processing and arbitrary deferred
+callbacks are not assigned to individual mods, so this is not a complete per-mod
+startup cost. XML worker threads receive their own attribution scope.
+
+Errors and warnings are associated with the active loading context, not declared
+to be caused by that mod. Messages outside such a context remain unattributed.
+Counts include repeated occurrences; at most five distinct message samples per
+mod are retained, truncated after 2,048 characters with an ellipsis. No messages
+does not prove a mod is error-free. The `fixworld.mod-loading` contract exports
+the same data to the log and JSONL. Hooks preserve the original exception behavior.
+
+DDS progress reports processed/planned mods, remaining mods and the current mod.
+Processed includes failed or skipped builds. This is batch progress, not an ETA.
 
 ### Current verification
 

@@ -25,6 +25,8 @@ internal static class Program
         Scheduler();
         CaptureContracts.Run();
         LoadingContracts.Run();
+        ModLoadingContracts.Run();
+        ModLoadingIntegrationContracts.Run();
         DeferredWorkContracts.Run();
         Console.WriteLine($"PASS: {checks} telemetry/profiling contract checks (.NET Framework). No game started.");
     }
