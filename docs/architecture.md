@@ -2,6 +2,11 @@
 
 Parent: [Documentation index](README.md)
 
+The [binding runtime module architecture](runtime-modules.md) defines module
+contracts, shared-service ownership and the approved migration order. This page
+describes process-level integration; the module document distinguishes required
+target behavior from completed migration work.
+
 FixWorld separates early process entry, version validation, runtime services,
 and RimWorld-facing mod integration. RimWorld owns play-data execution. FixWorld
 observes that execution and replaces only the texture read path on a valid DDS

@@ -10,6 +10,7 @@ support boundary
 | Goal | Start here |
 | --- | --- |
 | Understand process entry and runtime ownership | [Architecture](architecture.md) |
+| Implement a module under the binding architecture | [Runtime module contracts](runtime-modules.md) |
 | Understand the observed loading stages | [Play-data stages](play-data-pipeline.md) |
 | Understand telemetry, benchmark data, and the in-game UI | [Runtime diagnostics](diagnostics.md) |
 | Understand how performance changes are selected and proven | [Optimization method](optimization.md) |

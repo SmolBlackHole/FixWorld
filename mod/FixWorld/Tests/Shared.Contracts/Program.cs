@@ -32,6 +32,7 @@ internal static class Program
             ProfilingCanBeDisabled();
             ProfilerOptionsRejectInvalidValues();
             TickRateContracts.Run(Assert);
+            RuntimeModuleContracts.Run(Assert);
             EventBusKeepsChannelsTypedAndBounded();
             EventBusCoalescesLatestValues();
             EventBusAcceptsConcurrentPublishers();
