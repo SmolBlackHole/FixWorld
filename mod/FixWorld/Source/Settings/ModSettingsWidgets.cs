@@ -143,7 +143,8 @@ namespace FixWorld.Settings
 
         private static void DrawImmediateTooltip(string tipText)
         {
-            if (Event.current.type != EventType.Repaint) return;
+            if (Event.current.type != EventType.Repaint)
+                return;
             var tip = new ActiveTip(tipText);
             var tipRect = tip.TipRect;
             var tipPosition = GenUI.GetMouseAttachedWindowPos(tipRect.width, tipRect.height);
@@ -153,7 +154,7 @@ namespace FixWorld.Settings
 
         private static Vector2 GUIPositionLocalToGlobal(Vector2 localPosition)
         {
-            return localPosition + (UI.MousePositionOnUIInverted - Event.current.mousePosition);
+            return localPosition + (Verse.UI.MousePositionOnUIInverted - Event.current.mousePosition);
         }
     }
 }

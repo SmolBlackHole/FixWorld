@@ -2,6 +2,57 @@
 
 Parent: [Documentation index](README.md)
 
+## Current fork
+
+`FixWorldController` owns `LibraryDiagnostics`, its profiler and `TelemetryStore`.
+Modules register typed, versioned contracts and publish immutable snapshots.
+The same presenter supplies local JSONL capture, log text and the diagnostics
+window, without a second DTO hierarchy or a legacy-report parser.
+See [Telemetry](telemetry.md) and the [Python harness](harness.md).
+
+The restored loading screen keeps the centered dark panel, cyan rails and native
+RimWorld text. Its progress bar represents completed stage boundaries, not an
+estimate of remaining time. The `Tip` row rotates the archived English tips every
+eight seconds, without a blue side stripe. Memory text refreshes twice per second.
+
+`fixworld.loading` schema 1 reports stage, elapsed time at the last transition,
+durations and failure text. Publication occurs only at transitions. The overlay
+computes running elapsed time from the monotonic start timestamp. Durations are
+gauges, not counters across retries. Unobserved early boundaries remain zero.
+
+During deferred content callbacks the isolated frame draws the menu background
+and FixWorld panel, without invoking content-dependent vanilla tip/mod-summary
+windows. Omitting that background caused the reported brief blank image.
+
+The `FixWorld` main-bar entry toggles a resizable native diagnostics window.
+`Options -> Mod options -> FixWorld` opens the same diagnostics window, including
+from the main menu. Its `Settings` button opens the underlying library settings
+directly, without routing back to diagnostics. Other mods keep their own settings.
+It shows an overview and a section per telemetry registration. Values refresh
+every 500 ms while drawn, preserving scroll position. Section changes reset it.
+`Settings` opens the existing fork settings. `Write to log` writes locally only.
+DDS maintenance buttons return with DDS, not ahead of their implementation.
+
+### Current verification
+
+32 loading-model/tip contracts and 14 production deferred-pump checks pass.
+Native run `temp/ui-background-20260905-214555/Player.log` reached the main menu;
+screenshots confirmed the panel, Tip and background during Def and deferred work.
+Its live JSONL (process 47132) reports bootstrap `Ready`, loading `Complete`,
+without a loading failure. The later constructor-time cross-reference guard is
+contract-tested; its native run is pending, as are main-bar interaction/scrolling.
+
+Windows directory listings can report stale zero lengths for open captures.
+Read complete lines through the collector before diagnosing lost data.
+The mod pack still logs texture-size warnings and a translation-error summary.
+
+## Archived predecessor (not active in the fork)
+
+The following describes the archived implementation only. Its Runtime, Loader,
+schema 19, pathfinding probes and DDS controls have not all returned in the fork.
+The current behavior above takes precedence; historical measurements remain
+useful references, not claims about deployed features.
+
 The Runtime owns one telemetry store for startup and live hotpath diagnostics.
 The Loader and normal Mod expose its output at their boundaries; they do not
 maintain parallel profiling systems.

@@ -52,10 +52,12 @@ namespace FixWorld
         {
             get
             {
-                if (libraryVersionInfo == null) ReadOwnVersion();
+                if (libraryVersionInfo == null)
+                    ReadOwnVersion();
                 if (libraryVersionFile != null && libraryVersionFile.OverrideVersion != null)
                     return libraryVersionFile.OverrideVersion;
-                if (libraryVersionInfo != null) return libraryVersionInfo.HighestVersion;
+                if (libraryVersionInfo != null)
+                    return libraryVersionInfo.HighestVersion;
                 return typeof(FixWorldController).Assembly.GetName().Version;
             }
         }
@@ -101,6 +103,8 @@ namespace FixWorld
                     controller.Diagnostics = new LibraryDiagnostics();
                     controller.Caches = new CacheStore(controller.Diagnostics.Store, controller.Diagnostics.Profiler);
                     BootstrapIntegration.RegisterTelemetry(controller.Diagnostics);
+                    controller.Loading = new UI.LoadingProgress(controller.Diagnostics.Store);
+                    Patches.LoadingHooks.Install(controller.Loading);
                     controller.StartCapture();
                 }
                 catch { controller.DisposeCore(); throw; }
@@ -111,7 +115,8 @@ namespace FixWorld
         private TelemetryCapture telemetryCapture;
         private void StartCapture()
         {
-            if (telemetryCapture != null || Diagnostics == null) return;
+            if (telemetryCapture != null || Diagnostics == null)
+                return;
             try
             {
                 var directory = System.IO.Path.Combine(
@@ -135,7 +140,8 @@ namespace FixWorld
             // this must execute in the main thread
             LongEventHandler.ExecuteWhenFinished(() =>
             {
-                if (!BootSession.Current.IsAttached) return;
+                if (!BootSession.Current.IsAttached)
+                    return;
                 if (GameObject.Find(SceneObjectName) != null)
                 {
                     Logger.Error("Another version of the library is already loaded. The FixWorld assembly should be loaded as a standalone mod.");
@@ -172,6 +178,7 @@ namespace FixWorld
 
         public LibraryDiagnostics Diagnostics { get; private set; }
         public CacheStore Caches { get; private set; }
+        internal UI.LoadingProgress Loading { get; private set; }
         internal TextMeasurementCache TextMeasurements { get; private set; }
 
         public ModSettingsManager Settings { get; private set; }
@@ -238,7 +245,8 @@ namespace FixWorld
                 for (int i = 0; i < childMods.Count; i++)
                 {
                     var childMod = childMods[i];
-                    if (earlyInitializedMods.Contains(childMod)) continue;
+                    if (earlyInitializedMods.Contains(childMod))
+                        continue;
                     earlyInitializedMods.Add(childMod);
                     var modId = childMod.LogIdentifierSafe;
                     try
@@ -264,7 +272,8 @@ namespace FixWorld
         // called during static constructor initialization
         internal void LateInitialize()
         {
-            if (!BootSession.Current.IsAttached) return;
+            if (!BootSession.Current.IsAttached)
+                return;
             try
             {
                 BootSession.Current.BeginCompletion(() =>
@@ -304,7 +313,8 @@ namespace FixWorld
                 {
                     var childMod = childMods[i];
                     childMod.ModIsActive = assemblyContentPacks.ContainsKey(childMod.GetType().Assembly);
-                    if (initializedMods.Contains(childMod)) continue; // no need to reinitialize already loaded mods
+                    if (initializedMods.Contains(childMod))
+                        continue; // no need to reinitialize already loaded mods
                     initializedMods.Add(childMod);
                     var modId = childMod.LogIdentifierSafe;
                     try
@@ -322,7 +332,8 @@ namespace FixWorld
             catch (Exception e)
             {
                 Logger.ReportException(e);
-                if (BootSession.Current.Phase == BootPhase.Completing) throw;
+                if (BootSession.Current.Phase == BootPhase.Completing)
+                    throw;
             }
             finally
             {
@@ -332,7 +343,8 @@ namespace FixWorld
 
         internal void OnUpdate()
         {
-            if (BootSession.Current.Phase != BootPhase.Ready || initializationInProgress || shuttingDown || Diagnostics == null) return;
+            if (BootSession.Current.Phase != BootPhase.Ready || initializationInProgress || shuttingDown || Diagnostics == null)
+                return;
             Caches.BindCurrentThread();
             Diagnostics.RecordFrame();
             using var measurement = Diagnostics.Update.Measure();
@@ -362,7 +374,8 @@ namespace FixWorld
                 measurement.Complete();
                 try
                 {
-                    if (Diagnostics.PublishIfDue(Stopwatch.GetTimestamp(), captureLibraryState)) Caches.Publish();
+                    if (Diagnostics.PublishIfDue(Stopwatch.GetTimestamp(), captureLibraryState))
+                        Caches.Publish();
                 }
                 catch (Exception error) { Logger.ReportException(error, "telemetry publication", true); }
             }
@@ -370,7 +383,8 @@ namespace FixWorld
 
         internal void OnTick()
         {
-            if (BootSession.Current.Phase != BootPhase.Ready || initializationInProgress || shuttingDown || Diagnostics == null) return;
+            if (BootSession.Current.Phase != BootPhase.Ready || initializationInProgress || shuttingDown || Diagnostics == null)
+                return;
             Diagnostics.RecordTick();
             using var measurement = Diagnostics.Tick.Measure();
             try
@@ -401,7 +415,8 @@ namespace FixWorld
 
         internal void OnFixedUpdate()
         {
-            if (BootSession.Current.Phase != BootPhase.Ready || initializationInProgress || shuttingDown || Diagnostics == null) return;
+            if (BootSession.Current.Phase != BootPhase.Ready || initializationInProgress || shuttingDown || Diagnostics == null)
+                return;
             using var measurement = Diagnostics.FixedUpdate.Measure();
             try
             {
@@ -427,7 +442,8 @@ namespace FixWorld
 
         internal void OnGUI()
         {
-            if (BootSession.Current.Phase != BootPhase.Ready || initializationInProgress || shuttingDown || Diagnostics == null) return;
+            if (BootSession.Current.Phase != BootPhase.Ready || initializationInProgress || shuttingDown || Diagnostics == null)
+                return;
             using var measurement = Diagnostics.OnGUI.Measure();
             try
             {
@@ -482,7 +498,8 @@ namespace FixWorld
 
         internal void OnApplicationQuit()
         {
-            if (shuttingDown) return;
+            if (shuttingDown)
+                return;
             shuttingDown = true;
             try
             {
@@ -513,10 +530,14 @@ namespace FixWorld
         private void DisposeCore()
         {
             telemetryCapture?.Dispose();
+            Patches.LoadingHooks.Uninstall();
+            Loading?.Dispose();
             // Failed attachment precedes cache thread binding. Normal quit is on
             // its bound main thread. The exporter has already been signaled above.
-            if (BootSession.Current.Phase == BootPhase.Failed) HarmonyInst?.UnpatchAll(HarmonyInstanceIdentifier);
-            try { Caches?.Dispose(); }
+            if (BootSession.Current.Phase == BootPhase.Failed)
+                HarmonyInst?.UnpatchAll(HarmonyInstanceIdentifier);
+            try
+            { Caches?.Dispose(); }
             finally { Diagnostics?.Dispose(); }
         }
 
@@ -733,8 +754,10 @@ namespace FixWorld
                 var subclass = pair.First;
                 var pack = pair.Second;
                 var hasEarlyInit = subclass.HasAttribute<EarlyInitAttribute>();
-                if (hasEarlyInit != earlyInitMode) continue;
-                if (childMods.Find(cm => cm.GetType() == subclass) != null) continue; // skip duplicate types present in multiple assemblies
+                if (hasEarlyInit != earlyInitMode)
+                    continue;
+                if (childMods.Find(cm => cm.GetType() == subclass) != null)
+                    continue; // skip duplicate types present in multiple assemblies
                 try
                 {
                     ModBase.CurrentlyProcessedContentPack = pack;
@@ -773,7 +796,8 @@ namespace FixWorld
         private void CheckForIncludedFixWorldAssembly()
         {
             var controllerTypeName = GetType().FullName;
-            if (controllerTypeName == null) throw new NullReferenceException();
+            if (controllerTypeName == null)
+                throw new NullReferenceException();
             foreach (var modContentPack in LoadedModManager.RunningMods)
             {
                 foreach (var loadedAssembly in modContentPack.assemblies.loadedAssemblies)

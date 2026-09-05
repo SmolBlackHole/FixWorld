@@ -104,11 +104,21 @@ namespace FixWorld.Bootstrap
         public void ConfirmAttached()
         {
             var state = Inspect();
-            if (state.Status != InstallationStatus.Current)
-                throw new InvalidOperationException(state.Message);
             var manifest = ReadManifest();
-            if (!manifest.RestartPending)
+            // A package update replaces the bootstrap at the same target path.
+            // Successful attachment is the proof that this version actually ran.
+            bool loadedUpdate = state.Status == InstallationStatus.RepairRequired && manifest != null &&
+                string.Equals(typeof(Installation).Assembly.Location, bootstrap, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(manifest.BootstrapPath, bootstrap, StringComparison.OrdinalIgnoreCase) &&
+                File.Exists(Proxy) && Hash(Proxy) == expectedProxyHash && manifest.ProxyHash == expectedProxyHash &&
+                File.Exists(Config) && Hash(Config) == manifest.ConfigHash &&
+                manifest.ConfigHash == HashBytes(Encoding.UTF8.GetBytes(Configuration()));
+            if (state.Status != InstallationStatus.Current && !loadedUpdate)
+                throw new InvalidOperationException(state.Message);
+            if (!manifest.RestartPending && !loadedUpdate)
                 return;
+            if (loadedUpdate)
+                manifest.BootstrapHash = Hash(bootstrap);
             manifest.RestartPending = false;
             manifest.PreviousProxyHash = manifest.PreviousConfigHash = null;
             WriteManifest(manifest);

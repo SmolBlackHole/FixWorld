@@ -53,9 +53,11 @@ internal static class OptionsDialogExtensions
 
     public static Window GetModSettingsWindow(Mod forMod)
     {
-        return forMod is SettingsProxyMod proxy
-            ? new Dialog_ModSettings(proxy.SettingsPack)
-            : new RimWorld.Dialog_ModSettings(forMod);
+        if (forMod is not SettingsProxyMod proxy)
+            return new RimWorld.Dialog_ModSettings(forMod);
+        if (proxy.SettingsPack != null && ReferenceEquals(proxy.SettingsPack, FixWorldController.OwnSettingsPack))
+            return new UI.DiagnosticsWindow();
+        return new Dialog_ModSettings(proxy.SettingsPack);
     }
 
     public static void PrepareReflection()

@@ -54,8 +54,8 @@ namespace FixWorld.Quickstart
             var boxWidth = Mathf.Max(StatusRectSize.x, statusTextSize.x + StatusRectPadding.x * 2f);
             var boxHeight = Mathf.Max(StatusRectSize.y, statusTextSize.y + StatusRectPadding.y * 2f);
             var boxRect = new Rect(
-                (UI.screenWidth - boxWidth) / 2f,
-                (UI.screenHeight / 2f - boxHeight) / 2f,
+                (Verse.UI.screenWidth - boxWidth) / 2f,
+                (Verse.UI.screenHeight / 2f - boxHeight) / 2f,
                 boxWidth, boxHeight
             );
             boxRect = boxRect.Rounded();

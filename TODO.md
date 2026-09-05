@@ -17,7 +17,12 @@ The approved [slice plan](docs/fork-refactor-plan.md) controls execution.
       disabled entry still need native acceptance. See windows-preloader.md.
 - [ ] Restore the archived loading UI and tips using the fork's shared
       measurements/contracts, without restoring the old custom mod loader.
-- [ ] Next infrastructure slice: Scheduling/Jobs, before reintroducing DDS.
+      Implemented and loading screen checked natively, including the deferred
+      background. Main-bar interaction/scrolling and the cross-reference guard
+      still need native acceptance. See docs/diagnostics.md.
+- [ ] Restore DDS after UI acceptance, using the fork's shared services and
+      proven worker lifetime/maintenance behavior. No general scheduler rewrite
+      is required ahead of it by the current approved continuation.
 - [x] Local JSONL capture and Python collector: shared contracts, counter metadata,
       local tests and Release build. See [harness](docs/harness.md).
 - [ ] In-game capture acceptance after deployment: manually launched game,

@@ -3,5 +3,8 @@
     <Project Path="mod/FixWorld/Bootstrap/FixWorld.Bootstrap.csproj" />
     <Project Path="mod/FixWorld/RestartHelper/FixWorld.Restart.csproj" />
     <Project Path="mod/FixWorld/Tests/Bootstrap.Contracts/FixWorld.Bootstrap.Contracts.csproj" />
+    <Project Path="mod/FixWorld/Tests/Telemetry.Contracts/FixWorld.Telemetry.Contracts.csproj" />
+    <Project Path="mod/FixWorld/Tests/Caching.Contracts/FixWorld.Caching.Contracts.csproj" />
+    <Project Path="mod/FixWorld/Tests/News.Contracts/FixWorld.News.Contracts.csproj" />
     <Project Path="mod/FixWorld/Tests/FixWorldTests.csproj" />
 </Solution>

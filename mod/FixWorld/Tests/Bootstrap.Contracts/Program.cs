@@ -148,6 +148,7 @@ internal static class Program
         Check(!installation.Inspect().RestartPending, "confirmation clears pending");
         File.WriteAllText(bootstrap, "updated bootstrap");
         Check(installation.Inspect().Status == InstallationStatus.RepairRequired, "update detected");
+        Throws<InvalidOperationException>(installation.ConfirmAttached, "unloaded replacement is not confirmed");
         installation.Install();
         installation.ConfirmAttached();
         Check(installation.Inspect().Status == InstallationStatus.Current, "owned update repaired");
@@ -187,6 +188,20 @@ internal static class Program
         Check(installation.Inspect().RestartPending, "interrupted install retains attempt marker");
         Throws<InvalidOperationException>(installation.Install, "interrupted install does not loop");
         installation.Uninstall();
+        string loadedBootstrap = typeof(Installation).Assembly.Location;
+        var loaded = new Installation(game, proxy, loadedBootstrap, helper, Installation.Hash(proxy));
+        loaded.Install();
+        loaded.ConfirmAttached();
+        string manifestPath = Path.Combine(game, "FixWorld.bootstrap.json");
+        string manifest = File.ReadAllText(manifestPath).Replace(Installation.Hash(loadedBootstrap), new string('0', 64));
+        File.WriteAllText(manifestPath, manifest);
+        Check(loaded.Inspect().Status == InstallationStatus.RepairRequired, "loaded package update has old manifest hash");
+        loaded.ConfirmAttached();
+        Check(loaded.Inspect().Status == InstallationStatus.Current && !loaded.Inspect().RestartPending, "loaded owned update confirmed without restart");
+        File.WriteAllText(Path.Combine(game, "doorstop_config.ini"), "foreign config");
+        Throws<InvalidOperationException>(loaded.ConfirmAttached, "loaded update cannot adopt foreign config");
+        File.Delete(Path.Combine(game, "doorstop_config.ini"));
+        loaded.Uninstall();
     }
     private static void Processes(string root, string helper)
     {

@@ -1,3 +1,4 @@
+# pyright: strict
 """Engine-free collector contracts: python -m unittest discover -s tools -p test_telemetry.py"""
 
 import csv
@@ -6,13 +7,37 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+from typing import Iterable, TypedDict
 
-from telemetry import Frame, Tail, analyze, collect
+from telemetry import Frame, Summary, Tail, analyze, collect
+
+
+class SampleRecord(TypedDict):
+    id: str
+    schemaVersion: int
+    generation: str
+    values: dict[str, object]
+    counters: list[str]
+
+
+class Sample(TypedDict):
+    schemaVersion: int
+    session: str
+    processId: int
+    sequence: int
+    utc: str
+    elapsedSeconds: float
+    records: list[SampleRecord]
 
 
 def sample(
-    sequence=1, count=10, session="one", generation="a", version=1, elapsed=None
-):
+    sequence: int = 1,
+    count: object = 10,
+    session: str = "one",
+    generation: str = "a",
+    version: int = 1,
+    elapsed: float | None = None,
+) -> Sample:
     return {
         "schemaVersion": 1,
         "session": session,
@@ -33,12 +58,12 @@ def sample(
 
 
 class Contracts(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 
-    def report(self, samples):
+    def report(self, samples: Iterable[Sample]) -> Summary:
         source = self.root / "data.jsonl"
         source.write_text(
             "".join(json.dumps(s) + "\n" for s in samples), encoding="utf-8"
@@ -139,13 +164,16 @@ class Contracts(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             collect(source, output, 0, [])
 
-
     def test_new_session_appears_while_collecting(self):
         source = self.root / "sessions"
         source.mkdir()
         (source / "one.jsonl").write_text(json.dumps(sample()) + "\n", encoding="utf-8")
+
         def restart():
-            (source / "two.jsonl").write_text(json.dumps(sample(session="two")) + "\n", encoding="utf-8")
+            (source / "two.jsonl").write_text(
+                json.dumps(sample(session="two")) + "\n", encoding="utf-8"
+            )
+
         timer = threading.Timer(0.05, restart)
         timer.start()
         try:

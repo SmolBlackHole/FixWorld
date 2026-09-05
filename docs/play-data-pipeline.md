@@ -9,7 +9,8 @@ operations.
 
 ## Stage model
 
-The Runtime exposes 17 technical stages grouped into four UI phases:
+The fork exposes 15 boundaries in four UI phases. DDS stages are absent until
+that feature is restored. Unobserved work before early attachment is not timed.
 
 ```text
 Boot
@@ -17,36 +18,31 @@ Boot
   02 Initialize mods
 
 Content
-  03 Initialize texture cache
-  04 Index texture sources
-  05 Prepare mod content
-  06 Create mod classes
+  03 Prepare mod content
+  04 Create mod classes
 
 Definitions
-  07 Load and patch XML
-  08 Import definitions
-  09 Early binding
-  10 Generate pre-resolve definitions
-  11 Resolve cross-references
-  12 Resolve definitions
-  13 Generate post-resolve definitions
-  14 Finalize definitions
+  05 Load and patch XML
+  06 Import definitions
+  07 Early binding
+  08 Generate pre-resolve definitions
+  09 Resolve cross-references
+  10 Resolve definitions
+  11 Generate post-resolve definitions
+  12 Finalize definitions
 
 Finalize
-  15 Initialize runtime
-  16 Execute deferred main-thread work
-  17 Complete
+  13 Initialize runtime
+  14 Execute deferred main-thread work
+  15 Complete
 ```
 
-Stages 03 and 04 are the only FixWorld-owned work in this sequence. They open
-the DDS pack cache and index effective texture sources after RimWorld has
-initialized the active mod list. All other stages measure elapsed time between
-stable RimWorld calls. Stage 16 starts when RimWorld's
+Stages measure elapsed time between observed RimWorld calls. Stage 14 starts when RimWorld's
 `ExecuteWhenFinished()` list starts draining. FixWorld retains the original list
 and action order but exposes it through RimWorld's existing time-sliced
 long-event enumerator. While a `ModContentPack.ReloadContent()` action remains
-pending, RimWorld's normal long-event UI is suppressed and only FixWorld's
-already initialized overlay is drawn. This lets the overlay redraw without
+pending, RimWorld's normal long-event UI is suppressed and the menu background
+plus FixWorld's initialized overlay are drawn. This lets the overlay redraw without
 resolving normal UI assets against a partially reloaded content set. Actions run
 in their original order with a frame opportunity at least every 100 ms. A single
 long-running action can still block one frame.
@@ -58,10 +54,11 @@ XML or finished Def objects.
 
 ## Measurement behavior
 
-The Runtime telemetry store uses pre-registered shared profiler slots to retain
-wall time, call count, and failure count for every stage. The loading UI reads
-the current state directly while the diagnostics window retains all 17 completed
-rows.
+`LoadingProgress` publishes immutable stage snapshots into the shared telemetry
+store. UI, log and JSON use that contract, including stage durations and failure
+text. The screen reads its current state without publishing a snapshot each frame.
+Mod constructors' private XML-resolution calls cannot advance the global binding
+stage before the main XML import begins.
 
 The hooks do not call `SetCurrentEventText()`, alter mod order, copy delegates,
 or reconstruct closures. Per-action exceptions retain RimWorld's

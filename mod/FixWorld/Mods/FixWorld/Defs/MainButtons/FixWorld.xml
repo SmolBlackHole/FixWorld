@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+    <MainButtonDef>
+        <defName>FixWorldDiagnostics</defName>
+        <label>FixWorld</label>
+        <description>Open FixWorld diagnostics and maintenance.</description>
+        <workerClass>FixWorld.UI.MainButtonWorker_Diagnostics</workerClass>
+        <order>490</order>
+        <validWithoutMap>true</validWithoutMap>
+    </MainButtonDef>
+</Defs>

@@ -226,3 +226,13 @@ portable bootstrap checks. Actual-assembly bootstrap fixture: 63 checks. Both
 portable and installed-reference Release builds passed with zero warnings/errors.
 ZIP integrity and explicit binary/license boundaries passed. Pyright on changed
 Python modules and repository checks passed. No live game was replaced or stopped.
+
+UI continuation: implementation and local verification are complete. Loading
+screen screenshots confirmed the dark/cyan panel, Tip and retained backdrop in
+the deferred phase (native log `temp/ui-background-20260905-214555/Player.log`).
+32 loading-model/tip and 14 production deferred-pump checks supplement the 48
+telemetry/capture checks. Existing cache/News checks pass. Bootstrap now has
+65 portable/67 actual-assembly checks, including confirmation of a loaded owned
+bootstrap update without accepting changed proxy/config files. Local Release
+build has zero warnings/errors. Native main-bar interaction/scrolling and the
+constructor cross-reference guard remain open before closing the UI slice.

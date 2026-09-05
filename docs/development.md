@@ -8,6 +8,20 @@ Windows x64, .NET SDK 10, Python 3.11+ and Git. The fork targets .NET Framework
 4.7.2. Portable builds use compile-only RimWorld `1.6.4871` and Harmony `2.4.1`
 packages. No game assemblies are shipped in the ZIP.
 
+VSCode opens `FixWorld.slnx`, including all four contract projects and the inherited
+NUnit suite. Every project uses SDK/NuGet references, not the obsolete local
+`packages` or `RimworldManaged` directories. The NUnit suite is compiled by a
+solution build; it is not part of the engine-free execution in `tools/check.py`.
+For a complete editor-configuration build without touching the deployed mod:
+
+```powershell
+dotnet build FixWorld.slnx -c Debug -p:OutputPath="$PWD/temp/solution-check/" '-p:DocumentationFile='
+pyright tools/test_telemetry.py
+```
+
+If VSCode retains missing-reference diagnostics after restoration, run
+`Developer: Reload Window` to reload the changed solution/project graph.
+
 ## Checks, builds and packages
 
 ```powershell
